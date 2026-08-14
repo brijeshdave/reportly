@@ -104,6 +104,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # The channel-verification spec reads its six-digit code out of Mailpit's
+      # API rather than guessing it, which is the only honest way to test that a
+      # code actually reached the address. Without a mail catcher that fetch has
+      # nothing to talk to, and the failure surfaces as a bare "fetch failed"
+      # a long way from the cause. SMTP_HOST/PORT already default here.
+      mailpit:
+        image: axllent/mailpit:latest
+        ports:
+          - 1025:1025
+          - 8025:8025
 
     env:
       # Defaults already point at localhost; the log DB lives on the same instance.
