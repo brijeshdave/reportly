@@ -13,7 +13,7 @@ RUN pnpm turbo run build --filter=@reportly/web
 # The unprivileged image runs as uid 101 and writes its temp files under /tmp, so
 # the container needs neither root nor a writable root filesystem. It listens on
 # 8080 because a non-root process cannot bind a privileged port.
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 COPY deploy/docker/security-headers.conf /etc/nginx/conf.d/security-headers.conf
 COPY deploy/docker/web-nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
