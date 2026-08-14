@@ -70,10 +70,33 @@ export async function tailLogs(cursor: LogCursor | null, limit: number): Promise
       .limit(limit);
     return newest.reverse();
   }
+  // Compare against the cursor row's **stored** timestamp, not the one carried in
+  // the cursor string.
+  //
+  // `ts` is a timestamptz — microsecond precision — while the cursor encodes
+  // `toISOString()`, which is millisecond. A row stored at 12:00:00.123456 yields
+  // a cursor of 12:00:00.123, and `ts > 12:00:00.123` then matches that very row
+  // again, along with every sibling written in the same statement (`now()` is the
+  // transaction timestamp, so a batch insert shares one value to the microsecond).
+  // The tail re-delivered rows it had already sent, which for a live tail means
+  // visible duplicates.
+  //
+  // Looking the row up by id sidesteps the precision loss entirely: Postgres
+  // compares stored value against stored value. The UNION ALL is the fallback for
+  // a cursor whose row has since been pruned by retention — then the encoded
+  // timestamp is all we have, and being a shade too inclusive beats returning the
+  // whole table.
   return logDb
     .select()
     .from(appLogs)
-    .where(sql`(${appLogs.ts}, ${appLogs.id}) > (${cursor.ts}, ${cursor.id}::uuid)`)
+    .where(
+      sql`(${appLogs.ts}, ${appLogs.id}) > (
+        SELECT ts, id FROM app_logs WHERE id = ${cursor.id}::uuid
+        UNION ALL
+        SELECT ${cursor.ts}::timestamptz, ${cursor.id}::uuid
+        LIMIT 1
+      )`,
+    )
     .orderBy(asc(appLogs.ts), asc(appLogs.id))
     .limit(limit);
 }

@@ -7,6 +7,8 @@ import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { logDb } from "@/core/logdb/index.js";
 import { appLogs } from "@/core/logdb/schema.js";
+import { tailLogs } from "@/features/logs/repo.js";
+import { decodeCursor, encodeCursor } from "@/features/logs/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
 
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -140,6 +142,33 @@ describe("log read APIs", () => {
     expect(msgs).not.toContain("email blew up");
     expect(msgs).not.toContain("auth fine");
     expect(next.json().nextCursor).not.toBe(cursor);
+  });
+
+  it("never re-delivers a row written in the same instant as the cursor", async () => {
+    // Driven through the repository, not HTTP, and deliberately so: serving a
+    // request writes its own log rows, which land newer than the fixtures and
+    // carry the cursor past them — hiding the very thing under test. The bug only
+    // shows when the cursor IS one of the same-instant rows.
+    //
+    // `now()` is the transaction timestamp, so these two share a `ts` to the
+    // microsecond (verified: both stored at ...118158). The cursor encodes
+    // `toISOString()`, which is millisecond — so it says ...118, and
+    // `ts > ...118` matches both rows again. A live tail showed duplicates.
+    await logDb.insert(appLogs).values([
+      { level: "info", feature: "tick", msg: "same-instant one" },
+      { level: "info", feature: "tick", msg: "same-instant two" },
+    ]);
+
+    const page = await tailLogs(null, 500);
+    const mine = page.filter((r) => r.feature === "tick");
+    expect(mine).toHaveLength(2);
+
+    // A cursor built from the newest row. Nothing has been written since, so the
+    // next poll must be empty.
+    const cursor = decodeCursor(encodeCursor(page[page.length - 1]!));
+    const next = await tailLogs(cursor, 500);
+    expect(next.filter((r) => r.feature === "tick").map((r) => r.msg)).toEqual([]);
+    expect(next).toEqual([]);
   });
 
   it("streams a filtered export as csv and ndjson", async () => {
