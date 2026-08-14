@@ -54,7 +54,7 @@ jobs:
         # advisory or an incompatible licence. `pnpm audit` below covers the tree
         # as it already stands; this covers what a change is adding to it.
         if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: moderate
 
