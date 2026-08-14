@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      # The integration suite creates its own test databases on this instance.
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: reportly
+          POSTGRES_PASSWORD: reportly
+          POSTGRES_DB: reportly
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U reportly"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Review new dependencies
+        # Only meaningful on a pull request: it diffs the manifest against the
+        # base branch and fails on a dependency that arrives carrying a known
+        # advisory or an incompatible licence. `pnpm audit` below covers the tree
+        # as it already stands; this covers what a change is adding to it.
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+      - name: Audit dependencies
+        # The whole tree, at moderate. It used to be --prod --audit-level high, on
+        # the reasoning that a tooling advisory should not block an unrelated change
+        # — but the tooling advisories were then carried for months, and the machine
+        # running them in CI holds a checkout and a registry token. Every transitive
+        # advisory is now pinned in pnpm-workspace.yaml, so the tree is clean and
+        # staying clean is a matter of not regressing it.
+        run: pnpm audit --audit-level moderate
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Typecheck, lint, test, build
+        run: pnpm turbo run typecheck lint test build
+
+      - name: Integration tests
+        run: pnpm --filter @reportly/api test:integration
+
+  e2e:
+    # Drives the real web app in a browser against a running API + database — the
+    # one job that exercises the whole stack the way a person uses it.
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: reportly
+          POSTGRES_PASSWORD: reportly
+          POSTGRES_DB: reportly
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U reportly"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Defaults already point at localhost; the log DB lives on the same instance.
+      DATABASE_URL: postgres://reportly:reportly@localhost:5432/reportly
+      LOG_DATABASE_URL: postgres://reportly:reportly@localhost:5432/reportly_logs
+      REDIS_URL: redis://localhost:6379
+      BASE_URL: http://localhost:5173
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build
+
+      - name: Create the log database
+        # The app DB is created by the postgres service; the log DB is separate.
+        run: PGPASSWORD=reportly psql -h localhost -U reportly -d reportly -c "CREATE DATABASE reportly_logs;"
+
+      - name: Migrate and seed
+        run: |
+          pnpm --filter @reportly/api cli migrate
+          pnpm --filter @reportly/api cli seed
+
+      - name: Install Playwright browser
+        run: pnpm --filter @reportly/e2e exec playwright install --with-deps chromium
+
+      - name: Start the API
+        run: |
+          pnpm --filter @reportly/api start > /tmp/api.log 2>&1 &
+          npx --yes wait-on -t 60000 http://localhost:3000/api/v1/health
+
+      - name: Start the web app
+        run: |
+          pnpm --filter @reportly/web dev > /tmp/web.log 2>&1 &
+          npx --yes wait-on -t 60000 http://localhost:5173
+
+      - name: Run e2e tests
+        run: pnpm --filter @reportly/e2e test:e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            /tmp/api.log
+            /tmp/web.log
+          retention-days: 7
+
+  images:
+    # Proves the production images still build. Nothing is pushed from CI.
+    runs-on: ubuntu-latest
+    needs: verify
+
+    strategy:
+      matrix:
+        image:
+          - { name: api, dockerfile: deploy/docker/api.Dockerfile }
+          - { name: web, dockerfile: deploy/docker/web.Dockerfile }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.image.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          push: false
+          tags: reportly-${{ matrix.image.name }}:ci
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}

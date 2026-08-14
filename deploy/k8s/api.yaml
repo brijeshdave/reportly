@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reportly-api
+  namespace: reportly
+  labels:
+    app.kubernetes.io/name: reportly
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: reportly
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: reportly
+        app.kubernetes.io/component: api
+    spec:
+      # The image already declares USER node; saying so here means the kubelet
+      # refuses to start the pod if a future image forgets, rather than silently
+      # running the API as root.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: reportly/api:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: reportly-config
+            - secretRef:
+                name: reportly-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # A read-only root filesystem needs the two paths the process actually
+          # writes to handed back: the rotating log file, and Node's tmp.
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+            - name: tmp
+              mountPath: /tmp
+          # Liveness restarts a wedged process; readiness takes a pod out of the
+          # Service while it cannot serve. They must not be the same check: /health
+          # says the process is up, /ready says Postgres and Redis answer. Using
+          # /ready for liveness would restart every pod during a database blip
+          # instead of just parking them.
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3000
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/v1/ready
+              port: 3000
+            periodSeconds: 10
+          # First boot loads settings, migrations and the auth instance. The startup
+          # probe gives that up to 60s without a slow liveness check killing the pod
+          # halfway through, and liveness does not begin until it passes.
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reportly-api
+  namespace: reportly
+  labels:
+    app.kubernetes.io/name: reportly
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: reportly
+    app.kubernetes.io/component: api
+  ports:
+    - port: 3000
+      targetPort: 3000

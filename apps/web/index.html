@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Technical report-taking for teams across companies and locations."
+    />
+    <title>Reportly</title>
+    <!-- Applies the stored theme before first paint. Deliberately a file and not
+         inline, so the page can be served under a `script-src 'self'` CSP; and
+         deliberately not deferred, so it still runs before anything is painted. -->
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

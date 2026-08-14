@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 288" width="1060" height="288">
+  <defs>
+    <linearGradient id="rgl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(32,32) scale(0.4375)">
+    <rect width="512" height="512" rx="116" fill="url(#rgl)"/>
+    <rect x="161" y="118" width="190" height="276" rx="30" fill="none" stroke="#ffffff" stroke-width="26"/>
+    <polyline points="88,270 186,270 222,206 266,326 302,240 330,270 424,270" fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="300" y="197" font-family="Inter, 'Segoe UI', -apple-system, sans-serif" font-size="150" font-weight="600" letter-spacing="-3" fill="#1e1b3a">Reportly</text>
+</svg>

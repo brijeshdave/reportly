@@ -1,0 +1,14 @@
+# Aggregates the base manifests. Validate with:
+#   kubectl apply --dry-run=client -k deploy/k8s
+# In real clusters, replace secret.example.yaml with a managed secret and set
+# real image tags. The web pod serves static assets; route /api to reportly-api
+# via an Ingress (nginx proxy in web-nginx.conf targets Compose service `api`).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.example.yaml
+  - api.yaml
+  - web.yaml

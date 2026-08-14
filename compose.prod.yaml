@@ -1,0 +1,180 @@
+# Production compose: builds the API and web images and runs the full stack.
+# Provide secrets via a .env file or the environment — never commit them.
+# Start from `.env.production.example`, or run `scripts/install-ubuntu.sh`.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Add TLS with the `tls` profile (Caddy, automatic Let's Encrypt):
+#
+#   docker compose -f docker-compose.prod.yml --profile tls up -d --build
+name: reportly-prod
+
+# Every service that runs application code needs the same environment. Declared
+# once: `migrate` and `api` must agree, or migrations run against one database
+# while the app serves another.
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-reportly}
+  LOG_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_LOG_DB:-reportly_logs}
+  REDIS_URL: redis://redis:6379
+  # Required. Without it the API falls back to its insecure development secret
+  # and every session cookie in this deployment would be forgeable.
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET (openssl rand -base64 32)}
+  # Externally reachable origins. Emailed links point at WEB_URL.
+  # These default to loopback, which a browser treats as a secure context. Point
+  # them at a real hostname and the API requires https, because the session
+  # cookie would otherwise lose its Secure flag and travel in clear text. Set
+  # ALLOW_INSECURE_HTTP=true to run plain http on a trusted private network.
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
+  WEB_URL: ${WEB_URL:-http://localhost:8080}
+  CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+  ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-false}
+  # Attachments and stored backups. Both live on the mounted volume below; the
+  # value must stay inside it or a redeploy loses the files.
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  STORAGE_LOCAL_DIR: /data/uploads
+  STORAGE_MAX_UPLOAD_MB: ${STORAGE_MAX_UPLOAD_MB:-50}
+  LOG_DIR: /data/logs
+  # Outbound mail. Without a reachable relay, invitations and password resets
+  # are queued and never delivered.
+  SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-true}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  MAIL_FROM: ${MAIL_FROM:-Reportly <no-reply@reportly.local>}
+  SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-admin@reportly.local}
+  SUPERADMIN_NAME: ${SUPERADMIN_NAME:-Super Admin}
+
+# Docker's default json-file driver grows without limit. A chatty API fills a
+# disk in weeks, and a full disk stops Postgres.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: always
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-reportly}
+      POSTGRES_LOG_DB: ${POSTGRES_LOG_DB:-reportly_logs}
+    volumes:
+      # /var/lib/postgresql, NOT /var/lib/postgresql/data. Postgres 18's image
+      # changed where it keeps data: it now uses a major-version subdirectory
+      # (/var/lib/postgresql/18/docker) so that pg_upgrade --link can work without
+      # crossing a mount boundary. Mounting the old path leaves the volume unused
+      # — the container starts, initialises inside its own filesystem, and every
+      # byte is lost on the next recreate.
+      - postgres-data:/var/lib/postgresql
+      - ./deploy/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    restart: always
+    logging: *logging
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Schema migrations, as a gate rather than a thing to remember. `api` waits for
+  # this to exit 0, so an upgrade cannot start serving against a schema it has
+  # not migrated. Idempotent: on an up-to-date database it applies nothing.
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+    restart: "no"
+    logging: *logging
+    environment: *app-env
+    command: ["node", "dist/cli/index.js", "migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/api.Dockerfile
+    restart: always
+    logging: *logging
+    environment:
+      <<: *app-env
+      HOST: 0.0.0.0
+      PORT: 3000
+      # The web service's nginx proxies /api to here (one hop), so read the client
+      # IP from the forwarded header — otherwise every rate limit and audit IP sees
+      # nginx, not the caller. With the `tls` profile there are two hops; the
+      # example env file sets 2 for you.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    volumes:
+      # Attachments, avatars and stored backups. Without this they are written
+      # inside the container and lost on the next deploy.
+      - app-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/web.Dockerfile
+    restart: always
+    logging: *logging
+    ports:
+      # 8080 inside the container: nginx runs unprivileged and cannot bind port 80.
+      # With the `tls` profile, publish nothing here and let Caddy reach it on the
+      # internal network instead — set WEB_PUBLIC_PORT=127.0.0.1:8080 to keep it
+      # off the public interface.
+      - "${WEB_PUBLIC_PORT:-8080}:8080"
+    depends_on:
+      - api
+
+  # TLS terminator. Opt in with `--profile tls`; set PUBLIC_HOSTNAME and point its
+  # DNS at this machine, and Caddy obtains and renews a certificate on its own.
+  # It also adds HSTS, which cannot be set by the nginx inside the web container
+  # because that container does not know whether it is behind TLS.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["tls"]
+    restart: always
+    logging: *logging
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?set PUBLIC_HOSTNAME for the tls profile}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-data:
+  caddy-data:
+  caddy-config:

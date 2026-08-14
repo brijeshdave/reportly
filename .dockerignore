@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/build
+**/.turbo
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.github
+.private
+deploy/k8s
+*.log

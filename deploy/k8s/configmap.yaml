@@ -1,0 +1,19 @@
+# Non-secret configuration. Secrets (DB URLs, credentials) live in secret.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reportly-config
+  namespace: reportly
+data:
+  NODE_ENV: "production"
+  HOST: "0.0.0.0"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  CORS_ORIGIN: "https://reportly.example.com"
+  # The API sits behind the web pod's nginx (one hop), so read the client IP from
+  # the forwarded header. Without this, every per-IP rate limit and audit IP would
+  # record nginx instead of the caller. See TRUST_PROXY in the env reference.
+  TRUST_PROXY: "1"
+  # Externally reachable origins, used for cookie flags and auth callback URLs.
+  BETTER_AUTH_URL: "https://reportly.example.com"
+  WEB_URL: "https://reportly.example.com"

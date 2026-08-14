@@ -1,0 +1,53 @@
+{
+  "name": "@reportly/api",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/cli/index.ts migrate",
+    "db:seed": "tsx src/cli/index.ts seed",
+    "cli": "tsx src/cli/index.ts",
+    "db:generate:logs": "drizzle-kit generate --config drizzle.log.config.ts",
+    "docs:env": "tsx src/lib/write-env-docs.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.1.0",
+    "@fastify/multipart": "^10.1.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.1",
+    "@reportly/shared": "workspace:*",
+    "better-auth": "^1.6.26",
+    "bullmq": "^6.0.9",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
+    "fastify": "^5.11.3",
+    "fastify-type-provider-zod": "^7.0.0",
+    "ioredis": "^6.0.0",
+    "nodemailer": "^9.0.5",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.21.0",
+    "drizzle-kit": "^0.31.10",
+    "tsc-alias": "^1.9.1",
+    "tsx": "^4.23.11",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

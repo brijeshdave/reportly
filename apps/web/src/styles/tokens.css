@@ -1,0 +1,141 @@
+/* Author: Brijesh Dave <https://github.com/brijeshdave>
+   Design tokens. Neutrals are defined once per mode; each palette only overrides
+   its brand stops and derived accents. Nothing outside this file may hardcode a
+   colour — components use the semantic Tailwind utilities mapped in index.css. */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces & text */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --muted: #f1f5f9;
+  /* Secondary text. Every ratio below is against --card (#fff) and --background;
+     each clears WCAG AA for normal text (4.5:1). Do not lighten these. */
+  --muted-foreground: #475569; /* 7.24:1 */
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+
+  --destructive: #b91c1c; /* 6.21:1 */
+  --destructive-foreground: #ffffff;
+  --success: #15803d; /* 5.05:1 */
+  --warning: #b45309; /* 4.87:1 */
+
+  --radius: 0.875rem;
+
+  /* Brand stops — overridden per palette below. Aurora is the default.
+     `--brand-*` are gradient stops: they only ever sit behind
+     --primary-foreground, so they may be bright. `--primary` is a TEXT colour
+     (links, active tabs, menu items) and must clear 4.5:1 on a white card, which
+     the bright stops do not — citrus reaches only 2.15:1. Each palette therefore
+     sets its own ink-dark --primary for light mode; `.dark` restores the bright
+     stop, which is what reads well on a dark canvas. */
+  --brand-from: #6366f1;
+  --brand-to: #a855f7;
+  --primary: #4f46e5; /* 5.61:1 */
+  --primary-foreground: #ffffff;
+  --ring: var(--primary);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #0b1120;
+  --foreground: #e2e8f0;
+  --card: #111827;
+  --card-foreground: #e2e8f0;
+  --popover: #111827;
+  --popover-foreground: #e2e8f0;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --border: #1e293b;
+  --input: #334155;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #22c55e;
+  --warning: #f59e0b;
+
+  /* Fallback for the instant before the pre-hydration script sets data-theme. */
+  --primary: var(--brand-from);
+}
+
+/* --- palettes: brand stops, plus the light-mode text colour derived from them --- */
+[data-theme="aurora"] {
+  --brand-from: #6366f1;
+  --brand-to: #a855f7;
+  --primary: #4f46e5; /* 5.61:1 */
+}
+[data-theme="ocean"] {
+  --brand-from: #0ea5e9;
+  --brand-to: #06b6d4;
+  --primary: #0369a1; /* 5.53:1 */
+}
+[data-theme="forest"] {
+  --brand-from: #14b8a6;
+  --brand-to: #10b981;
+  --primary: #0f766e; /* 5.05:1 */
+}
+[data-theme="sunset"] {
+  --brand-from: #f97316;
+  --brand-to: #ec4899;
+  --primary: #c2410c; /* 5.03:1 */
+}
+[data-theme="ember"] {
+  --brand-from: #ef4444;
+  --brand-to: #f97316;
+  --primary: #b91c1c; /* 6.21:1 */
+}
+[data-theme="orchid"] {
+  --brand-from: #a855f7;
+  --brand-to: #d946ef;
+  --primary: #7e22ce; /* 6.44:1 */
+}
+[data-theme="citrus"] {
+  --brand-from: #f59e0b;
+  --brand-to: #84cc16;
+  --primary: #b45309; /* 4.87:1 — the bright amber stop is 2.15:1 */
+}
+[data-theme="graphite"] {
+  --brand-from: #475569;
+  --brand-to: #3b82f6;
+  --primary: #475569; /* 7.24:1 */
+}
+
+/* On a dark canvas the ink-dark primaries disappear; the bright brand stop is
+   what reads there. Specificity (0,2,0) beats the palette blocks above. */
+.dark [data-theme],
+.dark[data-theme] {
+  --primary: var(--brand-from);
+}
+
+/* Amber/lime are too light for white text; use ink instead. */
+[data-theme="citrus"] {
+  --primary-foreground: #1c1917;
+}
+
+/* Graphite's slate reads muddy on a dark canvas — lift the primary stop. */
+.dark [data-theme="graphite"],
+.dark[data-theme="graphite"] {
+  --brand-from: #64748b;
+}
+
+/* Three brand stops are too dark to read as text on the dark canvas (aurora
+   3.97:1, orchid 4.48:1, graphite 3.73:1). Lift only the text colour; the
+   gradients keep their stops. */
+.dark [data-theme="aurora"],
+.dark[data-theme="aurora"] {
+  --primary: #818cf8; /* 5.95:1 */
+}
+.dark [data-theme="orchid"],
+.dark[data-theme="orchid"] {
+  --primary: #c084fc; /* 6.71:1 */
+}
+.dark [data-theme="graphite"],
+.dark[data-theme="graphite"] {
+  --primary: #94a3b8; /* 6.92:1 */
+}

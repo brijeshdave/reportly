@@ -1,0 +1,36 @@
+{
+  "name": "reportly",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Open-source technical report-taking application for departments across companies and locations.",
+  "license": "AGPL-3.0-only",
+  "author": "Brijesh Dave <https://github.com/brijeshdave>",
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "app": "bash scripts/dev.sh",
+    "app:infra": "bash scripts/dev.sh --infra",
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "docs:build": "pnpm --filter @reportly/docs docs:build",
+    "docs:dev": "pnpm --filter @reportly/docs docs:dev",
+    "docs:env": "pnpm --filter @reportly/api docs:env",
+    "docs:preview": "pnpm --filter @reportly/docs docs:preview",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.1",
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0"
+  }
+}

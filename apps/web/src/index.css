@@ -1,0 +1,102 @@
+/* Author: Brijesh Dave <https://github.com/brijeshdave>
+   Global stylesheet: Tailwind v4, the design tokens, and the semantic colour scale
+   that maps tokens onto utilities (`bg-background`, `text-muted-foreground`, ...).
+   Dark mode is class-driven (`.dark` on <html>) so the theme can be applied before
+   hydration without a flash. */
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "./styles/tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-ring: var(--ring);
+  --color-brand-from: var(--brand-from);
+  --color-brand-to: var(--brand-to);
+
+  --radius-xl: var(--radius);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    /* Tables read at >= 13px, body 14-15px; never below 12px. */
+    font-size: 0.9375rem;
+    -webkit-font-smoothing: antialiased;
+
+    /* A soft, theme-aware "gradient blur": large, out-of-focus blobs of the two
+       brand hues (plus a blend of the two) bleed in from the corners and dissolve
+       toward the centre, so the busy content column stays calm while the edges
+       carry colour. Anchored to the viewport, so it neither scrolls nor tiles.
+       Every stop is derived from the brand tokens via color-mix, so each of the
+       eight palettes gets its own background for free. Strengths are tuned per
+       mode below. Opaque cards sit on top, so text keeps its contrast. */
+    background-image:
+      radial-gradient(
+        55rem 45rem at 88% -5%,
+        color-mix(in srgb, var(--brand-to) 40%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        50rem 45rem at 8% 108%,
+        color-mix(in srgb, var(--brand-from) 36%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        45rem 40rem at 108% 78%,
+        color-mix(in srgb, color-mix(in srgb, var(--brand-from), var(--brand-to)) 30%, transparent),
+        transparent 58%
+      );
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+
+  /* A dark base swallows colour, so let the blobs run a little stronger there. */
+  .dark body {
+    background-image:
+      radial-gradient(
+        55rem 45rem at 88% -5%,
+        color-mix(in srgb, var(--brand-to) 46%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        50rem 45rem at 8% 108%,
+        color-mix(in srgb, var(--brand-from) 42%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        45rem 40rem at 108% 78%,
+        color-mix(in srgb, color-mix(in srgb, var(--brand-from), var(--brand-to)) 36%, transparent),
+        transparent 58%
+      );
+  }
+
+  /* Gradients belong on tiles, buttons, and nav pills, and — kept deliberately
+     faint — as the page wash above. Never a strong gradient directly behind text. */
+  .brand-gradient {
+    background-image: linear-gradient(135deg, var(--brand-from), var(--brand-to));
+  }
+}

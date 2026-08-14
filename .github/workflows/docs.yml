@@ -1,0 +1,86 @@
+# Builds the documentation site and publishes it to GitHub Pages.
+#
+# Only runs when something the site is made of actually changes, so an ordinary
+# code commit does not spend a Pages deployment. The site is built from `docs/`,
+# which means the same markdown serves both this site and anyone reading the repo
+# on GitHub.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  # So a broken link in a pull request is caught before it reaches the site.
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# One in flight at a time; a newer commit supersedes an older deploy rather than
+# racing it. In-progress builds are not cancelled, so a deploy that has started
+# finishes cleanly.
+# The Pages deployment needs these; the build job needs `contents` to check out.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `lastUpdated` reads each page's timestamp from git, and a shallow
+          # clone would date every page to the moment of the checkout.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the site
+        env:
+          # The repository name is the path GitHub Pages serves a project site
+          # from. Point a custom domain at it and set DOCS_BASE to "/" instead.
+          DOCS_BASE: /${{ github.event.repository.name }}/
+          # Where the "Login" link goes. Set the DOCS_APP_URL repository variable
+          # to your own instance; without one it falls back to the local
+          # development server, which is right for anyone running the stack.
+          DOCS_APP_URL: ${{ vars.DOCS_APP_URL }}
+        run: pnpm docs:build
+
+      - uses: actions/upload-pages-artifact@v3
+        # Nothing to upload on a pull request — that run exists to prove the site
+        # still builds and has no dead links.
+        if: github.event_name != 'pull_request'
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

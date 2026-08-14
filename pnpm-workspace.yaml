@@ -1,0 +1,43 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "e2e"
+  # The documentation site. Its own package on purpose: VitePress brings Vue,
+  # and in the root graph that re-keyed better-auth's peer resolution and broke
+  # the API's typecheck. A docs tool must not be able to move the app's deps.
+  - "docs"
+
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+
+# Allow native build scripts only for vetted packages (esbuild fetches its
+# platform binary; msgpackr-extract is BullMQ's optional native accelerator).
+onlyBuiltDependencies:
+  - esbuild
+  - msgpackr-extract
+
+# Don't run pnpm's dependency-status check before scripts: it is noisy under
+# Turbo and fails on transitive "ignored build scripts" that ship prebuilt.
+verifyDepsBeforeRun: false
+
+# Transitive pins for advisories a direct upgrade cannot reach — the vulnerable
+# package is somebody else's dependency, and waiting for them to re-release blocks
+# an unrelated change. Forcing one patched copy is cheaper than annotating the
+# audit every release. Drop an entry once every dependent has moved past it.
+#
+# The dev-toolchain ones (esbuild, vite, postcss) do not ship: `pnpm deploy --prod`
+# builds the runtime images. They are pinned anyway because a stale vite under
+# vitest still exposes the machine running the tests, which in CI is a machine
+# holding a checkout and a registry token.
+overrides:
+  esbuild: "^0.25.0"
+  # Reached through better-auth → vitest → vite. GHSA-6g55-p6wh-862q and its
+  # incomplete-fix follow-up: a sourceMappingURL reads arbitrary .map files.
+  postcss: "^8.5.23"
+  # Six advisories across three major lines, all reached through glob/minimatch in
+  # the test and build tooling: unbounded brace expansion is a DoS.
+  brace-expansion: "^2.1.4"
+  # exceljs still asks for uuid 8; v3/v5/v6 miss a buffer bounds check when the
+  # caller supplies `buf`. exceljs itself does not, but the copy is ours to patch.
+  uuid: "^11.1.1"

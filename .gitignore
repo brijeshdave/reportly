@@ -1,0 +1,50 @@
+# Private working notes — never committed
+.private
+
+# Dependencies
+node_modules
+
+# Build output
+dist
+build
+.turbo
+
+# Env (keep *.example)
+.env
+.env.*
+!.env.example
+!**/.env.example
+# `.env.*` above swallows this one too — it is a template, not a real env file.
+!.env.production.example
+
+# Kubernetes real secrets (keep *.example.yaml)
+deploy/k8s/secret.yaml
+
+# Your own compose file. `compose.dev.yaml` (development) and `compose.prod.yaml`
+# (the shipped production reference) are tracked; `compose.yaml` is yours to
+# tailor, and staying untracked is what stops a `git pull` overwriting it.
+compose.yaml
+compose.override.yaml
+
+# Test / coverage
+coverage
+
+# Logs
+*.log
+# Log output directories only — anchored so they never match source dirs
+# such as apps/api/src/features/logs.
+/logs
+apps/api/logs
+apps/api/.tmp-logs
+
+# Attachments written by the local storage backend. Anchored for the same reason:
+# there is a src/features/attachments that must stay tracked.
+/uploads
+apps/api/uploads
+
+# OS / editor
+.DS_Store
+
+# VitePress build output and cache
+docs/.vitepress/dist
+docs/.vitepress/cache

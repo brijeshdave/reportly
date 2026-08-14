@@ -1,0 +1,254 @@
+// Author: Brijesh Dave <https://github.com/brijeshdave>
+// Requesting a shift change: pick one of your own shifts in a department's month, add
+// an optional suggested colleague to swap with, and a note. It goes to your reporting
+// manager, who confirms who to swap with and approves — see Scheduling → Shift change.
+import { formatDate, formatMonthYear, type ScheduleGrid } from "@reportly/shared";
+import { useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useMemo, useState } from "react";
+
+import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { Alert, Field, Select, Spinner } from "@/components/ui/form.js";
+import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
+import { fetchUserDepartments } from "@/services/departments.js";
+import { fetchSchedule, requestSwap } from "@/services/shifts.js";
+
+export function ShiftChangeRequestPage() {
+  const { data: session } = useSuspenseQuery(sessionQuery);
+  const navigate = useNavigate();
+  const me = session.user.id;
+
+  const myDepartments = useQuery({
+    queryKey: ["users", "departments", me],
+    queryFn: () => fetchUserDepartments(me),
+  });
+  const departments = myDepartments.data ?? [];
+
+  const [departmentId, setDepartmentId] = useState<string | null>(null);
+  const effectiveDept = departmentId ?? departments[0]?.departmentId ?? null;
+
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const step = (delta: number) => {
+    const m = month + delta;
+    if (m < 1) {
+      setYear(year - 1);
+      setMonth(12);
+    } else if (m > 12) {
+      setYear(year + 1);
+      setMonth(1);
+    } else {
+      setMonth(m);
+    }
+  };
+
+  const grid = useQuery({
+    queryKey: ["schedule", effectiveDept, year, month],
+    queryFn: () => fetchSchedule({ departmentId: effectiveDept as string, year, month }),
+    enabled: effectiveDept !== null,
+  });
+
+  const [requesterEntryId, setRequesterEntryId] = useState("");
+  const [counterpartEntryId, setCounterpartEntryId] = useState("");
+  const [note, setNote] = useState("");
+
+  const data = grid.data;
+  const shiftName = (id: string | null) => data?.shifts.find((s) => s.id === id)?.name ?? "—";
+
+  // My own changeable cells this month (a working shift or a weekly off), and — once one
+  // is chosen — colleagues working that day.
+  const mineShifts = useMemo(
+    () =>
+      (data?.entries ?? [])
+        .filter(
+          (e) => e.userId === me && ((e.state === "working" && e.shiftId) || e.state === "off"),
+        )
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [data, me],
+  );
+  const cellLabel = (e: (typeof mineShifts)[number]) =>
+    e.state === "off" ? "W/O" : shiftName(e.shiftId);
+  const chosen = mineShifts.find((e) => e.id === requesterEntryId);
+  // The department's HOD is never a swap target — they approve changes, not take them.
+  const hodIds = useMemo(
+    () => new Set((data?.members ?? []).filter((m) => m.isHod).map((m) => m.userId)),
+    [data],
+  );
+  const candidates = useMemo(
+    () =>
+      chosen
+        ? (data?.entries ?? []).filter(
+            (e) =>
+              e.date === chosen.date &&
+              e.userId !== me &&
+              e.state === "working" &&
+              e.shiftId &&
+              !hodIds.has(e.userId),
+          )
+        : [],
+    [data, chosen, me, hodIds],
+  );
+  const nameOf = (userId: string) => data?.members.find((m) => m.userId === userId)?.name ?? "—";
+
+  const submit = useMutation({
+    mutationFn: () =>
+      requestSwap((data as ScheduleGrid).schedule!.id, {
+        requesterEntryId,
+        counterpartEntryId: counterpartEntryId || null,
+        note: note.trim() || undefined,
+      }),
+    onSuccess: () => navigate({ to: "/schedule/changes" }),
+  });
+
+  return (
+    <>
+      <PageHeader
+        title="Request a shift change"
+        description="Choose one of your shifts, optionally suggest who to swap with, and send it to your reporting manager."
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void navigate({ to: "/schedule/changes" })}
+          >
+            Back
+          </Button>
+        }
+      />
+
+      <Card className="mt-2 max-w-xl p-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1">
+              <Field label="Department">
+                {(props) => (
+                  <Select
+                    {...props}
+                    value={effectiveDept ?? ""}
+                    onChange={(e) => {
+                      setDepartmentId(e.target.value || null);
+                      setRequesterEntryId("");
+                      setCounterpartEntryId("");
+                    }}
+                  >
+                    {departments.length === 0 ? (
+                      <option value="">You are in no department</option>
+                    ) : null}
+                    {departments.map((d) => (
+                      <option key={d.departmentId} value={d.departmentId}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={() => step(-1)}
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="min-w-[8.5rem] text-center text-sm font-medium">
+                {formatMonthYear(year, month)}
+              </span>
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={() => step(1)}
+                aria-label="Next month"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {grid.isLoading ? (
+            <Spinner />
+          ) : grid.error ? (
+            <ErrorAlert error={grid.error} />
+          ) : !data?.schedule ? (
+            <Alert tone="info">There is no schedule for this month yet — pick another month.</Alert>
+          ) : mineShifts.length === 0 ? (
+            <Alert tone="info">
+              You have no shifts to change in {formatMonthYear(year, month)}.
+            </Alert>
+          ) : (
+            <>
+              <Field label="Which shift?">
+                {(props) => (
+                  <Select
+                    {...props}
+                    value={requesterEntryId}
+                    onChange={(e) => {
+                      setRequesterEntryId(e.target.value);
+                      setCounterpartEntryId("");
+                    }}
+                  >
+                    <option value="">Choose a shift…</option>
+                    {mineShifts.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {formatDate(`${e.date}T00:00:00`)} · {cellLabel(e)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+
+              {chosen ? (
+                <Field label="Suggest swapping with (optional)">
+                  {(props) => (
+                    <Select
+                      {...props}
+                      value={counterpartEntryId}
+                      onChange={(e) => setCounterpartEntryId(e.target.value)}
+                    >
+                      <option value="">No suggestion — let the manager choose</option>
+                      {candidates.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {nameOf(c.userId)} · {shiftName(c.shiftId)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+              ) : null}
+
+              <Field label="Note (optional)">
+                {(props) => (
+                  <textarea
+                    {...props}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Why you need the change"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                  />
+                )}
+              </Field>
+
+              {submit.error ? <ErrorAlert error={submit.error} /> : null}
+
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  disabled={!requesterEntryId || submit.isPending}
+                  onClick={() => submit.mutate()}
+                >
+                  Send request
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Card>
+    </>
+  );
+}

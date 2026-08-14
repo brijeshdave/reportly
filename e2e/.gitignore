@@ -1,0 +1,8 @@
+# Playwright outputs and the captured superadmin session — never committed.
+/.auth/
+/test-results/
+/playwright-report/
+/blob-report/
+
+# Extracted browser libs for local Playwright runs
+/.libs/

@@ -1,0 +1,34 @@
+name: CodeQL
+
+# Static analysis for the classes of bug review misses — injection, unsafe
+# deserialization, path handling. Weekly as well as per-push, because the rules
+# improve after the code is written and a finding can appear without the code
+# changing at all.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # `security-extended` over the default: this is an app that handles
+          # authentication, file uploads and shell-outs to pg_dump, and the extra
+          # queries are aimed at exactly that.
+          queries: security-extended
+
+      - uses: github/codeql-action/analyze@v3

@@ -1,0 +1,19 @@
+{
+  "name": "@reportly/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end tests: drives the real web app against a running API.",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "stack:api": "tsx ./prepare-db.ts && pnpm --filter @reportly/api dev"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.21.0",
+    "pg": "^8.23.0",
+    "tsx": "^4.23.11"
+  }
+}

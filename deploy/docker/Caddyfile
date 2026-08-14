@@ -1,0 +1,31 @@
+# Author: Brijesh Dave <https://github.com/brijeshdave>
+# TLS terminator for the production compose (`--profile tls`). Caddy obtains and
+# renews a Let's Encrypt certificate for PUBLIC_HOSTNAME by itself; the only
+# prerequisites are that the DNS A/AAAA record points here and that ports 80 and
+# 443 reach this machine.
+#
+# Everything below proxies to the `web` container, which serves the SPA and
+# forwards /api to the API. One origin for both is what makes the session
+# cookie's SameSite=Lax an actual CSRF defence, so it must stay that way.
+
+{
+	# Empty is fine — Caddy falls back to the ZeroSSL/Let's Encrypt default flow.
+	# Setting it means expiry warnings reach a human.
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_HOSTNAME} {
+	encode zstd gzip
+
+	# HSTS belongs here and only here. The nginx inside the web container cannot
+	# set it honestly: it does not know whether a request arrived over TLS, and
+	# an HSTS header served over plain HTTP is ignored anyway. Two years, with
+	# subdomains — do not add `preload` until you are sure every subdomain of
+	# this name will always be HTTPS.
+	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
+
+	reverse_proxy web:8080 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+}
