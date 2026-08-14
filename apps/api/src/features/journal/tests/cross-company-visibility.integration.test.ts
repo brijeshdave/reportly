@@ -266,4 +266,73 @@ describe("a reporting line that bridges two companies", () => {
     );
     expect(names).toContain("b-only");
   });
+
+  it("does not let a manager score another company's entry", async () => {
+    // The read was only half of it. `setScores` never calls the visibility check
+    // at all — it authorises on `levelOf(author, caller)`, the reporting line,
+    // which is the very thing that bridges companies. So closing the read left
+    // the WRITE open: a manager could put points into another company's ledger.
+    // The company check now lives at the fetch, which is the only place that
+    // covers the fifteen call sites that never look at visibility.
+    const admin = await superadmin();
+    const companyB = (
+      await inject("POST", "/companies", admin, COMPANY_A, { name: "Beta Ltd" })
+    ).json();
+
+    const staff = await makeGroup(admin, "Staff", "Manager");
+    const manager = await makeUser(admin, "Meera Manager", "meera", staff, [COMPANY_A]);
+    const bridge = await makeUser(admin, "Bridge Person", "bridge", staff, [
+      COMPANY_A,
+      companyB.id,
+    ]);
+    const junior = await makeUser(admin, "Jai Junior", "jai", staff, [companyB.id]);
+
+    const deptA = (await inject("POST", "/departments", admin, COMPANY_A, { name: "IT A" })).json();
+    await inject("PUT", `/departments/${deptA.id}/members`, admin, COMPANY_A, {
+      members: [
+        { userId: manager.id, rank: "hod", reportsToId: null, locationIds: [] },
+        { userId: bridge.id, rank: "member", reportsToId: manager.id, locationIds: [] },
+      ],
+    });
+    const deptB = (
+      await inject("POST", "/departments", admin, companyB.id, { name: "IT B" })
+    ).json();
+    await inject("PUT", `/departments/${deptB.id}/members`, admin, companyB.id, {
+      members: [
+        { userId: bridge.id, rank: "hod", reportsToId: null, locationIds: [] },
+        { userId: junior.id, rank: "member", reportsToId: bridge.id, locationIds: [] },
+      ],
+    });
+
+    const filed = await inject("POST", "/journal", junior.cookie, companyB.id, {
+      kind: "work",
+      title: "Company B work worth points",
+      summary: "In company B",
+      reportDate: new Date().toISOString().slice(0, 10),
+      state: "submitted",
+    });
+    expect(filed.statusCode, JSON.stringify(filed.json())).toBe(201);
+    const entryId = filed.json().id as string;
+
+    const scored = await inject("PUT", `/journal/${entryId}/scores`, manager.cookie, COMPANY_A, {
+      scores: [{ userId: junior.id, points: 10 }],
+    });
+    expect(
+      scored.statusCode,
+      `manager wrote points into company B's ledger: ${JSON.stringify(scored.json())}`,
+    ).toBe(404);
+
+    // The status code is not the assertion that matters. Before the fix the write
+    // went through and only the *response* failed — `setScores` mutates, then
+    // returns via `getScores`, which is where the visibility check finally sat. So
+    // ask the ledger, as company B's own administrator, whether anything landed.
+    const grid = await inject("GET", `/journal/${entryId}/scores`, admin, companyB.id);
+    const awarded = (grid.json() as { userId: string; self: number | null }[]).filter(
+      (r) => r.self !== null,
+    );
+    expect(
+      awarded,
+      `points were written into company B's ledger despite the 404: ${JSON.stringify(grid.json())}`,
+    ).toEqual([]);
+  });
 });

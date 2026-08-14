@@ -80,9 +80,16 @@ async function assignableTo(ctx: AuthContext): Promise<Set<string>> {
   return below;
 }
 
-async function requireTask(id: string): Promise<TaskRowRaw> {
+/**
+ * The task, and only if it belongs to the caller's company — the same reasoning
+ * as the journal's `requireReport`: mutations authorise on the reporting line,
+ * and the line is what crosses companies. Guard the read, not just the view.
+ */
+async function requireTask(id: string, ctx: AuthContext): Promise<TaskRowRaw> {
   const row = await getRow(id);
-  if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Task not found");
+  if (!row || (ctx.companyId !== null && row.companyId !== ctx.companyId)) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "Task not found");
+  }
   return row;
 }
 
@@ -149,7 +156,7 @@ export async function assignedOpenTasks(ctx: AuthContext, companyId: string): Pr
 }
 
 export async function getTask(id: string, ctx: AuthContext): Promise<Task> {
-  const row = await requireTask(id);
+  const row = await requireTask(id, ctx);
   await assertVisible(row, ctx);
   return {
     ...serializeRow(row, await tagsFor("task", id)),
@@ -203,7 +210,7 @@ export async function createTask(input: CreateTask, ctx: AuthContext): Promise<T
  * Member `tasks:update` for the first must not hand them the second.
  */
 export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext): Promise<Task> {
-  const row = await requireTask(id);
+  const row = await requireTask(id, ctx);
   await assertVisible(row, ctx);
 
   const isAssignee = row.assigneeId === ctx.userId;
@@ -266,7 +273,7 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
 }
 
 export async function deleteTask(id: string, ctx: AuthContext): Promise<void> {
-  const row = await requireTask(id);
+  const row = await requireTask(id, ctx);
   await assertVisible(row, ctx);
   const manages = ctx.isSuperadmin || row.assignerId === ctx.userId;
   if (!manages) {
@@ -293,7 +300,7 @@ export async function deleteTask(id: string, ctx: AuthContext): Promise<void> {
  * somebody else's task and hang the work off it.
  */
 export async function prefillFor(id: string, ctx: AuthContext): Promise<TaskPrefill> {
-  const row = await requireTask(id);
+  const row = await requireTask(id, ctx);
   await assertVisible(row, ctx);
   if (row.assigneeId !== ctx.userId && !ctx.isSuperadmin) {
     throw new AppError(

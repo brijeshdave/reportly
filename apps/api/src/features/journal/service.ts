@@ -216,9 +216,23 @@ function buildScoreGrid(
 
 /* --------------------------------- reports --------------------------------- */
 
-async function requireReport(id: string): Promise<JournalEntryRowRaw> {
+/**
+ * The entry, and only if it belongs to the caller's company.
+ *
+ * The company check lives **here**, at the fetch, rather than only in
+ * `isVisible`. Fifteen of this function's call sites never reach a visibility
+ * check at all — `setScores`, `updateReport`, `reopenReport`, `rejectReport`,
+ * `deleteReport` and friends authorise on the reporting line instead, and the
+ * line is precisely what crosses companies. Guarding the read is the only place
+ * that covers every path, including the ones that mutate.
+ *
+ * A null company on the context is a superadmin across all of them.
+ */
+async function requireReport(id: string, ctx: AuthContext): Promise<JournalEntryRowRaw> {
   const row = await getReportRow(id);
-  if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "JournalEntry not found");
+  if (!row || (ctx.companyId !== null && row.companyId !== ctx.companyId)) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "JournalEntry not found");
+  }
   return row;
 }
 
@@ -499,7 +513,7 @@ export async function getReport(
     myScoreTier: ScoreTier | null;
   }
 > {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
 
   const [participants, scores, targets, tags, isAbove] = await Promise.all([
@@ -545,7 +559,7 @@ export async function getReport(
  * called here rather than re-derived: one visibility rule, one implementation.
  */
 export async function getTimeline(id: string, ctx: AuthContext): Promise<JournalTimeline> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
 
   const events = await statusEventsFor(id);
@@ -578,7 +592,7 @@ export async function getTimeline(id: string, ctx: AuthContext): Promise<Journal
  * is the count *they* may see, and it can legitimately be lower than the truth.
  */
 export async function getRecurrences(id: string, ctx: AuthContext): Promise<RecurrenceLink[]> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
 
   const chain = await recurrenceChain(id, row.companyId);
@@ -634,7 +648,7 @@ export async function changeStatus(
   statusId: string | null,
   ctx: AuthContext,
 ): Promise<JournalEntry> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
   await assertMayDriveStatus(row, ctx);
 
@@ -722,7 +736,7 @@ export async function changeStatus(
     });
   }
 
-  return serialize(await requireReport(id), await targetsFor(id), await tagsFor("report", id));
+  return serialize(await requireReport(id, ctx), await targetsFor(id), await tagsFor("report", id));
 }
 
 /**
@@ -766,7 +780,7 @@ export async function assignReport(
   input: { assigneeId: string | null; reason?: string },
   ctx: AuthContext,
 ): Promise<JournalEntry> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
 
   if (input.assigneeId !== null && !ctx.isSuperadmin) {
@@ -811,12 +825,12 @@ export async function assignReport(
     });
   }
 
-  return serialize(await requireReport(id), await targetsFor(id), await tagsFor("report", id));
+  return serialize(await requireReport(id, ctx), await targetsFor(id), await tagsFor("report", id));
 }
 
 /** The trail of a report changing hands — same visibility as the report itself. */
 export async function listHandovers(id: string, ctx: AuthContext): Promise<JournalHandover[]> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
   return (await handoversFor(id)).map((h) => ({
     id: h.id,
@@ -836,7 +850,7 @@ export async function listParticipants(
   id: string,
   ctx: AuthContext,
 ): Promise<JournalParticipant[]> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
   const rows = await participantsFor(id);
   return rows.map((p) => ({
@@ -866,7 +880,7 @@ export async function setReportParticipants(
   participants: { userId: string }[],
   ctx: AuthContext,
 ): Promise<JournalParticipant[]> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
 
   // The author decides who worked it — plus their line, so a wrong list can still
@@ -890,7 +904,7 @@ export async function setReportParticipants(
   // Scores hang off participants; if a worker was dropped, their scores must go
   // too, and the ledger is refrozen off whoever remains.
   await pruneScoresToParticipants(id, ctx.userId);
-  await refreezeScores(await requireReport(id));
+  await refreezeScores(await requireReport(id, ctx));
   return listParticipants(id, ctx);
 }
 
@@ -988,7 +1002,7 @@ export async function createReport(
   // them — they are simply a participant with an equal share until somebody says
   // otherwise.
   await addAuthorAsParticipant(id, ctx.userId);
-  return serialize(await requireReport(id), await targetsFor(id), await tagsFor("report", id));
+  return serialize(await requireReport(id, ctx), await targetsFor(id), await tagsFor("report", id));
 }
 
 /**
@@ -1001,7 +1015,7 @@ export async function updateReport(
   ctx: AuthContext,
   input: Record<string, unknown>,
 ): Promise<JournalEntry> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   if (row.authorId !== ctx.userId) {
     throw new AppError(403, ERROR_CODES.FORBIDDEN, "Only the author can edit a report");
   }
@@ -1084,12 +1098,12 @@ export async function updateReport(
       changedBy: ctx.userId,
     });
   }
-  return serialize(await requireReport(id), await targetsFor(id), await tagsFor("report", id));
+  return serialize(await requireReport(id, ctx), await targetsFor(id), await tagsFor("report", id));
 }
 
 /** Re-open a locked report for editing. The author, or a manager above them. */
 export async function reopenReport(id: string, ctx: AuthContext): Promise<JournalEntry> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   const isAuthor = row.authorId === ctx.userId;
   const isManager =
     can(ctx, PERMISSIONS.JOURNAL_UPDATE) && (await isAboveAuthor(ctx.userId, row.authorId));
@@ -1117,7 +1131,7 @@ export async function reopenReport(id: string, ctx: AuthContext): Promise<Journa
     entityKind: "journal",
     entityId: id,
   });
-  return serialize(await requireReport(id), await targetsFor(id));
+  return serialize(await requireReport(id, ctx), await targetsFor(id));
 }
 
 /** Whether the caller may reject a report — a superior of its author holding the grant. */
@@ -1143,7 +1157,7 @@ export async function rejectReport(
   ctx: AuthContext,
   reason: string | null,
 ): Promise<JournalEntry> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertMayReject(row, ctx, "reject");
   await assertPointsUnlocked(row, ctx);
   await updateReportRow(id, {
@@ -1165,22 +1179,22 @@ export async function rejectReport(
     entityKind: "journal",
     entityId: id,
   });
-  return serialize(await requireReport(id), await targetsFor(id));
+  return serialize(await requireReport(id, ctx), await targetsFor(id));
 }
 
 /** Lift a rejection, so the report may be scored again (points return only when re-scored). */
 export async function unrejectReport(id: string, ctx: AuthContext): Promise<JournalEntry> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertMayReject(row, ctx, "un-reject");
   await updateReportRow(id, { rejectedAt: null, rejectedById: null, rejectionReason: null });
-  return serialize(await requireReport(id), await targetsFor(id));
+  return serialize(await requireReport(id, ctx), await targetsFor(id));
 }
 
 export async function deleteReport(id: string, ctx: AuthContext): Promise<void> {
   // `requireReport` already 404s an entry the caller cannot see, so holding
   // journal:delete never widens *which* entries are reachable — only what may be
   // done to the ones that already are.
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   // Your own entry is always yours. Beyond that it takes journal:delete, which is
   // what the roles matrix has been promising all along: the permission was seeded
   // onto Journal admin and read by nothing, so an administrator who granted it got
@@ -1227,7 +1241,7 @@ async function levelOf(authorId: string, raterId: string): Promise<number | null
 /** A report's scoring grid, as this viewer may see it (self for all; the review and
  *  official figure only for someone above the author). */
 export async function getScores(id: string, ctx: AuthContext): Promise<JournalScore[]> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
   const [participants, scores] = await Promise.all([participantsFor(id), scoresFor(id)]);
   const canSeeReview = ctx.isSuperadmin || (await isAboveAuthor(ctx.userId, row.authorId));
@@ -1240,7 +1254,7 @@ export async function getScores(id: string, ctx: AuthContext): Promise<JournalSc
  * it — everyone else is refused rather than shown a filtered list.
  */
 export async function getScoreEvents(id: string, ctx: AuthContext): Promise<ScoreEvent[]> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
   if (!ctx.isSuperadmin && !(await isAboveAuthor(ctx.userId, row.authorId))) {
     throw new AppError(403, ERROR_CODES.FORBIDDEN, "You cannot see this report's points history");
@@ -1305,7 +1319,7 @@ export async function setScores(
   ctx: AuthContext,
   input: { scores: { userId: string; points: number }[] },
 ): Promise<JournalScore[]> {
-  const row = await requireReport(id);
+  const row = await requireReport(id, ctx);
   if (row.state !== "submitted") {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "A draft cannot be scored");
   }
@@ -1386,7 +1400,7 @@ export async function setScores(
       ...(settlesReview ? { pointsReviewNeeded: false } : {}),
     });
   }
-  await refreezeScores(await requireReport(id));
+  await refreezeScores(await requireReport(id, ctx));
 
   // Only a review. The self split is the author's own arithmetic — telling them
   // what they just typed is noise, and it is the manager signing off that changes
