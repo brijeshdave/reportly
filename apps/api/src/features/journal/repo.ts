@@ -338,6 +338,7 @@ export async function recurrenceChain(
     title: string;
     authorId: string;
     state: string;
+    companyId: string;
     locationId: string | null;
     assigneeId: string | null;
     reportDate: Date;
@@ -350,6 +351,7 @@ export async function recurrenceChain(
     title: string;
     author_id: string;
     state: string;
+    company_id: string;
     location_id: string | null;
     assignee_id: string | null;
     report_date: Date;
@@ -381,7 +383,8 @@ export async function recurrenceChain(
       FROM journal_entries r
       JOIN down d ON r.recurrence_of_id = d.id
     ) CYCLE id SET is_cycle_down USING path_down
-    SELECT DISTINCT r.id, r.title, r.author_id, r.state, r.location_id, r.assignee_id, r.report_date,
+    SELECT DISTINCT r.id, r.title, r.author_id, r.state, r.company_id, r.location_id,
+           r.assignee_id, r.report_date,
            s.name AS status_name, sev.name AS severity_name
     FROM down d
     JOIN journal_entries r ON r.id = d.id
@@ -396,6 +399,11 @@ export async function recurrenceChain(
     title: r.title,
     authorId: r.author_id,
     state: r.state,
+    // Selected so the visibility rule can apply its company check here too. The
+    // chain is already scoped to one company by the query, but a caller that
+    // hands `isVisible` a row without a company would be exempting itself from
+    // the first thing that rule checks.
+    companyId: r.company_id,
     locationId: r.location_id,
     assigneeId: r.assignee_id,
     reportDate: new Date(r.report_date),

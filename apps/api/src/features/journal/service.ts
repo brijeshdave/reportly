@@ -242,10 +242,21 @@ async function assertVisible(row: JournalEntryRowRaw, ctx: AuthContext): Promise
  * instead of walking the reporting line per row.
  */
 async function isVisible(
-  row: Pick<JournalEntryRowRaw, "authorId" | "state" | "locationId" | "assigneeId">,
+  row: Pick<JournalEntryRowRaw, "authorId" | "state" | "locationId" | "assigneeId" | "companyId">,
   ctx: AuthContext,
   below?: Set<string>,
 ): Promise<boolean> {
+  // The company comes first, before ownership and before the reporting line.
+  //
+  // Everything below this narrows within a tenant; none of it establishes one.
+  // The reporting line looked like it did — an edge is refused across companies —
+  // but the downline is *walked* with no company filter, so one person holding a
+  // department in each is a bridge the recursion crosses. A manager in company A
+  // could then open, and score, an entry belonging to company B.
+  //
+  // `companyId` null on the context is a superadmin viewing all companies, which
+  // is the only legitimate way to be reading across them.
+  if (ctx.companyId !== null && row.companyId !== ctx.companyId) return false;
   // Your own report is always yours, wherever it was filed — you wrote it, and a
   // scope change afterwards must not take your own work away from you.
   if (row.authorId === ctx.userId) return true;
