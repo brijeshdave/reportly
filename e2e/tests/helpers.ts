@@ -1,6 +1,7 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Shared helpers for the e2e specs: the superadmin credentials saved by global
 // setup, and a couple of small flows the specs repeat.
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,7 +44,12 @@ export async function signIn(page: Page, creds: Creds): Promise<void> {
 
 /** A value unique enough that a test's fixtures never collide with a rerun. */
 export function unique(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`;
+  // `randomUUID`, not `Math.random`. Nothing here is a secret — these are unique
+  // names for throwaway rows — but the value flows into usernames, and a scanner
+  // reading that taint cannot know the destination is a test database. Four
+  // "insecure randomness" alerts on a public repository is four alerts somebody
+  // has to triage before finding a real one, and the fix costs nothing.
+  return `${prefix}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
 }
 
 /**

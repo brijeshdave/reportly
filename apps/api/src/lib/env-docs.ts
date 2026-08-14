@@ -65,9 +65,24 @@ export function envVarDocs(): EnvVarDoc[] {
   });
 }
 
-/** Escape a value for a markdown table cell. */
+/**
+ * Escape a value for a markdown table cell.
+ *
+ * Backslashes first, then pipes — the other order is the classic incomplete
+ * escape: a value ending in a backslash would have its own escape character
+ * escaped by the pipe rule, and the pipe would break out of the cell. A newline
+ * ends the row outright, so it becomes a space.
+ *
+ * Nothing untrusted reaches this today: the input is our own environment schema,
+ * written in this repository and rendered at build time. It is correct anyway,
+ * because "the input is trusted" is a property of today's callers rather than of
+ * this function.
+ */
 function cell(value: string): string {
-  return value.replace(/\|/g, "\\|");
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/[\r\n]+/g, " ");
 }
 
 export function renderEnvReference(): string {

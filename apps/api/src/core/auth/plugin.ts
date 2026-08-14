@@ -104,6 +104,19 @@ function toWebRequest(request: FastifyRequest): Request {
 
 export async function registerAuth(app: FastifyInstance): Promise<void> {
   // Delegate all /api/v1/auth/* requests to better-auth.
+  //
+  // **Rate limiting is enforced, inside the handler rather than around it.**
+  // Static analysis flags this route as unthrottled — reasonably, since nothing
+  // visible here throttles it — but `createAuth` configures better-auth's own
+  // Redis-backed limiter: 100 requests a minute globally, and stricter custom
+  // rules on the doors worth guarding (sign-in by email and by username at the
+  // configured policy, sign-up 5/min, forgot-password 3/min, TOTP verify 5/min).
+  // It is disabled only under NODE_ENV=test, so integration suites do not trip
+  // each other's limits.
+  //
+  // Adding a second limiter here would double-count every request. If you are
+  // changing the limits, they live in `core/auth/auth.ts`, and the sign-in pair
+  // is administrator-configurable through the settings framework.
   app.route({
     method: ["GET", "POST"],
     url: `${AUTH_BASE_PATH}/*`,
