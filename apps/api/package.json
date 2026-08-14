@@ -20,7 +20,7 @@
     "docs:env": "tsx src/lib/write-env-docs.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1106.0",
+    "@aws-sdk/client-s3": "^3.1107.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.0",
     "@fastify/multipart": "^10.1.0",
@@ -28,7 +28,7 @@
     "@fastify/swagger-ui": "^6.1.1",
     "@reportly/shared": "workspace:*",
     "better-auth": "^1.6.26",
-    "bullmq": "^6.0.9",
+    "bullmq": "^6.0.11",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
