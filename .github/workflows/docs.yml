@@ -44,7 +44,7 @@ jobs:
           # clone would date every page to the moment of the checkout.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v4
         with:
