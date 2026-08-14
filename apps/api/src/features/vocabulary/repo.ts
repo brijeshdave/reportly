@@ -17,6 +17,9 @@ export interface VocabularyRowRaw {
   id: string;
   departmentId: string;
   departmentName: string;
+  /** The owning company, through the department. Selected so a read or a write
+   *  by id can be refused when it belongs to somebody else — see SF-009. */
+  companyId: string;
   name: string;
   description: string | null;
   /** Tags only; device types have no colour, so this is null for them. */
@@ -34,6 +37,7 @@ const deviceTypeCols = {
   id: deviceTypes.id,
   departmentId: deviceTypes.departmentId,
   departmentName: departments.name,
+  companyId: departments.companyId,
   name: deviceTypes.name,
   description: deviceTypes.description,
   tracksDowntime: deviceTypes.tracksDowntime,
@@ -120,6 +124,7 @@ const tagCols = {
   id: tags.id,
   departmentId: tags.departmentId,
   departmentName: departments.name,
+  companyId: departments.companyId,
   name: tags.name,
   description: tags.description,
   color: tags.color,

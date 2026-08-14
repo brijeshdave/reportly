@@ -92,6 +92,17 @@ async function requireTask(id: string): Promise<TaskRowRaw> {
  * on what.
  */
 async function assertVisible(row: TaskRowRaw, ctx: AuthContext): Promise<void> {
+  // The company first, before the reporting line — the same rule, and the same
+  // reason, as the journal's (SF-008). `listTasks` already scopes its query by
+  // company; this is the by-id read, which is the path that had nothing.
+  //
+  // The line alone is not a tenant boundary: `downlineUserIds` recurses
+  // `department_users` with no company filter, so somebody holding a department
+  // in two companies bridges them. A null company on the context is a superadmin
+  // across all of them.
+  if (ctx.companyId !== null && row.companyId !== ctx.companyId) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "Task not found");
+  }
   if (ctx.isSuperadmin) return;
   if (row.assigneeId === ctx.userId || row.assignerId === ctx.userId) return;
   const below = await downlineUserIds(ctx.userId);

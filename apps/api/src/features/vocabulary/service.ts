@@ -142,14 +142,24 @@ export async function listTypes(
   return (await listDeviceTypes(companyId, departmentId)).map(serialize);
 }
 
-async function requireType(id: string): Promise<VocabularyRowRaw> {
+/**
+ * A device type, and only if it is this company's.
+ *
+ * The id comes from the caller, and the row is reached through its department —
+ * which is what made the company look implied. It is not: the query filtered on
+ * the id alone, so one company could rename or retire another's (SF-009). A
+ * mismatch answers 404, not 403, so nothing is confirmed to exist.
+ */
+async function requireType(id: string, companyId: string | null): Promise<VocabularyRowRaw> {
   const row = await getDeviceType(id);
-  if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Device type not found");
+  if (!row || (companyId !== null && row.companyId !== companyId)) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "Device type not found");
+  }
   return row;
 }
 
-export async function getType(id: string): Promise<DeviceTypeRow> {
-  return serialize(await requireType(id));
+export async function getType(id: string, companyId: string | null): Promise<DeviceTypeRow> {
+  return serialize(await requireType(id, companyId));
 }
 
 export async function createType(
@@ -166,22 +176,26 @@ export async function createType(
     tracksDowntime: input.tracksDowntime,
     status: input.status,
   });
-  return getType(id);
+  return getType(id, companyId);
 }
 
-export async function updateType(id: string, input: UpdateDeviceType): Promise<DeviceTypeRow> {
-  const existing = await requireType(id);
+export async function updateType(
+  id: string,
+  input: UpdateDeviceType,
+  companyId: string | null,
+): Promise<DeviceTypeRow> {
+  const existing = await requireType(id, companyId);
   if (input.name && input.name !== existing.name) {
     if (await nameTaken("device_types", existing.departmentId, input.name, id)) {
       throw DUPLICATE("device type");
     }
   }
   await updateDeviceTypeRow(id, input);
-  return getType(id);
+  return getType(id, companyId);
 }
 
-export async function deleteType(id: string): Promise<void> {
-  await requireType(id);
+export async function deleteType(id: string, companyId: string | null): Promise<void> {
+  await requireType(id, companyId);
   const inUse = await deviceTypeInUse(id);
   if (inUse > 0) {
     throw new AppError(
@@ -200,14 +214,17 @@ export async function listAllTags(companyId: string, departmentId?: string): Pro
   return (await listTags(companyId, departmentId)).map(serializeTag);
 }
 
-async function requireTag(id: string): Promise<VocabularyRowRaw> {
+/** A tag, and only if it is this company's — see `requireType` above. */
+async function requireTag(id: string, companyId: string | null): Promise<VocabularyRowRaw> {
   const row = await getTag(id);
-  if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Tag not found");
+  if (!row || (companyId !== null && row.companyId !== companyId)) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "Tag not found");
+  }
   return row;
 }
 
-export async function getOneTag(id: string): Promise<TagRow> {
-  return serializeTag(await requireTag(id));
+export async function getOneTag(id: string, companyId: string | null): Promise<TagRow> {
+  return serializeTag(await requireTag(id, companyId));
 }
 
 export async function createTag(input: CreateTag, companyId: string): Promise<TagRow> {
@@ -221,20 +238,24 @@ export async function createTag(input: CreateTag, companyId: string): Promise<Ta
     color: input.color ?? (await pickColor(input.departmentId)),
     status: input.status,
   });
-  return getOneTag(id);
+  return getOneTag(id, companyId);
 }
 
-export async function updateTag(id: string, input: UpdateTag): Promise<TagRow> {
-  const existing = await requireTag(id);
+export async function updateTag(
+  id: string,
+  input: UpdateTag,
+  companyId: string | null,
+): Promise<TagRow> {
+  const existing = await requireTag(id, companyId);
   if (input.name && input.name !== existing.name) {
     if (await nameTaken("tags", existing.departmentId, input.name, id)) throw DUPLICATE("tag");
   }
   await updateTagRow(id, input);
-  return getOneTag(id);
+  return getOneTag(id, companyId);
 }
 
-export async function deleteTag(id: string): Promise<void> {
-  await requireTag(id);
+export async function deleteTag(id: string, companyId: string | null): Promise<void> {
+  await requireTag(id, companyId);
   const inUse = await tagInUse(id);
   if (inUse > 0) {
     // Deleting cascades the links away, so the reports and tasks carrying this tag

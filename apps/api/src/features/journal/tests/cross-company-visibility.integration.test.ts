@@ -178,4 +178,92 @@ describe("a reporting line that bridges two companies", () => {
       `manager read a company-B entry: ${JSON.stringify(asManagerInA.json())}`,
     ).toBe(404);
   });
+
+  it("does not hand a manager a task from a company they hold nothing in", async () => {
+    // The same hole, in the same shape, one feature over: `requireTask` fetches
+    // by id and the task's visibility rule checked assignee, assigner and the
+    // reporting line without ever checking the company. Comments delegate to
+    // this one too, so a hole here is a hole in three places.
+    const admin = await superadmin();
+    const companyB = (
+      await inject("POST", "/companies", admin, COMPANY_A, { name: "Beta Ltd" })
+    ).json();
+
+    const staff = await makeGroup(admin, "Staff", "Manager");
+    const manager = await makeUser(admin, "Meera Manager", "meera", staff, [COMPANY_A]);
+    const bridge = await makeUser(admin, "Bridge Person", "bridge", staff, [
+      COMPANY_A,
+      companyB.id,
+    ]);
+    const junior = await makeUser(admin, "Jai Junior", "jai", staff, [companyB.id]);
+
+    const deptA = (await inject("POST", "/departments", admin, COMPANY_A, { name: "IT A" })).json();
+    await inject("PUT", `/departments/${deptA.id}/members`, admin, COMPANY_A, {
+      members: [
+        { userId: manager.id, rank: "hod", reportsToId: null, locationIds: [] },
+        { userId: bridge.id, rank: "member", reportsToId: manager.id, locationIds: [] },
+      ],
+    });
+    const deptB = (
+      await inject("POST", "/departments", admin, companyB.id, { name: "IT B" })
+    ).json();
+    await inject("PUT", `/departments/${deptB.id}/members`, admin, companyB.id, {
+      members: [
+        { userId: bridge.id, rank: "hod", reportsToId: null, locationIds: [] },
+        { userId: junior.id, rank: "member", reportsToId: bridge.id, locationIds: [] },
+      ],
+    });
+
+    const made = await inject("POST", "/tasks", junior.cookie, companyB.id, {
+      title: "Company B internal task",
+      assigneeId: junior.id,
+    });
+    expect(made.statusCode, JSON.stringify(made.json())).toBe(201);
+    const taskId = made.json().id as string;
+
+    const read = await inject("GET", `/tasks/${taskId}`, manager.cookie, COMPANY_A);
+    expect(read.statusCode, `manager read a company-B task: ${JSON.stringify(read.json())}`).toBe(
+      404,
+    );
+  });
+
+  it("does not let one company rename or delete another's tag", async () => {
+    // Not a read this time — a WRITE. `requireTag` fetched by id alone and
+    // `updateTagRow` updated by id alone, so an administrator of one company
+    // could rename, retire or delete a tag belonging to another. The department
+    // join made the company look implied; it was never checked (SF-009).
+    const admin = await superadmin();
+    const companyB = (
+      await inject("POST", "/companies", admin, COMPANY_A, { name: "Beta Ltd" })
+    ).json();
+
+    const deptB = (
+      await inject("POST", "/departments", admin, companyB.id, { name: "IT B" })
+    ).json();
+    const tagB = (
+      await inject("POST", "/tags", admin, companyB.id, { departmentId: deptB.id, name: "b-only" })
+    ).json();
+    expect(tagB.id, JSON.stringify(tagB)).toBeTruthy();
+
+    // Somebody who administers company A, and holds nothing in company B.
+    const staff = await makeGroup(admin, "A admins", "Admin");
+    const aAdmin = await makeUser(admin, "Alia Admin", "alia", staff, [COMPANY_A]);
+
+    const renamed = await inject("PATCH", `/tags/${tagB.id}`, aAdmin.cookie, COMPANY_A, {
+      name: "renamed-by-another-company",
+    });
+    expect(renamed.statusCode, "renamed another company's tag").toBe(404);
+
+    const removed = await inject("DELETE", `/tags/${tagB.id}`, aAdmin.cookie, COMPANY_A);
+    expect(removed.statusCode, "deleted another company's tag").toBe(404);
+
+    // And it is still there, untouched.
+    const still = (
+      await inject("GET", `/tags?departmentId=${deptB.id}`, admin, companyB.id)
+    ).json();
+    const names = (Array.isArray(still) ? still : (still.data ?? [])).map(
+      (t: { name: string }) => t.name,
+    );
+    expect(names).toContain("b-only");
+  });
 });

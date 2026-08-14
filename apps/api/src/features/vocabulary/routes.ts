@@ -100,8 +100,12 @@ export async function vocabularyRoutes(fastify: FastifyInstance): Promise<void> 
       },
     },
     async (request) => {
-      const before = await vocabulary.getType(request.params.id);
-      const after = await vocabulary.updateType(request.params.id, request.body);
+      const before = await vocabulary.getType(request.params.id, request.ctx!.companyId);
+      const after = await vocabulary.updateType(
+        request.params.id,
+        request.body,
+        request.ctx!.companyId,
+      );
       await audit(request, "device-type.update", { before, after });
       return after;
     },
@@ -119,7 +123,7 @@ export async function vocabularyRoutes(fastify: FastifyInstance): Promise<void> 
       },
     },
     async (request, reply) => {
-      await vocabulary.deleteType(request.params.id);
+      await vocabulary.deleteType(request.params.id, request.ctx!.companyId);
       await audit(request, "device-type.delete", { deviceTypeId: request.params.id });
       reply.status(204);
       return null;
@@ -177,8 +181,12 @@ export async function vocabularyRoutes(fastify: FastifyInstance): Promise<void> 
       },
     },
     async (request) => {
-      const before = await vocabulary.getOneTag(request.params.id);
-      const after = await vocabulary.updateTag(request.params.id, request.body);
+      const before = await vocabulary.getOneTag(request.params.id, request.ctx!.companyId);
+      const after = await vocabulary.updateTag(
+        request.params.id,
+        request.body,
+        request.ctx!.companyId,
+      );
       await audit(request, "tag.update", { before, after });
       return after;
     },
@@ -196,7 +204,7 @@ export async function vocabularyRoutes(fastify: FastifyInstance): Promise<void> 
       },
     },
     async (request, reply) => {
-      await vocabulary.deleteTag(request.params.id);
+      await vocabulary.deleteTag(request.params.id, request.ctx!.companyId);
       await audit(request, "tag.delete", { tagId: request.params.id });
       reply.status(204);
       return null;
