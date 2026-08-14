@@ -3,7 +3,6 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "baseUrl": ".",
     // The API is an application, not a published library: no declaration output.
     // (Also avoids TS2742 when re-exporting better-auth's inferred types.)
     "declaration": false,
