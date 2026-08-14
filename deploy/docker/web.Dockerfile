@@ -1,7 +1,7 @@
 # Author: Brijesh Dave <https://github.com/brijeshdave>
 # Multi-stage build for the web app: Vite build, served as static files by nginx.
 # Build context is the repo root.
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 RUN corepack enable
 WORKDIR /repo
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json tsconfig.base.json ./
