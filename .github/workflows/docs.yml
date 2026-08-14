@@ -53,6 +53,11 @@ jobs:
 
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
+        with:
+          # Turn Pages on via the API rather than requiring somebody to find the
+          # setting first. Without it the very first deploy fails on a repository
+          # that has never published a site.
+          enablement: true
 
       - run: pnpm install --frozen-lockfile
 

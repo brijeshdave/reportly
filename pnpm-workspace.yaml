@@ -41,3 +41,9 @@ overrides:
   # exceljs still asks for uuid 8; v3/v5/v6 miss a buffer bounds check when the
   # caller supplies `buf`. exceljs itself does not, but the copy is ours to patch.
   uuid: "^11.1.1"
+  # VitePress bundles its own Vite 6 (the app is on 8, and is unaffected). Three
+  # advisories ride along with it — a file-read via a crafted request, and an
+  # NTLM hash disclosure on Windows. The range in the KEY is what keeps this
+  # surgical: only a Vite below the patched version is rewritten, so the app's
+  # Vite 8 is left exactly where it is.
+  vite@<6.4.3: "^6.4.3"

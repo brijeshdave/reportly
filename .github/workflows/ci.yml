@@ -111,6 +111,11 @@ jobs:
       LOG_DATABASE_URL: postgres://reportly:reportly@localhost:5432/reportly_logs
       REDIS_URL: redis://localhost:6379
       BASE_URL: http://localhost:5173
+      # Queue administration is off unless the server asks for it, so without this
+      # the routes are never mounted and the sidebar has no Queues link for the
+      # spec to click. `apiEnv()` in e2e/config.ts sets it for the stack the suite
+      # starts itself; CI starts its own, so it has to set it too.
+      QUEUE_ADMIN: manage
 
     steps:
       - uses: actions/checkout@v4

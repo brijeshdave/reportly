@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { E2E_SUPERADMIN_NAME } from "../config.js";
 
@@ -212,8 +212,15 @@ export async function signInAs(page: Page, person: Person, firstTime = true): Pr
  *
  * So this waits for the window and tries again rather than the app being loosened
  * to suit the test. Twice is enough: three specs' worth of people at a time.
+ *
+ * And it asks for a longer budget, because waiting the window out honestly costs
+ * more than the default thirty seconds a test gets: two refusals are two eleven
+ * second waits plus their polls. Locally the throttle rarely trips and this never
+ * shows; on CI, where every spec shares one address, it trips and the test died
+ * of its own patience.
  */
 export async function changePassword(page: Page, from: string, to: string): Promise<void> {
+  test.slow();
   const throttled = page.getByRole("alert").filter({ hasText: /too many requests/i });
   const gate = page.getByRole("alert").filter({ hasText: /password needs changing/i });
 
