@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Create the bind-mount directory tree, owned by the users the containers run as.
 #
-# Only needed if you switch a service from a named Docker volume to a bind mount
-# (see the commented lines in compose.dev.yaml / compose.prod.yaml). Named volumes
-# are the default and need none of this — Docker creates them and gets the
-# ownership right on its own.
+# Run this before the first `docker compose up`. Both compose files bind mount
+# ./data, and a bind mount that does not exist or has the wrong owner is a stack
+# that will not start.
+#
+# Not needed if you switch to the named-volume alternatives commented beside each
+# mount — Docker creates those and gets the ownership right on its own.
 #
 # The reason this script exists: a bind-mounted directory keeps the *host's*
 # ownership, and none of these containers run as root. A folder owned by you is a
@@ -54,10 +56,18 @@ say() { printf '  %s\n' "$*"; }
 # this script exists to prevent.
 own() {
   local path="$1" uid="$2" label="$3"
+  # Three ways, cheapest first. The Docker fallback matters more than it looks:
+  # anyone running these compose files has Docker, and plenty of them do not have
+  # passwordless sudo — a rootless setup, a locked-down server, WSL. Doing the
+  # chown inside a throwaway container needs neither.
   if chown -R "${uid}:${uid}" "$path" 2>/dev/null; then
     say "${label}: ${path} (uid ${uid})"
-  elif command -v sudo >/dev/null 2>&1 && sudo chown -R "${uid}:${uid}" "$path" 2>/dev/null; then
+  elif command -v sudo >/dev/null 2>&1 && sudo -n chown -R "${uid}:${uid}" "$path" 2>/dev/null; then
     say "${label}: ${path} (uid ${uid}, via sudo)"
+  elif command -v docker >/dev/null 2>&1 &&
+    docker run --rm -v "$(cd "$(dirname "$path")" && pwd)/$(basename "$path"):/target" \
+      alpine:3 chown -R "${uid}:${uid}" /target >/dev/null 2>&1; then
+    say "${label}: ${path} (uid ${uid}, via docker)"
   else
     say "${label}: ${path} — COULD NOT SET OWNER to uid ${uid}"
     say "         run: sudo chown -R ${uid}:${uid} ${path}"
@@ -96,5 +106,6 @@ if [ "$FAILED" = "1" ]; then
   exit 1
 fi
 
-echo "Done. To use these instead of named volumes, uncomment the bind-mount"
-echo "lines in compose.dev.yaml / compose.prod.yaml (search for 'bind mount')."
+echo "Done. compose.dev.yaml and compose.prod.yaml bind mount these already."
+echo "Prefer Docker-managed storage? Each mount has a commented named-volume"
+echo "alternative beside it, and then none of this is needed."

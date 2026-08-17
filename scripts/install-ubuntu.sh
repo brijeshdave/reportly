@@ -113,6 +113,13 @@ EOF
 umask 022
 echo "    .env written (mode 600)"
 
+# The compose file bind mounts ./data, so the tree has to exist and be owned by
+# the uid each container runs as before anything starts. Postgres refuses to run
+# on a directory it does not own, and the API fails on its first upload — both
+# with errors that read like a broken image rather than a permissions problem.
+echo "==> Creating the data directories"
+"$(dirname "$0")/data-dirs.sh"
+
 echo "==> Building and starting the stack (this takes a few minutes on first run)"
 docker compose -f "$COMPOSE_FILE" "${PROFILE_ARGS[@]}" up -d --build
 

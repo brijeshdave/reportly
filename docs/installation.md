@@ -46,21 +46,24 @@ pnpm dev
 
 ## Where the data lives
 
-By default every service keeps its data in a **named Docker volume**. Docker
-creates them, gets the ownership right, and they survive a redeploy — nothing to
-set up.
+Data is **bind mounted into `./data`**, so it sits on the host where you can see
+it and where whatever already backs this machine up will find it.
 
-If you would rather see the data on the host — to back it up with the rest of the
-filesystem, or to reach the uploads and backup files directly — each compose file
-carries a **commented bind-mount alternative** beside every volume. Create the
-directories first:
+That means one step before the first start:
 
 ```bash
 scripts/data-dirs.sh              # ./data
 scripts/data-dirs.sh /srv/reportly-data
 ```
 
-That builds the tree and gives each folder to the user its container runs as:
+::: danger Run this before the first `docker compose up`
+Bind mounts keep the host directory's ownership, and none of these containers run
+as root. Without the script Postgres refuses to start, Redis cannot write, and
+the API fails on its first upload — with errors that read like a broken image.
+The installer script runs it for you; a manual `docker compose up` does not.
+:::
+
+The tree it creates, and who owns each part:
 
 ```
 data/
@@ -75,30 +78,21 @@ data/
 └── caddy/             issued certificates     (uid 0)
 ```
 
-Then uncomment the matching line in `compose.dev.yaml` or `compose.prod.yaml` —
-search for `bind mount`.
-
-::: warning Ownership is the whole difficulty
-A bind mount keeps the host directory's ownership, and none of these containers
-run as root. Point one at a folder owned by you and Postgres refuses to start,
-Redis cannot write, and the API fails on the first upload — with errors that read
-like a broken image. Run the script rather than creating the folders by hand, and
-see [Operations](operations.md#a-container-will-not-start-after-switching-to-a-bind-mount)
-if something will not start.
-:::
-
 **Backups get their own directory.** The application writes them through the
-storage backend, so on disk they land under the upload root at `backups/db` and
-`backups/files`. The compose comment mounts `./data/backups` over that path, which
-puts them somewhere obvious on the host without the application needing to know —
-handy, since a backup you cannot find is a backup you will not restore. Postgres
-gets the same directory **read-only**, so a dump can be restored by hand from
-inside that container.
+storage backend, so on disk they would land under the upload root; the compose
+file mounts `./data/backups` over that path, which puts them somewhere obvious
+without the application needing to know. Postgres gets the same directory
+**read-only**, so a dump can be restored by hand from inside that container.
 
-You do not have to choose one for everything. Mixing is fine, and the common
-choice is a bind mount for `data/api` — where the uploads and backups are — with
-Postgres left on a named volume, which avoids both the ownership trap and the
-filesystem overhead a bind mount adds on Docker Desktop.
+**Prefer named Docker volumes?** Every mount has a commented alternative beside
+it — uncomment the named volume, comment the bind mount. Docker then owns the
+directories and the script becomes unnecessary. That is the better choice on
+Docker Desktop, where a bind-mounted database is noticeably slower, and you can
+mix: a named volume for Postgres and bind mounts for `data/api` and
+`data/backups` is a sensible split.
+
+If something will not start, see
+[Operations](operations.md#a-container-will-not-start-after-switching-to-a-bind-mount).
 
 ## Production (Docker Compose)
 

@@ -32,12 +32,12 @@ services:
       # crossing a mount boundary. Mounting the old path leaves the volume unused
       # — the container starts, initialises inside its own filesystem, and every
       # byte is lost on the next recreate.
-      - postgres-data:/var/lib/postgresql
-      # Prefer a directory you can see and back up from the host? Run
-      # `scripts/data-dirs.sh` first, then swap the line above for this one.
-      # The script creates it owned by uid 70, which is what this image runs as —
-      # a folder owned by you makes Postgres refuse to start.
-      # - ./data/postgres:/var/lib/postgresql
+      # Bind mounted: run `scripts/data-dirs.sh` before the first `up`. It
+      # creates this owned by uid 70, which is what this image runs as — a folder
+      # owned by you makes Postgres refuse to start.
+      - ./data/postgres:/var/lib/postgresql
+      # A named volume instead, if you would rather Docker owned it:
+      # - postgres-data:/var/lib/postgresql
       - ./deploy/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reportly}"]
@@ -53,9 +53,10 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis-data:/data
-      # Bind mount instead (see scripts/data-dirs.sh — owned by uid 999):
-      # - ./data/redis:/data
+      # scripts/data-dirs.sh creates this owned by uid 999.
+      - ./data/redis:/data
+      # A named volume instead:
+      # - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -70,10 +71,12 @@ services:
       - "${MAILPIT_SMTP_PORT:-1025}:1025"
       - "${MAILPIT_UI_PORT:-8025}:8025"
 
-# Named volumes are the default: Docker creates them, owns them correctly, and
-# they survive `down` (though not `down -v`). Swap in the commented bind mounts
-# above when you would rather the data sat in ./data where you can see it — run
-# `scripts/data-dirs.sh` first, or the containers will fail on permissions.
+# Data lives in ./data, bind mounted, so you can see it. **Run
+# `scripts/data-dirs.sh` before the first `up`** — it creates the tree owned by
+# the uid each container runs as, and without it Postgres will not start.
+#
+# The named volumes below stay declared so the commented alternatives above work
+# by uncommenting one line; an unused named volume costs nothing.
 #
 # There is no api service here: development runs it on the host, so its uploads,
 # logs and backups already land on your disk at the paths in apps/api/.env

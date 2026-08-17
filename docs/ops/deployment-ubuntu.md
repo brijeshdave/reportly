@@ -116,30 +116,29 @@ cannot start against a schema it has not migrated.
 
 ## Where the data lives
 
-Every service keeps its data in a **named Docker volume** by default. That is the
-right choice here and needs no setup — Docker owns them correctly and they
-survive a redeploy.
+Data is bind mounted into `./data` on the server, so your existing filesystem
+backup picks it up without knowing anything about Docker.
 
-Some operators would rather the data sat on the host, so it is picked up by
-whatever already backs the server up. Every volume in `compose.prod.yaml` has a
-commented bind-mount alternative beside it. If you want them, create the
-directories first:
+`scripts/install-ubuntu.sh` creates the tree for you. If you are bringing the
+stack up by hand, do it first:
 
 ```bash
-scripts/data-dirs.sh /srv/reportly-data
+scripts/data-dirs.sh
 ```
 
-Then uncomment the matching lines — search the file for `bind mount`.
-
-::: warning Run the script; do not create the folders by hand
-Bind mounts keep the host's ownership and these containers do not run as root.
-Postgres wants uid 70, Redis 999, the API 1000. Get it wrong and Postgres refuses
-to start while the API fails silently on its first upload. See
+::: danger This is not optional with bind mounts
+The directories must be owned by the uid each container runs as — Postgres 70,
+Redis 999, the API 1000. Skip it and Postgres refuses to start while the API
+fails silently on its first upload. See
 [Operations](../operations.md#a-container-will-not-start-after-switching-to-a-bind-mount).
 :::
 
-`data/api` is the one worth considering, since it holds the attachments and the
-backup files. Leaving Postgres on its named volume is a perfectly good mix.
+`data/backups` holds the dumps (`db/`) and the file archives (`files/`). It is
+mounted read-only into the Postgres container too, so a dump can be restored by
+hand from in there.
+
+Every mount has a commented named-volume alternative in `compose.prod.yaml` if
+you would rather Docker managed the storage.
 
 ## 4. Set up mail
 

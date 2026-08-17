@@ -1,8 +1,16 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Backups end-to-end: a superadmin takes a database backup (a real pg_dump), it appears
 // in the list, downloads as bytes, and deletes; the endpoints are gated by permission.
+import { execFile } from "node:child_process";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/core/env.js";
+import { localRoot } from "@/core/storage/local.js";
+import { runFilesBackup } from "@/features/backups/service.js";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
@@ -75,6 +83,35 @@ describe("backups", () => {
     expect((await inject("DELETE", `/backups/${id}`, admin)).statusCode).toBe(204);
     const after = (await inject("GET", "/backups", admin)).json();
     expect(after.some((b: { id: string }) => b.id === id)).toBe(false);
+  });
+
+  it("does not put earlier backups inside a files backup", async () => {
+    // Backups are written through the storage backend, so on disk they sit under
+    // the upload root — the very directory a files backup archives. Without an
+    // exclusion each run swallows the ones before it: the second holds the first,
+    // the third holds both, and the archive grows exponentially over a store
+    // whose actual contents never changed.
+    const root = localRoot(env.STORAGE_LOCAL_DIR);
+    await mkdir(join(root, "backups", "db"), { recursive: true });
+    await writeFile(join(root, "attachment.bin"), Buffer.alloc(2048, 7));
+    // A plausible earlier backup, big enough that its presence is unmistakable.
+    await writeFile(join(root, "backups", "db", "earlier.dump"), Buffer.alloc(65536, 3));
+
+    const made = await runFilesBackup(null);
+    expect(made.status).toBe("completed");
+
+    // Read the archive back and list it: the assertion is about what is inside,
+    // not merely that the command exited zero. The storage key is deliberately
+    // not on the public shape, so find the artifact where it was written.
+    const written = await readdir(join(root, "backups", "files"));
+    expect(written).toHaveLength(1);
+    const archive = join(root, "backups", "files", written[0]!);
+    const { stdout } = await promisify(execFile)("tar", ["tzf", archive]);
+    const entries = stdout.split("\n").filter(Boolean);
+
+    expect(entries).toEqual(expect.arrayContaining(["./attachment.bin"]));
+    expect(entries.some((e) => e.includes("earlier.dump"))).toBe(false);
+    expect(entries.some((e) => e.startsWith("./backups"))).toBe(false);
   });
 
   it("refuses the backup endpoints without authentication", async () => {

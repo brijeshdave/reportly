@@ -136,8 +136,26 @@ export async function runFilesBackup(by: string | null): Promise<Backup> {
       );
     }
     const dir = localRoot(env.STORAGE_LOCAL_DIR);
-    // `.` so the archive holds the store's contents at its root, not the absolute path.
-    const { code, stdout, stderr } = await runCapture("tar", ["czf", "-", "-C", dir, "."]);
+    // `.` so the archive holds the store's contents at its root, not the absolute
+    // path — and NOT the backups, which live under this same root.
+    //
+    // Without the exclusion every files backup swallows the ones before it: the
+    // second contains the first, the third contains both, and the archive grows
+    // exponentially over a store that never changed. Measured on a trivial
+    // fixture it was already 5x the real content, and the multiple compounds with
+    // each run until retention happens to prune it.
+    //
+    // It also makes a restore sane. Extracting an archive that carries its own
+    // predecessors would rebuild a tree of stale backups beside the files you
+    // actually wanted back.
+    const { code, stdout, stderr } = await runCapture("tar", [
+      "czf",
+      "-",
+      "-C",
+      dir,
+      "--exclude=./backups",
+      ".",
+    ]);
     if (code !== 0) throw new Error(stderr.trim() || `tar exited ${code}`);
     await activeStorage().put(key, stdout, "application/gzip");
     const id = await insertBackup({
