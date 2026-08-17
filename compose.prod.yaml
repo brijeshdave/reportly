@@ -73,18 +73,16 @@ services:
       # crossing a mount boundary. Mounting the old path leaves the volume unused
       # — the container starts, initialises inside its own filesystem, and every
       # byte is lost on the next recreate.
-      # Bind mounted: `scripts/data-dirs.sh` creates this owned by uid 70 (this
-      # image's postgres user), and it MUST be run before the first `up`. A
-      # directory owned by you is one Postgres refuses to start on, and the error
-      # names the ownership only in passing.
-      - ./data/postgres:/var/lib/postgresql
+      - postgres-data:/var/lib/postgresql
       # The backups, read-only, so a dump can be restored by hand from in here —
       # `pg_restore -d "$DATABASE_URL" /backups/db/<file>.dump`. Read-only on
       # purpose: the API is what writes backups, and two writers with different
-      # uids is the ownership problem all over again.
+      # uids would be an ownership problem for no gain.
       - ./data/backups:/backups:ro
-      # A named volume instead, if you would rather Docker owned this:
-      # - postgres-data:/var/lib/postgresql
+      # A bind mount for the database itself, if you want it on the host. Run
+      # `scripts/data-dirs.sh` first — it creates this owned by uid 70, and a
+      # directory owned by you is one Postgres refuses to start on.
+      # - ./data/postgres:/var/lib/postgresql
       - ./deploy/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
@@ -99,10 +97,9 @@ services:
     logging: *logging
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      # scripts/data-dirs.sh creates this owned by uid 999.
-      - ./data/redis:/data
-      # A named volume instead:
-      # - redis-data:/data
+      - redis-data:/data
+      # A bind mount instead (scripts/data-dirs.sh creates it owned by uid 999):
+      # - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -143,16 +140,16 @@ services:
     volumes:
       # Attachments, avatars and stored backups. Without this they are written
       # inside the container and lost on the next deploy.
-      # Both owned by uid 1000 (the image's `node` user) — see
-      # scripts/data-dirs.sh. Two lines, because backups are worth their own
-      # directory on the host: the app writes them through the storage backend,
-      # so on disk they sit under the upload root at `backups/db` and
-      # `backups/files`. Mounting over that path puts them somewhere obvious
-      # without the application needing to know where they went.
-      - ./data/api:/data
+      - app-data:/data
+      # Backups on the host, and only backups. The app writes them through the
+      # storage backend, so on disk they land under the upload root at
+      # `backups/db` and `backups/files`; mounting over that path puts them
+      # somewhere you can reach — copy them off, hand them to another tool, keep
+      # them when the volume goes — without the application needing to know.
+      # `scripts/data-dirs.sh` creates it owned by uid 1000, the image's `node`.
       - ./data/backups:/data/uploads/backups
-      # A named volume instead (backups then live inside it, under uploads/):
-      # - app-data:/data
+      # Attachments and logs on the host too, if you want them:
+      # - ./data/api:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,25 +193,24 @@ services:
       - "443:443/udp"
     volumes:
       - ./deploy/docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      # Caddy runs as root, so ownership is not the trap it is elsewhere — but
-      # these hold your issued certificates, and losing them means re-requesting
-      # from Let's Encrypt, whose rate limits are real.
-      - ./data/caddy/data:/data
-      - ./data/caddy/config:/config
-      # Named volumes instead:
-      # - caddy-data:/data
-      # - caddy-config:/config
+      - caddy-data:/data
+      - caddy-config:/config
+      # Bind mounts instead. Caddy runs as root, so ownership is not the trap it
+      # is elsewhere — but these hold your issued certificates, and losing them
+      # means re-requesting from Let's Encrypt, whose rate limits are real.
+      # - ./data/caddy/data:/data
+      # - ./data/caddy/config:/config
     depends_on:
       - web
 
-# Data lives in ./data, bind mounted, so it is visible on the host and picked up
-# by whatever already backs this server up. **Run `scripts/data-dirs.sh` before
-# the first `up`** — it creates the tree owned by the uid each container runs as,
-# and without it Postgres will not start and the API cannot write an upload.
+# Named volumes for everything Docker should own, and one exception: **backups
+# are bind mounted to ./data/backups**, because a backup you cannot reach from
+# the host is a backup you will not use — not to copy off the machine, not to
+# hand to another tool, and not when the volume itself is what went wrong.
 #
-# The named volumes below stay declared so the commented alternatives above work
-# by uncommenting one line. Docker creates a named volume on first use, so
-# nothing here costs anything while they are unused.
+# `scripts/data-dirs.sh` creates that directory with the right owner; run it
+# before the first `up`. Every other mount has a commented bind-mount
+# alternative beside it if you want more of the data on the host.
 volumes:
   postgres-data:
   redis-data:

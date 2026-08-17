@@ -116,29 +116,28 @@ cannot start against a schema it has not migrated.
 
 ## Where the data lives
 
-Data is bind mounted into `./data` on the server, so your existing filesystem
-backup picks it up without knowing anything about Docker.
+Named Docker volumes hold the database, Redis, the uploads and the certificates.
+**Backups are the exception** — they are bind mounted to `./data/backups`, so
+your existing filesystem backup picks them up and you can copy a dump off the
+machine without going through a container.
 
-`scripts/install-ubuntu.sh` creates the tree for you. If you are bringing the
-stack up by hand, do it first:
+`scripts/install-ubuntu.sh` creates that directory. Bringing the stack up by
+hand? Do it first:
 
 ```bash
 scripts/data-dirs.sh
 ```
 
-::: danger This is not optional with bind mounts
-The directories must be owned by the uid each container runs as — Postgres 70,
-Redis 999, the API 1000. Skip it and Postgres refuses to start while the API
-fails silently on its first upload. See
-[Operations](../operations.md#a-container-will-not-start-after-switching-to-a-bind-mount).
+::: warning Otherwise Docker creates it owned by root
+And every backup then fails to write, because the API runs as uid 1000.
 :::
 
-`data/backups` holds the dumps (`db/`) and the file archives (`files/`). It is
-mounted read-only into the Postgres container too, so a dump can be restored by
-hand from in there.
+`data/backups` holds the dumps in `db/` and the file archives in `files/`. It is
+mounted read-only into the Postgres container as well, so a dump can be restored
+by hand from in there.
 
-Every mount has a commented named-volume alternative in `compose.prod.yaml` if
-you would rather Docker managed the storage.
+Every other mount has a commented bind-mount alternative in `compose.prod.yaml`
+if you want more of the data on the host.
 
 ## 4. Set up mail
 

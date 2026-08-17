@@ -46,50 +46,51 @@ pnpm dev
 
 ## Where the data lives
 
-Data is **bind mounted into `./data`**, so it sits on the host where you can see
-it and where whatever already backs this machine up will find it.
+Everything sits in **named Docker volumes**, with one exception: **backups are
+bind mounted to `./data/backups`**.
 
-That means one step before the first start:
+Backups are the exception on purpose. A backup you cannot reach from the host is
+a backup you will not use — not to copy off the machine, not to hand to another
+tool, and least of all when the volume itself is what went wrong. Everything
+else stays in a volume, where Docker owns it and gets the permissions right.
+
+Create the directory before the first start:
 
 ```bash
 scripts/data-dirs.sh              # ./data
 scripts/data-dirs.sh /srv/reportly-data
 ```
 
-::: danger Run this before the first `docker compose up`
-Bind mounts keep the host directory's ownership, and none of these containers run
-as root. Without the script Postgres refuses to start, Redis cannot write, and
-the API fails on its first upload — with errors that read like a broken image.
-The installer script runs it for you; a manual `docker compose up` does not.
+::: warning Run it before `docker compose up`
+A bind mount keeps the host directory's ownership, and the API does not run as
+root. Left to itself Docker creates a missing mount source owned by root, and
+every backup then fails to write. `scripts/install-ubuntu.sh` runs this for you;
+a manual `docker compose up` does not.
 :::
 
-The tree it creates, and who owns each part:
+The script builds the whole tree, so the commented bind-mount alternatives beside
+each mount work by uncommenting one line. Directories for services you have not
+switched simply sit empty:
 
 ```
 data/
-├── postgres/          the database cluster    (uid 70)
-├── redis/             sessions, queues        (uid 999)
-├── api/               (uid 1000)
-│   ├── uploads/         attachments and avatars
-│   └── logs/            log files, when the file sink is on
-├── backups/           (uid 1000)
+├── backups/           bind mounted by default  (uid 1000)
 │   ├── db/              pg_dump archives
 │   └── files/           tar.gz of the upload store
-└── caddy/             issued certificates     (uid 0)
+├── postgres/          only if you switch it    (uid 70)
+├── redis/             only if you switch it    (uid 999)
+├── api/               only if you switch it    (uid 1000)
+│   ├── uploads/
+│   └── logs/
+└── caddy/             only if you switch it    (uid 0)
 ```
 
-**Backups get their own directory.** The application writes them through the
-storage backend, so on disk they would land under the upload root; the compose
-file mounts `./data/backups` over that path, which puts them somewhere obvious
-without the application needing to know. Postgres gets the same directory
-**read-only**, so a dump can be restored by hand from inside that container.
-
-**Prefer named Docker volumes?** Every mount has a commented alternative beside
-it — uncomment the named volume, comment the bind mount. Docker then owns the
-directories and the script becomes unnecessary. That is the better choice on
-Docker Desktop, where a bind-mounted database is noticeably slower, and you can
-mix: a named volume for Postgres and bind mounts for `data/api` and
-`data/backups` is a sensible split.
+**Why backups land there.** The application writes them through the storage
+backend, so on disk they would sit under the upload root at `backups/db` and
+`backups/files`. The compose file mounts `./data/backups` over that path, which
+puts them somewhere obvious without the application needing to know. Postgres
+gets the same directory **read-only**, so a dump can be restored by hand from
+inside that container.
 
 If something will not start, see
 [Operations](operations.md#a-container-will-not-start-after-switching-to-a-bind-mount).

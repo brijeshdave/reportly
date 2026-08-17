@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Create the bind-mount directory tree, owned by the users the containers run as.
 #
-# Run this before the first `docker compose up`. Both compose files bind mount
-# ./data, and a bind mount that does not exist or has the wrong owner is a stack
-# that will not start.
+# Run this before the first `docker compose up`.
 #
-# Not needed if you switch to the named-volume alternatives commented beside each
-# mount — Docker creates those and gets the ownership right on its own.
+# By default only **backups** are bind mounted — everything else uses a named
+# volume, which Docker creates and owns correctly on its own. Backups are the
+# exception because a backup you cannot reach from the host is a backup you will
+# not use: not to copy off the machine, not to hand to another tool, and not when
+# the volume itself is what went wrong.
+#
+# The script still creates the whole tree, so the commented bind-mount
+# alternatives beside each mount work by uncommenting one line. The directories
+# it makes for services you have not switched simply sit there empty.
 #
 # The reason this script exists: a bind-mounted directory keeps the *host's*
 # ownership, and none of these containers run as root. A folder owned by you is a
@@ -106,6 +111,6 @@ if [ "$FAILED" = "1" ]; then
   exit 1
 fi
 
-echo "Done. compose.dev.yaml and compose.prod.yaml bind mount these already."
-echo "Prefer Docker-managed storage? Each mount has a commented named-volume"
-echo "alternative beside it, and then none of this is needed."
+echo "Done. ${ROOT}/backups is what compose.prod.yaml mounts by default."
+echo "The rest is ready for the commented bind-mount alternatives, if you want"
+echo "more of the data on the host than the backups."
