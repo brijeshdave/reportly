@@ -79,6 +79,11 @@ services:
       # one Postgres refuses to start on, and the error names the ownership only
       # in passing.
       # - ./data/postgres:/var/lib/postgresql
+      # And the backups, read-only, so a dump can be restored by hand from in
+      # here — `pg_restore -d "$DATABASE_URL" /backups/db/<file>.dump`. Read-only
+      # on purpose: the API is what writes backups, and two writers with
+      # different uids is the ownership problem all over again.
+      # - ./data/backups:/backups:ro
       - ./deploy/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
@@ -137,11 +142,14 @@ services:
       # Attachments, avatars and stored backups. Without this they are written
       # inside the container and lost on the next deploy.
       - app-data:/data
-      # Bind mount instead — this is the one people most often want on the host,
-      # since it holds the uploads and the backup files. `scripts/data-dirs.sh`
-      # creates ./data/api with uploads/, logs/ and backups/ inside it, owned by
-      # uid 1000 (the image's `node` user).
+      # Bind mounts instead — run `scripts/data-dirs.sh` first (uid 1000, the
+      # image's `node` user). Two lines, because backups are worth their own
+      # directory on the host: the app writes them through the storage backend,
+      # so on disk they sit under the upload root at `backups/db` and
+      # `backups/files`. Mounting over that path puts them somewhere obvious
+      # instead, without the application needing to know.
       # - ./data/api:/data
+      # - ./data/backups:/data/uploads/backups
     depends_on:
       postgres:
         condition: service_healthy

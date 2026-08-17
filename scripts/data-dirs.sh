@@ -18,6 +18,19 @@
 #   the API image       node      1000   (deploy/docker/api.Dockerfile: USER node)
 #   caddy:2-alpine      root      0
 #
+# The tree it builds:
+#
+#   data/
+#   ├── postgres/        the database cluster
+#   ├── redis/           sessions, queues, the append-only file
+#   ├── api/
+#   │   ├── uploads/     attachments and avatars
+#   │   └── logs/        log files, when the file sink is on
+#   ├── backups/
+#   │   ├── db/          pg_dump archives
+#   │   └── files/       tar.gz of the upload store
+#   └── caddy/           issued certificates
+#
 # Usage:
 #   scripts/data-dirs.sh              # ./data
 #   scripts/data-dirs.sh /srv/reportly-data
@@ -61,16 +74,19 @@ mkdir -p \
   "${ROOT}/redis" \
   "${ROOT}/api/uploads" \
   "${ROOT}/api/logs" \
-  "${ROOT}/api/backups" \
+  "${ROOT}/backups/db" \
+  "${ROOT}/backups/files" \
   "${ROOT}/caddy/data" \
   "${ROOT}/caddy/config"
 
 own "${ROOT}/postgres" "$POSTGRES_UID" "postgres  "
 own "${ROOT}/redis" "$REDIS_UID" "redis     "
-# One owner for the whole api tree: uploads, logs and backups are all written by
-# the same process, and splitting the ownership only invites one of them to be
-# missed.
 own "${ROOT}/api" "$API_UID" "api       "
+# Backups belong to the API too: it is the process that writes them, whether on a
+# schedule or from the Backups screen. Postgres only ever reads them, and only
+# when somebody restores a dump by hand, so it gets the directory read-only
+# rather than a second claim on the ownership.
+own "${ROOT}/backups" "$API_UID" "backups   "
 own "${ROOT}/caddy" "$CADDY_UID" "caddy     "
 
 echo

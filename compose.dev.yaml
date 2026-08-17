@@ -74,6 +74,11 @@ services:
 # they survive `down` (though not `down -v`). Swap in the commented bind mounts
 # above when you would rather the data sat in ./data where you can see it — run
 # `scripts/data-dirs.sh` first, or the containers will fail on permissions.
+#
+# There is no api service here: development runs it on the host, so its uploads,
+# logs and backups already land on your disk at the paths in apps/api/.env
+# (STORAGE_LOCAL_DIR, LOG_DIR). Point those at ./data/api/uploads and
+# ./data/api/logs to match the layout the script builds.
 volumes:
   postgres-data:
   redis-data:

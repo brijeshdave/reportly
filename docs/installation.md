@@ -64,13 +64,15 @@ That builds the tree and gives each folder to the user its container runs as:
 
 ```
 data/
-├── postgres/          the database        (uid 70)
-├── redis/             sessions, queues    (uid 999)
+├── postgres/          the database cluster    (uid 70)
+├── redis/             sessions, queues        (uid 999)
 ├── api/               (uid 1000)
 │   ├── uploads/         attachments and avatars
-│   ├── logs/            log files, when the file sink is on
-│   └── backups/         database and file backups
-└── caddy/             certificates        (uid 0)
+│   └── logs/            log files, when the file sink is on
+├── backups/           (uid 1000)
+│   ├── db/              pg_dump archives
+│   └── files/           tar.gz of the upload store
+└── caddy/             issued certificates     (uid 0)
 ```
 
 Then uncomment the matching line in `compose.dev.yaml` or `compose.prod.yaml` —
@@ -84,6 +86,14 @@ like a broken image. Run the script rather than creating the folders by hand, an
 see [Operations](operations.md#a-container-will-not-start-after-switching-to-a-bind-mount)
 if something will not start.
 :::
+
+**Backups get their own directory.** The application writes them through the
+storage backend, so on disk they land under the upload root at `backups/db` and
+`backups/files`. The compose comment mounts `./data/backups` over that path, which
+puts them somewhere obvious on the host without the application needing to know —
+handy, since a backup you cannot find is a backup you will not restore. Postgres
+gets the same directory **read-only**, so a dump can be restored by hand from
+inside that container.
 
 You do not have to choose one for everything. Mixing is fine, and the common
 choice is a bind mount for `data/api` — where the uploads and backups are — with

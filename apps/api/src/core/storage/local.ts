@@ -4,7 +4,7 @@
 // a mounted volume. S3 is the clean path for anything with more than one node.
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 import type { StorageProvider } from "@/core/storage/provider.js";
 import type { StorageBackend } from "@reportly/shared";
@@ -62,7 +62,21 @@ export function checksumOf(body: Buffer): string {
   return createHash("sha256").update(body).digest("hex");
 }
 
-/** The on-disk root, resolved once. */
+/**
+ * The on-disk root, resolved once.
+ *
+ * An absolute directory is taken as given; only a relative one is resolved
+ * against the working directory.
+ *
+ * That distinction is the whole function. `STORAGE_LOCAL_DIR` defaults to a
+ * relative "uploads", which is right beside a development process — but every
+ * container deployment sets an absolute path precisely because it must reach a
+ * mounted volume. Joining unconditionally turned `/data/uploads` into
+ * `/app/data/uploads`: inside the container, nowhere near the mount, and thrown
+ * away with the container on the next release. Attachments, avatars and every
+ * backup file went there, and nothing failed at the time — the loss only showed
+ * up later as data that had simply gone.
+ */
 export function localRoot(dir: string): string {
-  return join(process.cwd(), dir);
+  return isAbsolute(dir) ? dir : join(process.cwd(), dir);
 }
