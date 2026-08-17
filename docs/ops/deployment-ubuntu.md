@@ -114,6 +114,33 @@ cannot start against a schema it has not migrated.
 
 ---
 
+## Where the data lives
+
+Every service keeps its data in a **named Docker volume** by default. That is the
+right choice here and needs no setup — Docker owns them correctly and they
+survive a redeploy.
+
+Some operators would rather the data sat on the host, so it is picked up by
+whatever already backs the server up. Every volume in `compose.prod.yaml` has a
+commented bind-mount alternative beside it. If you want them, create the
+directories first:
+
+```bash
+scripts/data-dirs.sh /srv/reportly-data
+```
+
+Then uncomment the matching lines — search the file for `bind mount`.
+
+::: warning Run the script; do not create the folders by hand
+Bind mounts keep the host's ownership and these containers do not run as root.
+Postgres wants uid 70, Redis 999, the API 1000. Get it wrong and Postgres refuses
+to start while the API fails silently on its first upload. See
+[Operations](../operations.md#a-container-will-not-start-after-switching-to-a-bind-mount).
+:::
+
+`data/api` is the one worth considering, since it holds the attachments and the
+backup files. Leaving Postgres on its named volume is a perfectly good mix.
+
 ## 4. Set up mail
 
 Invitations and password resets are the only way to onboard anyone, and both are

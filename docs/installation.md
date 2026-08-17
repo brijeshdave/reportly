@@ -44,6 +44,52 @@ pnpm dev
 > `docker compose down -v` deletes the Postgres and Redis volumes. Never run it
 > against an environment whose data you want to keep.
 
+## Where the data lives
+
+By default every service keeps its data in a **named Docker volume**. Docker
+creates them, gets the ownership right, and they survive a redeploy — nothing to
+set up.
+
+If you would rather see the data on the host — to back it up with the rest of the
+filesystem, or to reach the uploads and backup files directly — each compose file
+carries a **commented bind-mount alternative** beside every volume. Create the
+directories first:
+
+```bash
+scripts/data-dirs.sh              # ./data
+scripts/data-dirs.sh /srv/reportly-data
+```
+
+That builds the tree and gives each folder to the user its container runs as:
+
+```
+data/
+├── postgres/          the database        (uid 70)
+├── redis/             sessions, queues    (uid 999)
+├── api/               (uid 1000)
+│   ├── uploads/         attachments and avatars
+│   ├── logs/            log files, when the file sink is on
+│   └── backups/         database and file backups
+└── caddy/             certificates        (uid 0)
+```
+
+Then uncomment the matching line in `compose.dev.yaml` or `compose.prod.yaml` —
+search for `bind mount`.
+
+::: warning Ownership is the whole difficulty
+A bind mount keeps the host directory's ownership, and none of these containers
+run as root. Point one at a folder owned by you and Postgres refuses to start,
+Redis cannot write, and the API fails on the first upload — with errors that read
+like a broken image. Run the script rather than creating the folders by hand, and
+see [Operations](operations.md#a-container-will-not-start-after-switching-to-a-bind-mount)
+if something will not start.
+:::
+
+You do not have to choose one for everything. Mixing is fine, and the common
+choice is a bind mount for `data/api` — where the uploads and backups are — with
+Postgres left on a named volume, which avoids both the ownership trap and the
+filesystem overhead a bind mount adds on Docker Desktop.
+
 ## Production (Docker Compose)
 
 `compose.prod.yaml` builds both images and runs the full stack. It refuses to

@@ -2,17 +2,18 @@
 # Provide secrets via a .env file or the environment — never commit them.
 # Start from `.env.production.example`, or run `scripts/install-ubuntu.sh`.
 #
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yaml up -d --build
 #
 # Add TLS with the `tls` profile (Caddy, automatic Let's Encrypt):
 #
-#   docker compose -f docker-compose.prod.yml --profile tls up -d --build
-name: reportly-prod
+#   docker compose -f docker-compose.prod.yaml --profile tls up -d --build
+name: ${PROJECT_NAME:-reportly}
 
 # Every service that runs application code needs the same environment. Declared
 # once: `migrate` and `api` must agree, or migrations run against one database
 # while the app serves another.
 x-app-env: &app-env
+  PROJECT_NAME: ${PROJECT_NAME:-reportly}
   NODE_ENV: production
   DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-reportly}
   LOG_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_LOG_DB:-reportly_logs}
@@ -57,6 +58,7 @@ x-logging: &logging
 services:
   postgres:
     image: postgres:18-alpine
+    hostname: ${PROJECT_NAME:-reportly}-postgres
     restart: always
     logging: *logging
     environment:
@@ -72,6 +74,11 @@ services:
       # — the container starts, initialises inside its own filesystem, and every
       # byte is lost on the next recreate.
       - postgres-data:/var/lib/postgresql
+      # Bind mount instead — run `scripts/data-dirs.sh` first, which creates it
+      # owned by uid 70 (this image's postgres user). A directory owned by you is
+      # one Postgres refuses to start on, and the error names the ownership only
+      # in passing.
+      # - ./data/postgres:/var/lib/postgresql
       - ./deploy/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
@@ -81,11 +88,14 @@ services:
 
   redis:
     image: redis:8-alpine
+    hostname: ${PROJECT_NAME:-reportly}-redis
     restart: always
     logging: *logging
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
+      # Bind mount instead (scripts/data-dirs.sh creates it owned by uid 999):
+      # - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -111,6 +121,7 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/api.Dockerfile
+    hostname: ${PROJECT_NAME:-reportly}-api
     restart: always
     logging: *logging
     environment:
@@ -126,6 +137,11 @@ services:
       # Attachments, avatars and stored backups. Without this they are written
       # inside the container and lost on the next deploy.
       - app-data:/data
+      # Bind mount instead — this is the one people most often want on the host,
+      # since it holds the uploads and the backup files. `scripts/data-dirs.sh`
+      # creates ./data/api with uploads/, logs/ and backups/ inside it, owned by
+      # uid 1000 (the image's `node` user).
+      # - ./data/api:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,6 +154,7 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/web.Dockerfile
+    hostname: ${PROJECT_NAME:-reportly}-web
     restart: always
     logging: *logging
     ports:
@@ -155,6 +172,7 @@ services:
   # because that container does not know whether it is behind TLS.
   caddy:
     image: caddy:2-alpine
+    hostname: ${PROJECT_NAME:-reportly}-caddy
     profiles: ["tls"]
     restart: always
     logging: *logging
@@ -169,9 +187,19 @@ services:
       - ./deploy/docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+      # Bind mounts instead. Caddy runs as root, so ownership is not the trap it
+      # is elsewhere — but these hold your issued certificates, so losing them
+      # means re-requesting from Let's Encrypt and its rate limits are real.
+      # - ./data/caddy/data:/data
+      # - ./data/caddy/config:/config
     depends_on:
       - web
 
+# Named volumes are the default: Docker creates them with the right ownership and
+# they survive a redeploy. Each has a commented bind-mount alternative above, for
+# when you would rather the data lived in ./data — visible on the host, trivially
+# backed up with the rest of the filesystem. Run `scripts/data-dirs.sh` before
+# switching, or the containers fail to start on permissions.
 volumes:
   postgres-data:
   redis-data:

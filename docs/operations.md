@@ -197,6 +197,78 @@ your retention period.
 
 ## Troubleshooting
 
+### A container will not start after switching to a bind mount
+
+Almost always ownership, and the error rarely says so plainly.
+
+A **named volume** is created and owned by Docker, which gets it right. A **bind
+mount** keeps whatever ownership the host directory already had — and none of
+these containers run as root. A folder owned by you is a folder the service
+cannot write to.
+
+Run the setup script, which creates the tree with the right owner for each
+service:
+
+```bash
+scripts/data-dirs.sh              # ./data
+scripts/data-dirs.sh /srv/reportly-data
+```
+
+If you would rather do it by hand, these are the users the images run as:
+
+| Directory       | Service  | Owner | Fix                                 |
+| --------------- | -------- | ----- | ----------------------------------- |
+| `data/postgres` | Postgres | 70    | `sudo chown -R 70:70 data/postgres` |
+| `data/redis`    | Redis    | 999   | `sudo chown -R 999:999 data/redis`  |
+| `data/api`      | API      | 1000  | `sudo chown -R 1000:1000 data/api`  |
+| `data/caddy`    | Caddy    | 0     | `sudo chown -R 0:0 data/caddy`      |
+
+What each failure looks like:
+
+**Postgres** exits immediately, and the log says the data directory has the wrong
+ownership or permissions — it refuses to run on a directory it does not own, by
+design. Nothing is corrupted; it never started.
+
+**Redis** starts but cannot write its append-only file, so it logs a write error
+and every restart loses whatever was in memory. Sessions and queues live here, so
+the symptom people report is "everyone got signed out again".
+
+**The API** starts fine and fails only when it first writes: an upload returns a
+500, backups fail, and `cli doctor` reports the attachment store is not writable.
+It is the one where the cause and the symptom are furthest apart — the container
+looks healthy for hours.
+
+Two more that look like permissions and are not:
+
+- **The directory did not exist.** Docker creates a missing bind-mount source as
+  an empty directory owned by root, which then fails for a different reason. Run
+  the script rather than letting Docker guess.
+- **Postgres 18 keeps its data one level down.** Mount `/var/lib/postgresql`, not
+  `/var/lib/postgresql/data`. Mount the old path and the container starts happily,
+  initialises inside its own filesystem, and loses everything on the next
+  recreate — with no error at all. The compose files already have this right;
+  it only bites if you edit the path.
+
+### Choosing between a named volume and a bind mount
+
+Named volumes are the default and are the right choice for most installations:
+Docker handles ownership, and `docker compose down` leaves them alone.
+
+Reach for a bind mount when you want the data **visible on the host** — to back it
+up with the rest of the filesystem, to copy uploads off, or to inspect a backup
+file without going through the container. The commented lines in
+`compose.dev.yaml` and `compose.prod.yaml` show exactly where.
+
+`data/api` is the one most people actually want, since it holds the uploads and
+the backup files. There is no need to switch all of them: mixing is fine, and
+leaving Postgres on a named volume avoids both the ownership trap and the
+filesystem overhead a bind mount adds on Docker Desktop.
+
+::: warning `docker compose down -v` deletes named volumes
+That is the flag that destroys a database. A bind mount survives it, which is one
+honest argument in its favour.
+:::
+
 ### The API will not start
 
 It validates its environment at startup and fails with the exact list of what is

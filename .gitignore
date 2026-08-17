@@ -1,6 +1,11 @@
 # Private working notes — never committed
 .private
 
+# Bind-mount data, when a service is switched off named volumes. Created by
+# `scripts/data-dirs.sh` and holding databases, uploads and backups — none of
+# which belongs in a public repository.
+/data/
+
 # Dependencies
 node_modules
 

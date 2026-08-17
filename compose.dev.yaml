@@ -1,6 +1,6 @@
 # Development infrastructure: Postgres (app + log DB), Redis, Mailpit.
 # App services run on the host via `pnpm dev`. Copy .env.example to .env first.
-name: reportly
+name: ${PROJECT_NAME:-reportly-dev}
 
 services:
   postgres:
@@ -16,6 +16,7 @@ services:
     #
     # Or, if the data is throwaway, drop the volume and re-run migrate + seed.
     image: postgres:18-alpine
+    hostname: ${PROJECT_NAME:-reportly}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-reportly}
@@ -32,6 +33,11 @@ services:
       # — the container starts, initialises inside its own filesystem, and every
       # byte is lost on the next recreate.
       - postgres-data:/var/lib/postgresql
+      # Prefer a directory you can see and back up from the host? Run
+      # `scripts/data-dirs.sh` first, then swap the line above for this one.
+      # The script creates it owned by uid 70, which is what this image runs as —
+      # a folder owned by you makes Postgres refuse to start.
+      # - ./data/postgres:/var/lib/postgresql
       - ./deploy/docker/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reportly}"]
@@ -41,12 +47,15 @@ services:
 
   redis:
     image: redis:8-alpine
+    hostname: ${PROJECT_NAME:-reportly}-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
+      # Bind mount instead (see scripts/data-dirs.sh — owned by uid 999):
+      # - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -55,11 +64,16 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
+    hostname: ${PROJECT_NAME:-reportly}-mailpit
     restart: unless-stopped
     ports:
       - "${MAILPIT_SMTP_PORT:-1025}:1025"
       - "${MAILPIT_UI_PORT:-8025}:8025"
 
+# Named volumes are the default: Docker creates them, owns them correctly, and
+# they survive `down` (though not `down -v`). Swap in the commented bind mounts
+# above when you would rather the data sat in ./data where you can see it — run
+# `scripts/data-dirs.sh` first, or the containers will fail on permissions.
 volumes:
   postgres-data:
   redis-data:
