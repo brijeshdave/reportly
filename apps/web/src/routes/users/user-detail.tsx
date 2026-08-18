@@ -463,6 +463,7 @@ const RANK_LABEL: Record<DepartmentRank, string> = {
  * meant before it starts deciding who can read what.
  */
 function DepartmentsTab({ userId }: { userId: string }) {
+  const canEdit = usePermission(PERMISSIONS.DEPARTMENTS_ASSIGN);
   const departments = useQuery({
     queryKey: ["users", "departments", userId],
     queryFn: () => fetchUserDepartments(userId),
@@ -489,31 +490,36 @@ function DepartmentsTab({ userId }: { userId: string }) {
           description="Pick one above, or add them from that department's Members tab."
         />
       ) : null}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {rows.map((entry) => (
-          <Card key={entry.departmentId} className="flex flex-col gap-1 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <Link
-                to="/departments/$departmentId"
-                params={{ departmentId: entry.departmentId }}
-                className="truncate text-sm font-medium hover:underline"
-              >
-                {entry.name}
-              </Link>
-              <Badge tone={entry.rank === "hod" ? "brand" : "neutral"}>
-                {RANK_LABEL[entry.rank]}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {entry.reportsToName ? (
-                <>Reports to {entry.reportsToName}</>
-              ) : (
-                <>Reports to nobody — top of this line</>
-              )}
-            </p>
-          </Card>
-        ))}
-      </div>
+      {/* The same memberships, for somebody who cannot change them. Anybody who
+          can sees the editable rows above, and two renderings of one fact on one
+          screen is the thing that makes a person wonder which is the real one. */}
+      {canEdit ? null : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {rows.map((entry) => (
+            <Card key={entry.departmentId} className="flex flex-col gap-1 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Link
+                  to="/departments/$departmentId"
+                  params={{ departmentId: entry.departmentId }}
+                  className="truncate text-sm font-medium hover:underline"
+                >
+                  {entry.name}
+                </Link>
+                <Badge tone={entry.rank === "hod" ? "brand" : "neutral"}>
+                  {RANK_LABEL[entry.rank]}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {entry.reportsToName ? (
+                  <>Reports to {entry.reportsToName}</>
+                ) : (
+                  <>Reports to nobody — top of this line</>
+                )}
+              </p>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Card className="p-6">
         <h2 className="text-sm font-semibold">Downline</h2>
@@ -1091,7 +1097,13 @@ function MembershipRow({
 
   return (
     <Card className="flex flex-wrap items-end gap-3 p-3">
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
+      <Link
+        to="/departments/$departmentId"
+        params={{ departmentId: membership.departmentId }}
+        className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
+      >
+        {name}
+      </Link>
 
       <label className="flex flex-col gap-0.5 text-[11px]">
         <span className="text-muted-foreground">Rank</span>
@@ -1107,7 +1119,7 @@ function MembershipRow({
         </select>
       </label>
 
-      <div className="flex w-44 flex-col gap-0.5 text-[11px]">
+      <div className="flex w-56 flex-col gap-0.5 text-[11px]">
         <span className="text-muted-foreground">Reports to</span>
         <SearchableSelect
           value={membership.reportsToId ?? ""}

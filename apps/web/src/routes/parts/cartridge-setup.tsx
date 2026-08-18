@@ -225,7 +225,7 @@ function CompatibilityEditor({
   }
 
   return (
-    <Card className="w-full space-y-2 p-3">
+    <Card className="order-last w-full space-y-2 p-3">
       {save.error ? <ErrorAlert error={save.error} /> : null}
       <DeviceTypePicker
         types={types}
@@ -294,7 +294,7 @@ function ModelDetailsEditor({ model }: { model: PartModel }) {
   }
 
   return (
-    <Card className="w-full space-y-2 p-3">
+    <Card className="order-last w-full space-y-2 p-3">
       {save.error ? <ErrorAlert error={save.error} /> : null}
       <div className="grid gap-2 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-xs">
@@ -466,7 +466,7 @@ function ModelsTab() {
       <ul className="divide-y divide-border rounded-lg border border-border">
         {(models.data ?? []).map((model) => (
           <li key={model.id} className="space-y-2 p-3">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
                   {model.name}{" "}
@@ -489,7 +489,13 @@ function ModelsTab() {
                 </p>
               </div>
               <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-                <div className="flex items-center gap-2">
+                {/* `contents` rather than a box: an open editor panel is rendered by one
+                    of these buttons, and inside a shrink-to-fit group its `w-full`
+                    resolved against the group — which then claimed the row's width
+                    and squeezed the name beside it into a column of single letters.
+                    With the group's box gone the panel is a child of the wrapping
+                    row, where `order-last` puts it on a line of its own beneath. */}
+                <div className="contents">
                   <CompatibilityEditor
                     model={model}
                     types={deviceTypes.data ?? []}
@@ -653,7 +659,7 @@ function KindConsumablesEditor({ kind }: { kind: ServiceKind }) {
   };
 
   return (
-    <Card className="w-full space-y-2 p-3">
+    <Card className="order-last w-full space-y-2 p-3">
       <h3 className="text-sm font-semibold">What {kind.name} uses</h3>
       <p className="text-xs text-muted-foreground">
         Tick what this kind may consume. <strong>Least</strong> above zero makes it required — a
@@ -808,7 +814,7 @@ function KindsTab() {
       <ul className="divide-y divide-border rounded-lg border border-border">
         {(kinds.data ?? []).map((kind) => (
           <li key={kind.id} className="space-y-2 p-3">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
                   {kind.name}{" "}
@@ -824,7 +830,13 @@ function KindsTab() {
                 </p>
               </div>
               <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-                <div className="flex items-center gap-2">
+                {/* `contents` rather than a box: an open editor panel is rendered by one
+                    of these buttons, and inside a shrink-to-fit group its `w-full`
+                    resolved against the group — which then claimed the row's width
+                    and squeezed the name beside it into a column of single letters.
+                    With the group's box gone the panel is a child of the wrapping
+                    row, where `order-last` puts it on a line of its own beneath. */}
+                <div className="contents">
                   <KindDetailsEditor kind={kind} />
                   <KindConsumablesEditor kind={kind} />
                   <StatusButton
@@ -875,7 +887,7 @@ function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
   }
 
   return (
-    <Card className="w-full space-y-2 p-3">
+    <Card className="order-last w-full space-y-2 p-3">
       {save.error ? <ErrorAlert error={save.error} /> : null}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs">
@@ -942,7 +954,7 @@ function ConsumableDetailsEditor({ consumable }: { consumable: Consumable }) {
   }
 
   return (
-    <Card className="w-full space-y-2 p-3">
+    <Card className="order-last w-full space-y-2 p-3">
       {save.error ? <ErrorAlert error={save.error} /> : null}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs">
@@ -1066,7 +1078,7 @@ function ConsumablesTab() {
 
       <ul className="divide-y divide-border rounded-lg border border-border">
         {(consumables.data ?? []).map((consumable) => (
-          <li key={consumable.id} className="flex items-center gap-3 p-3">
+          <li key={consumable.id} className="flex flex-wrap items-center gap-3 p-3">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">
                 {consumable.name}{" "}
@@ -1079,7 +1091,13 @@ function ConsumablesTab() {
               </p>
             </div>
             <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-              <div className="flex items-center gap-2">
+              {/* `contents` rather than a box: an open editor panel is rendered by one
+                    of these buttons, and inside a shrink-to-fit group its `w-full`
+                    resolved against the group — which then claimed the row's width
+                    and squeezed the name beside it into a column of single letters.
+                    With the group's box gone the panel is a child of the wrapping
+                    row, where `order-last` puts it on a line of its own beneath. */}
+              <div className="contents">
                 <ConsumableDetailsEditor consumable={consumable} />
                 <StatusButton
                   status={consumable.status}
