@@ -8,6 +8,7 @@ import {
   type Location,
   type Role,
   type User,
+  type UserDepartment,
   formatDate,
   formatDateTime,
 } from "@reportly/shared";
@@ -31,6 +32,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { MultiSelect } from "@/components/multi-select.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
+import { ancestorTrail, departmentOptions } from "@/lib/department-options.js";
 import { UnsavedChangesProvider, useUnsavedChanges } from "@/components/unsaved-changes.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
@@ -509,6 +511,15 @@ function DepartmentsTab({ userId }: { userId: string }) {
                   {RANK_LABEL[entry.rank]}
                 </Badge>
               </div>
+              {/* This list is the one place that spans companies, and a name is
+                  unique only within one — so it says which, and where in that
+                  company's tree the department sits. */}
+              <p className="truncate text-xs text-muted-foreground">
+                {entry.companyName}
+                {ancestorTrail(entry.path, entry.name) === ""
+                  ? null
+                  : ` · ${ancestorTrail(entry.path, entry.name)}`}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {entry.reportsToName ? (
                   <>Reports to {entry.reportsToName}</>
@@ -1042,16 +1053,9 @@ function AccessTab({ userId }: { userId: string }) {
  * rest of that department.
  */
 /** A department's name, found anywhere in the tree. */
-function nameOf(nodes: { id: string; name: string; children?: unknown[] }[], id: string): string {
-  for (const node of nodes) {
-    if (node.id === id) return node.name;
-    const found = nameOf(
-      (node.children ?? []) as { id: string; name: string; children?: unknown[] }[],
-      id,
-    );
-    if (found) return found;
-  }
-  return "";
+/** `GET /departments` answers flat, so this is a lookup, not a tree walk. */
+function nameOf(nodes: { id: string; name: string }[], id: string): string {
+  return nodes.find((node) => node.id === id)?.name ?? "";
 }
 
 /**
@@ -1066,6 +1070,7 @@ function MembershipRow({
   userId,
   membership,
   name,
+  where,
   onEdit,
 }: {
   userId: string;
@@ -1076,6 +1081,8 @@ function MembershipRow({
     locationIds: string[];
   };
   name: string;
+  /** Which company it is in, and where in that company's tree. */
+  where: string;
   onEdit: (
     patch: Partial<{ rank: string; reportsToId: string | null; locationIds: string[] }>,
   ) => void;
@@ -1097,13 +1104,21 @@ function MembershipRow({
 
   return (
     <Card className="flex flex-wrap items-end gap-3 p-3">
-      <Link
-        to="/departments/$departmentId"
-        params={{ departmentId: membership.departmentId }}
-        className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
-      >
-        {name}
-      </Link>
+      {/* These rows span companies, and a department name is unique only within
+          one — so the row says which. It was truncating to "Mainte…" twice over
+          with nothing to choose between them. */}
+      <div className="flex min-w-0 flex-[2] basis-48 flex-col">
+        <Link
+          to="/departments/$departmentId"
+          params={{ departmentId: membership.departmentId }}
+          className="truncate text-sm font-medium hover:underline"
+        >
+          {name}
+        </Link>
+        {where === "" ? null : (
+          <span className="truncate text-xs text-muted-foreground">{where}</span>
+        )}
+      </div>
 
       <label className="flex flex-col gap-0.5 text-[11px]">
         <span className="text-muted-foreground">Rank</span>
@@ -1144,20 +1159,9 @@ function MembershipRow({
   );
 }
 
-function DepartmentAssigner({
-  userId,
-  current,
-}: {
-  userId: string;
-  current: {
-    departmentId: string;
-    name: string;
-    rank: string;
-    reportsToId: string | null;
-    locationIds: string[];
-  }[];
-}) {
+function DepartmentAssigner({ userId, current }: { userId: string; current: UserDepartment[] }) {
   const canAssign = usePermission(PERMISSIONS.DEPARTMENTS_ASSIGN);
+  const { data: session } = useSuspenseQuery(sessionQuery);
   const queryClient = useQueryClient();
   const all = useQuery({ queryKey: ["departments"], queryFn: fetchDepartments });
 
@@ -1212,33 +1216,30 @@ function DepartmentAssigner({
 
   if (!canAssign) return null;
 
-  // The tree is nested; flatten it so every department is offered — and carry the
-  // ancestors as a hint.
+  // Every department of the company, each carrying its ancestors as a second line.
   //
   // Indentation alone said where a department sat only while you could see its
   // neighbours, which a search box immediately takes away: filter to "support" and
-  // two identically-named entries appear with nothing to tell them apart. The path
-  // is searchable too, so "facilities support" finds the right one directly.
+  // two entries appear with nothing to tell them apart. The path is searchable too,
+  // so "facilities support" finds the right one directly. (It also used to recurse
+  // into a `children` field the flat payload has never had, so nothing was carried
+  // at all — the nesting now comes from `path`.)
   //
   // Note the list is already one company's — `GET /departments` is scoped to the
   // active company — so this is about siblings in a tree, not about tenants.
-  const flatten = (
-    nodes: { id: string; name: string; children?: unknown[] }[],
-    depth = 0,
-    trail: string[] = [],
-  ): { value: string; label: string; hint?: string }[] =>
-    nodes.flatMap((node) => [
-      {
-        value: node.id,
-        label: `${"— ".repeat(depth)}${node.name}`,
-        hint: trail.length > 0 ? trail.join(" › ") : undefined,
-      },
-      ...flatten(
-        (node.children ?? []) as { id: string; name: string; children?: unknown[] }[],
-        depth + 1,
-        [...trail, node.name],
-      ),
-    ]);
+  // Which company a membership is in, and where in that company's tree. The list
+  // above is the active company's, so anything not already held is in that one.
+  const activeCompany = session.companies.find((c) => c.id === session.companyId)?.name ?? "";
+  const whereOf = (departmentId: string): string => {
+    const held = current.find((d) => d.departmentId === departmentId);
+    const node = (all.data ?? []).find((d) => d.id === departmentId);
+    const trail = held
+      ? ancestorTrail(held.path, held.name)
+      : node
+        ? ancestorTrail(node.path, node.name)
+        : "";
+    return [held?.companyName ?? activeCompany, trail].filter((part) => part !== "").join(" · ");
+  };
 
   return (
     <div className="flex max-w-2xl flex-col gap-2">
@@ -1248,7 +1249,9 @@ function DepartmentAssigner({
         <MultiSelect
           values={chosen.map((m) => m.departmentId)}
           onChange={setChosenIds}
-          options={flatten(all.data ?? [])}
+          options={departmentOptions(
+            (all.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+          )}
           placeholder="Not in any department"
         />
       </label>
@@ -1264,6 +1267,7 @@ function DepartmentAssigner({
                 current.find((d) => d.departmentId === membership.departmentId)?.name ??
                 nameOf(all.data ?? [], membership.departmentId)
               }
+              where={whereOf(membership.departmentId)}
               onEdit={(patch) => edit(membership.departmentId, patch)}
             />
           ))}

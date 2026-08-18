@@ -9,8 +9,10 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Alert, Field, Select, Spinner } from "@/components/ui/form.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchUserDepartments } from "@/services/departments.js";
 import { fetchSchedule, requestSwap } from "@/services/shifts.js";
@@ -24,7 +26,12 @@ export function ShiftChangeRequestPage() {
     queryKey: ["users", "departments", me],
     queryFn: () => fetchUserDepartments(me),
   });
-  const departments = myDepartments.data ?? [];
+  // A schedule belongs to the active company, so only this company's memberships
+  // are candidates — the others cannot be scheduled against from here.
+  const departments = (myDepartments.data ?? []).filter((d) => d.companyId === session.companyId);
+  const deptOptions = departmentOptions(
+    departments.map((d) => ({ value: d.departmentId, name: d.name, path: d.path })),
+  );
 
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const effectiveDept = departmentId ?? departments[0]?.departmentId ?? null;
@@ -124,26 +131,25 @@ export function ShiftChangeRequestPage() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1">
               <Field label="Department">
-                {(props) => (
-                  <Select
-                    {...props}
-                    value={effectiveDept ?? ""}
-                    onChange={(e) => {
-                      setDepartmentId(e.target.value || null);
-                      setRequesterEntryId("");
-                      setCounterpartEntryId("");
-                    }}
-                  >
-                    {departments.length === 0 ? (
-                      <option value="">You are in no department</option>
-                    ) : null}
-                    {departments.map((d) => (
-                      <option key={d.departmentId} value={d.departmentId}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
+                {() =>
+                  departments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      You are in no department at this company.
+                    </p>
+                  ) : (
+                    <SearchableSelect
+                      ariaLabel="Department"
+                      value={effectiveDept ?? ""}
+                      onChange={(value) => {
+                        setDepartmentId(value || null);
+                        setRequesterEntryId("");
+                        setCounterpartEntryId("");
+                      }}
+                      options={deptOptions}
+                      placeholder="Pick a department"
+                    />
+                  )
+                }
               </Field>
             </div>
             <div className="flex items-center gap-1">

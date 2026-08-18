@@ -16,9 +16,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchUserDepartments } from "@/services/departments.js";
 import { fetchLocations } from "@/services/locations.js";
@@ -184,7 +186,14 @@ function Editor({
     queryFn: () => fetchUserDepartments(me!.id),
     enabled: Boolean(me?.id),
   });
-  const myDepartments = myDepartmentsQuery.data ?? [];
+  // This company's only: an entry is filed against the active company, so a
+  // membership at another one is not a candidate — it would be rejected on save.
+  const myDepartments = (myDepartmentsQuery.data ?? []).filter(
+    (d) => d.companyId === session?.companyId,
+  );
+  const departmentChoices = departmentOptions(
+    myDepartments.map((d) => ({ value: d.departmentId, name: d.name, path: d.path })),
+  );
 
   // Scoped by the API to the sites this person's groups reach.
   const locations = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
@@ -314,24 +323,20 @@ function Editor({
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">Department</span>
               {myDepartments.length > 1 ? (
-                <select
+                <SearchableSelect
+                  ariaLabel="Department"
                   value={form.departmentId}
-                  onChange={(e) => {
-                    set("departmentId", e.target.value);
+                  onChange={(value) => {
+                    set("departmentId", value);
                     // Categories and tags belong to a department, so changing it
                     // invalidates both — clearing beats silently keeping a label
                     // the new department does not have.
                     set("categoryId", "");
                     setTagIds([]);
                   }}
-                  className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
-                >
-                  {myDepartments.map((d) => (
-                    <option key={d.departmentId} value={d.departmentId}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
+                  options={departmentChoices}
+                  placeholder="Pick a department"
+                />
               ) : (
                 <p className="flex h-10 items-center rounded-xl border border-border bg-muted px-3 text-sm text-muted-foreground">
                   {myDepartments[0]?.name ?? "You are not in a department yet"}

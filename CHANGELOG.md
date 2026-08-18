@@ -4,6 +4,20 @@ All notable changes to Reportly are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Department pickers said which department, never which company.** A name is
+  unique within a company but not across them, so anybody belonging to a
+  "Maintenance" at two companies was offered the same word twice with nothing to
+  choose by — and picking the wrong one failed on save. Forms that create
+  something now offer only the active company's departments, every department
+  shows its parents on a second line, and the one list that spans companies (a
+  person's own Departments tab) names the company on each membership. The lists
+  are searchable, and `path` now travels with departments from the API instead of
+  being re-derived — twice, wrongly — in the client.
+
 ## [0.4.0] — 2026-08-13
 
 First public release.

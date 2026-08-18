@@ -93,6 +93,30 @@ spec at `/api/v1/docs`. Hand-maintained API docs rot; generated ones cannot.
 One gotcha: a route parameter that should 404 rather than 400 must be
 `z.string()` and checked in the handler, or the schema rejects it first.
 
+### Why do departments carry a `path` and a `companyName`?
+
+Because a picker rendering `d.name` is ambiguous, and it is ambiguous in a way the
+server is in a much better position to resolve than every caller is.
+
+`GET /departments` answers flat and the tree lives in `parentId`, so any client
+that wants to show where a department sits has to assemble the tree itself. Two
+did, badly: both recursed into a `children` field the payload has never had, so
+they indented nothing while looking like they handled nesting. `path`
+(`Engineering › Platform › Backend`) is built once in the service — the same
+cycle-guarded walk the spreadsheet export uses — and every consumer gets it right.
+
+`companyName` on `GET /users/:id/departments` answers a different problem. That
+route deliberately returns memberships across **every** company, and
+`departments_company_name_unique` is on `(company_id, name)` — unique within a
+company, not across. So somebody in a "Maintenance" at two companies got the same
+word twice with nothing to choose by. The company is the only thing that separates
+them, so it travels with the row.
+
+Note which fix applies where. Only lists that genuinely span companies show the
+company; a form creating something company-scoped filters to the active company
+instead, because a department it cannot post to is not a choice — the API rejects
+it, and it used to sit in the dropdown looking exactly like the one that works.
+
 ### How do I change the database?
 
 Edit `core/db/schema.ts` — one file, because drizzle-kit loads it outside the TS

@@ -26,8 +26,10 @@ import { useState } from "react";
 
 import { usePermission } from "@/components/can.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Select, Spinner } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchDepartments, fetchUserDepartments } from "@/services/departments.js";
 import {
@@ -38,19 +40,6 @@ import {
   unlockSchedule,
 } from "@/services/shifts.js";
 import { ScheduleGridView, type ScheduleView } from "@/routes/shifts/schedule-grid.js";
-
-function flattenDepartments(
-  nodes: { id: string; name: string; children?: unknown[] }[],
-  depth = 0,
-): { id: string; label: string }[] {
-  return nodes.flatMap((node) => [
-    { id: node.id, label: `${"— ".repeat(depth)}${node.name}` },
-    ...flattenDepartments(
-      (node.children ?? []) as { id: string; name: string; children?: unknown[] }[],
-      depth + 1,
-    ),
-  ]);
-}
 
 export function SchedulePage() {
   const { data: session } = useSuspenseQuery(sessionQuery);
@@ -75,7 +64,12 @@ export function SchedulePage() {
   const mine = myDepartments.data ?? [];
   const defaultDept = !canManage && mine.length === 1 ? mine[0]!.departmentId : null;
   const effectiveDept = touched ? departmentId : (departmentId ?? defaultDept);
-  const options = flattenDepartments(departments.data ?? []);
+  // `GET /departments` answers flat — the nesting lives in `path`, which the
+  // options carry as each entry's second line. (This used to recurse into a
+  // `children` field the payload has never had, so it indented nothing.)
+  const options = departmentOptions(
+    (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+  );
 
   const grid = useQuery({
     queryKey: ["schedule", effectiveDept, year, month],
@@ -139,22 +133,18 @@ export function SchedulePage() {
         description="Who works which shift, by department and month. Build a month, publish it to lock the plan, then carry it forward."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              aria-label="Department"
-              value={effectiveDept ?? ""}
-              onChange={(e) => {
-                setTouched(true);
-                setDepartmentId(e.target.value || null);
-              }}
-              className="w-48"
-            >
-              <option value="">Choose a department…</option>
-              {options.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.label}
-                </option>
-              ))}
-            </Select>
+            <div className="w-48">
+              <SearchableSelect
+                ariaLabel="Department"
+                value={effectiveDept ?? ""}
+                onChange={(value) => {
+                  setTouched(true);
+                  setDepartmentId(value || null);
+                }}
+                options={options}
+                placeholder="Choose a department…"
+              />
+            </div>
             <div className="flex items-center gap-1 rounded-lg border border-border px-1">
               <button
                 type="button"

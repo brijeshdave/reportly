@@ -41,7 +41,8 @@ which is the point — the plan stays as a record of what was intended.
 
 You need `shifts:manage` (the **Shifts admin** role).
 
-1. Open **Schedule** and pick the department and month.
+1. Open **Schedule** and pick the department and month. The department list is
+   searchable and shows each department's parents underneath its name.
 2. Fill cells. You can drag across several days to set them in one go, and fill
    a whole weekday down the column — most rosters are a repeating pattern with
    exceptions, so set the pattern and then fix the exceptions.

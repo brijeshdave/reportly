@@ -155,6 +155,16 @@ a leaf.
 If a machine is missing entirely, it is either retired or at a site you do not
 have access to. Assets are scoped by location.
 
+### The department list shows the same name twice
+
+You are in a department of that name at more than one company. Names are unique
+within a company but not across them, so "Maintenance" at two companies is two
+different departments. Each entry names its company on the line underneath, and
+nested departments show their parents there too.
+
+Forms that create something offer only the departments of the company picked in
+the top bar. If the one you want is missing, switch company there first.
+
 ### Why do I see fewer entries than a colleague?
 
 Visibility follows the reporting line and the sites you are placed at. You see

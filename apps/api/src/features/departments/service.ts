@@ -26,6 +26,7 @@ import {
   companyLocationIds,
   companyMemberIds,
   deleteDepartmentRow,
+  departmentAncestry,
   departmentsForUser as departmentsForUserRows,
   downlineOf as downlineRows,
   existingUserIds,
@@ -39,6 +40,7 @@ import {
   setMembers as setMemberRows,
   updateDepartmentFields,
   upsertDepartmentTree,
+  type DepartmentAncestryRow,
   type DepartmentMemberRow,
   type DepartmentNodeRow,
   type DepartmentRow,
@@ -70,8 +72,8 @@ function serialize(row: DepartmentRow): Department {
   };
 }
 
-function serializeNode(row: DepartmentNodeRow): DepartmentNode {
-  return { ...serialize(row), memberCount: row.memberCount, hodCount: row.hodCount };
+function serializeNode(row: DepartmentNodeRow, path: string): DepartmentNode {
+  return { ...serialize(row), memberCount: row.memberCount, hodCount: row.hodCount, path };
 }
 
 function serializeMember(row: DepartmentMemberRow): DepartmentMember {
@@ -89,11 +91,13 @@ function serializeMember(row: DepartmentMemberRow): DepartmentMember {
   };
 }
 
-function serializeUserDepartment(row: UserDepartmentRow): UserDepartment {
+function serializeUserDepartment(row: UserDepartmentRow, path: string): UserDepartment {
   return {
     departmentId: row.departmentId,
     companyId: row.companyId,
+    companyName: row.companyName,
     name: row.name,
+    path,
     rank: toRank(row.rank),
     reportsToId: row.reportsToId,
     reportsToName: row.reportsToName,
@@ -114,20 +118,21 @@ async function requireDepartment(id: string, companyId: string): Promise<Departm
   return row;
 }
 
-export async function listDepartments(companyId: string): Promise<DepartmentNode[]> {
-  return (await listRows(companyId)).map(serializeNode);
-}
-
-/* ------------------------------ Import / export ---------------------------- */
-
-/** Every department's full path from the root — cycle-guarded, since parentId is editable. */
-function pathsByDepartment(rows: DepartmentNodeRow[]): Map<string, string[]> {
+/**
+ * Every department's full path from the root — cycle-guarded, since parentId is
+ * editable and set-null on delete, so a loop is reachable by mistake. A cycle stops
+ * the walk and the department keeps whatever path was resolved: wrong but visible,
+ * rather than hanging the request.
+ */
+function pathsByDepartment(
+  rows: { id: string; parentId: string | null; name: string }[],
+): Map<string, string[]> {
   const byId = new Map(rows.map((r) => [r.id, r]));
   const out = new Map<string, string[]>();
   for (const row of rows) {
     const names: string[] = [];
     const seen = new Set<string>();
-    let cur: DepartmentNodeRow | undefined = row;
+    let cur: { id: string; parentId: string | null; name: string } | undefined = row;
     while (cur && !seen.has(cur.id)) {
       seen.add(cur.id);
       names.unshift(cur.name);
@@ -138,13 +143,26 @@ function pathsByDepartment(rows: DepartmentNodeRow[]): Map<string, string[]> {
   return out;
 }
 
+/** A resolved path, falling back to the bare name if the id is somehow unknown. */
+function pathOf(paths: Map<string, string[]>, id: string, name: string): string {
+  return (paths.get(id) ?? [name]).join(DEPARTMENT_PATH_SEPARATOR);
+}
+
+export async function listDepartments(companyId: string): Promise<DepartmentNode[]> {
+  const rows = await listRows(companyId);
+  const paths = pathsByDepartment(rows);
+  return rows.map((row) => serializeNode(row, pathOf(paths, row.id, row.name)));
+}
+
+/* ------------------------------ Import / export ---------------------------- */
+
 /** The flattened tree as export rows — one per department, sorted by path. */
 export async function exportDepartments(companyId: string): Promise<DepartmentExportRow[]> {
   const rows = await listRows(companyId);
   const paths = pathsByDepartment(rows);
   return rows
     .map((r) => ({
-      path: (paths.get(r.id) ?? [r.name]).join(DEPARTMENT_PATH_SEPARATOR),
+      path: pathOf(paths, r.id, r.name),
       status: r.status === "inactive" ? "inactive" : "active",
     }))
     .sort((a, b) => a.path.localeCompare(b.path));
@@ -511,7 +529,16 @@ export async function downline(userId: string): Promise<DownlineMember[]> {
   }));
 }
 
-/** The departments a user belongs to, across every company. */
+/**
+ * The departments a user belongs to, across every company — each with the company
+ * it is in and its path within that company's tree. Somebody in a "Maintenance" at
+ * two companies gets two entries that look identical without those, and a caller
+ * cannot tell them apart to save its life.
+ */
 export async function departmentsForUser(userId: string): Promise<UserDepartment[]> {
-  return (await departmentsForUserRows(userId)).map(serializeUserDepartment);
+  const rows = await departmentsForUserRows(userId);
+  const companyIds = [...new Set(rows.map((row) => row.companyId))];
+  const ancestry: DepartmentAncestryRow[] = await departmentAncestry(companyIds);
+  const paths = pathsByDepartment(ancestry);
+  return rows.map((row) => serializeUserDepartment(row, pathOf(paths, row.departmentId, row.name)));
 }

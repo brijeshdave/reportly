@@ -29,6 +29,12 @@ export type Department = z.infer<typeof departmentSchema>;
 export const departmentNodeSchema = departmentSchema.extend({
   memberCount: z.number().int().nonnegative(),
   hodCount: z.number().int().nonnegative(),
+  /**
+   * The full path from the root, e.g. `Engineering › Backend` — a root department is
+   * just its own name. A picker showing bare names says nothing about where in the
+   * tree a department sits; the tree already knows, so it is carried here.
+   */
+  path: z.string(),
 });
 
 export type DepartmentNode = z.infer<typeof departmentNodeSchema>;
@@ -104,7 +110,15 @@ export type SetDepartmentMembers = z.infer<typeof setDepartmentMembersSchema>;
 export const userDepartmentSchema = z.object({
   departmentId: uuidSchema,
   companyId: uuidSchema,
+  /**
+   * The company this membership is in. A person may be in a "Maintenance" at two
+   * companies — names are unique per company, never across them — so anything
+   * listing memberships from more than one company must say which is which.
+   */
+  companyName: nameSchema,
   name: nameSchema,
+  /** The full path from the root within that company, e.g. `Engineering › Backend`. */
+  path: z.string(),
   rank: departmentRankSchema,
   reportsToId: z.string().nullable(),
   reportsToName: z.string().nullable(),

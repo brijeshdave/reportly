@@ -301,6 +301,32 @@ the organisation, not who may see what.
 sub-departments in it, so a whole branch of the org chart can never vanish by
 accident.
 
+### How departments are shown when you pick one
+
+Anywhere you choose a department — filing an entry, creating a routine, asking for
+a shift change, filtering the journal — the list shows the department's name with a
+smaller line under it saying where that department sits:
+
+| The second line says   | When you see it                                                        |
+| ---------------------- | ---------------------------------------------------------------------- |
+| Its parent departments | The department is nested, e.g. `Engineering › Platform` under Backend. |
+| The company            | The list covers more than one company (only your own profile does).    |
+
+Two things follow from names being unique **per company**:
+
+- Inside one company a name can never repeat, so a department is always
+  identifiable by name alone; the parents are there to save you opening the tree.
+- Across companies it easily repeats. If you work for two companies you may be in a
+  "Maintenance" at each.
+
+Forms that create something — an entry, a routine, a shift change — offer only the
+departments of the company picked in the top bar, because that is the company the
+new thing belongs to. If a department you expect is missing, switch company in the
+top bar. **Users → _the person_ → Departments** is the one place that lists
+memberships across every company, and there each one names its company.
+
+These lists are searchable: type any part of the name, a parent, or the company.
+
 ### Set the reporting line
 
 Open a department and use **Members** (`departments:assign`). Tick who is in it, and

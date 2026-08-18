@@ -39,13 +39,23 @@ async function superadmin(): Promise<string> {
   return cookieFrom(res);
 }
 
-function inject(method: string, url: string, cookie: string, payload?: unknown) {
+function injectAs(
+  companyId: string,
+  method: string,
+  url: string,
+  cookie: string,
+  payload?: unknown,
+) {
   return app.inject({
     method: method as "GET",
     url: `${API_PREFIX}${url}`,
-    headers: { cookie, "x-company-id": DEMO_COMPANY_ID },
+    headers: { cookie, "x-company-id": companyId },
     payload: payload as object,
   });
+}
+
+function inject(method: string, url: string, cookie: string, payload?: unknown) {
+  return injectAs(DEMO_COMPANY_ID, method, url, cookie, payload);
 }
 
 async function createDept(cookie: string, name: string, parentId?: string): Promise<string> {
@@ -134,6 +144,71 @@ describe("departments", () => {
     expect(mine).toEqual([
       expect.objectContaining({ departmentId: dept, name: "Finance", rank: "hod" }),
     ]);
+  });
+
+  // A picker showing bare names cannot say where in the tree one sits, so the path
+  // is part of the payload rather than something every caller re-derives.
+  it("lists each department with its full path from the root", async () => {
+    const cookie = await superadmin();
+    const root = await createDept(cookie, "Field Ops");
+    const middle = await createDept(cookie, "Rigs", root);
+    const leaf = await createDept(cookie, "Night crew", middle);
+
+    const byId = new Map(
+      (await inject("GET", "/departments", cookie))
+        .json()
+        .map((d: { id: string; path: string }) => [d.id, d.path]),
+    );
+    expect(byId.get(root)).toBe("Field Ops");
+    expect(byId.get(middle)).toBe("Field Ops › Rigs");
+    expect(byId.get(leaf)).toBe("Field Ops › Rigs › Night crew");
+  });
+
+  // The reported bug: names are unique per company but not across them, so a person
+  // in a "Maintenance" at two companies saw the same word twice with nothing to
+  // choose by. Each membership now names its company and its place in the tree.
+  it("names the company and path on each of a user's memberships", async () => {
+    const cookie = await superadmin();
+    const other = (await inject("POST", "/companies", cookie, { name: "Globex" })).json()
+      .id as string;
+
+    const here = await createDept(cookie, "Maintenance");
+    const thereParent = (
+      await injectAs(other, "POST", "/departments", cookie, { name: "Plant B" })
+    ).json().id as string;
+    const there = (
+      await injectAs(other, "POST", "/departments", cookie, {
+        name: "Maintenance",
+        parentId: thereParent,
+      })
+    ).json().id as string;
+
+    for (const [companyId, dept] of [
+      [DEMO_COMPANY_ID, here],
+      [other, there],
+    ] as const) {
+      await injectAs(companyId, "PUT", `/departments/${dept}/members`, cookie, {
+        members: [{ userId: SUPERADMIN_USER_ID, rank: "member" }],
+      });
+    }
+
+    const mine: { departmentId: string; name: string; companyName: string; path: string }[] = (
+      await inject("GET", `/users/${SUPERADMIN_USER_ID}/departments`, cookie)
+    ).json();
+
+    // Two entries, one word: without the company there is nothing to choose by.
+    const both = mine.filter((m) => m.departmentId === here || m.departmentId === there);
+    expect(both.map((m) => m.name)).toEqual(["Maintenance", "Maintenance"]);
+    expect(new Set(both.map((m) => `${m.name}|${m.companyName}`)).size).toBe(2);
+
+    expect(mine.find((m) => m.departmentId === here)).toMatchObject({
+      companyName: "Acme Corp",
+      path: "Maintenance",
+    });
+    expect(mine.find((m) => m.departmentId === there)).toMatchObject({
+      companyName: "Globex",
+      path: "Plant B › Maintenance",
+    });
   });
 
   it("rejects a member that names an unknown user", async () => {

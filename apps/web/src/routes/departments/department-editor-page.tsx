@@ -150,9 +150,11 @@ function Editor({
                 className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
               >
                 <option value="">None (top-level)</option>
+                {/* The full path: a native option has no second line to put the
+                    ancestors on, so they go in the label itself. */}
                 {parentOptions.map((node) => (
                   <option key={node.id} value={node.id}>
-                    {node.name}
+                    {node.path}
                   </option>
                 ))}
               </select>

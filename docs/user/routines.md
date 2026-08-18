@@ -56,7 +56,11 @@ A routine carries:
 
 - **Title and description** — what to do, specifically enough that someone who
   has not done it before can
-- **Department** — who it belongs to
+- **Department** — who it belongs to, and where its points are credited on the
+  leaderboard. You are offered your own departments in the company picked in the
+  top bar; each is listed with its parent departments underneath, and you can
+  type to search. (If you work for two companies, the other one's departments are
+  not offered here — switch company in the top bar first.)
 - **Schedule** — how often it comes round
 - **Grace days** — how long after it is due it can still be logged
 - **Assignees** — who owes it

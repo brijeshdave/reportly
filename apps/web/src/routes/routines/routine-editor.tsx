@@ -13,9 +13,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner } from "@/components/ui/form.js";
 import { MultiSelect } from "@/components/ui/multi-select.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchDownline, fetchUserDepartments } from "@/services/departments.js";
 import { createRoutine, fetchRoutine, updateRoutine } from "@/services/routines.js";
@@ -52,7 +54,13 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
     queryKey: ["users", "departments", session.user.id],
     queryFn: () => fetchUserDepartments(session.user.id),
   });
-  const departments = myDepartments.data ?? [];
+  // Only this company's. A routine is created against the active company, so a
+  // department from another one is not a choice — the API rejects it, and it used
+  // to sit in the list looking exactly like the one that works.
+  const departments = (myDepartments.data ?? []).filter((d) => d.companyId === session.companyId);
+  const deptOptions = departmentOptions(
+    departments.map((d) => ({ value: d.departmentId, name: d.name, path: d.path })),
+  );
 
   const [departmentId, setDepartmentId] = useState(routine?.departmentId ?? "");
   const effectiveDept = departmentId || departments[0]?.departmentId || "";
@@ -154,23 +162,21 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
           </Field>
 
           <Field label="Department" hint="its points are credited here on the leaderboard">
-            {(props) => (
-              <Select
-                {...props}
-                value={effectiveDept}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                required
-              >
-                {departments.length === 0 ? (
-                  <option value="">You are in no department</option>
-                ) : null}
-                {departments.map((d) => (
-                  <option key={d.departmentId} value={d.departmentId}>
-                    {d.name}
-                  </option>
-                ))}
-              </Select>
-            )}
+            {() =>
+              departments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  You are in no department at this company.
+                </p>
+              ) : (
+                <SearchableSelect
+                  ariaLabel="Department"
+                  value={effectiveDept}
+                  onChange={setDepartmentId}
+                  options={deptOptions}
+                  placeholder="Pick a department"
+                />
+              )
+            }
           </Field>
 
           <div className="flex flex-wrap gap-4">

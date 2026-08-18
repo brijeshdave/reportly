@@ -25,25 +25,14 @@ import { useState, type ReactNode } from "react";
 import { Avatar } from "@/components/avatar.js";
 import { usePermission } from "@/components/can.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Select, Spinner } from "@/components/ui/form.js";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { cn } from "@/lib/cn.js";
 import { fetchDepartments, fetchUserDepartments } from "@/services/departments.js";
 import { fetchLeaderboard } from "@/services/reports.js";
-
-function flattenDepartments(
-  nodes: { id: string; name: string; children?: unknown[] }[],
-  depth = 0,
-): { id: string; label: string }[] {
-  return nodes.flatMap((node) => [
-    { id: node.id, label: `${"— ".repeat(depth)}${node.name}` },
-    ...flattenDepartments(
-      (node.children ?? []) as { id: string; name: string; children?: unknown[] }[],
-      depth + 1,
-    ),
-  ]);
-}
 
 export function LeaderboardPage() {
   const { data: session } = useSuspenseQuery(sessionQuery);
@@ -91,7 +80,11 @@ export function LeaderboardPage() {
     enabled: !mustChoose,
   });
 
-  const options = flattenDepartments(departments.data ?? []);
+  // Flat from the API; each option carries its ancestors as a second line so a
+  // department deep in the tree still says where it sits.
+  const options = departmentOptions(
+    (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+  );
   const entries = board.data?.entries ?? [];
   const podium = entries.filter((e) => e.rank <= 3);
   const rest = entries.filter((e) => e.rank > 3);
@@ -103,22 +96,18 @@ export function LeaderboardPage() {
         description="Who is out in front, by points earned. Pick a department, a timeline, and how many places to show."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              aria-label="Department"
-              value={effectiveDept ?? ""}
-              onChange={(e) => {
-                setTouched(true);
-                setDepartmentId(e.target.value || null);
-              }}
-              className="w-48"
-            >
-              <option value="">{isManagement ? "Choose a department…" : "All departments"}</option>
-              {options.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.label}
-                </option>
-              ))}
-            </Select>
+            <div className="w-48">
+              <SearchableSelect
+                ariaLabel="Department"
+                value={effectiveDept ?? ""}
+                onChange={(value) => {
+                  setTouched(true);
+                  setDepartmentId(value || null);
+                }}
+                options={options}
+                placeholder={isManagement ? "Choose a department…" : "All departments"}
+              />
+            </div>
             <Select
               aria-label="Financial year"
               value={String(fyStart)}

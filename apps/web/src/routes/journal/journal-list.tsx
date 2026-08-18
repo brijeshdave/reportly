@@ -17,6 +17,7 @@ import { KindBadge, StateBadge, StatusBadge } from "@/components/report-badges.j
 import { TagList } from "@/components/tag-chip.js";
 import { Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { fetchCategories, fetchSeverities, fetchStatuses } from "@/services/journal-config.js";
 import { fetchTags } from "@/services/vocabulary.js";
 import { fetchDepartments, fetchOrgPeople } from "@/services/departments.js";
@@ -204,7 +205,11 @@ export function JournalListPage({
         field: "departmentId",
         label: "Department",
         kind: "combobox",
-        options: idOptions(departments.data),
+        // With its ancestors underneath: the filter list is searchable, and a name
+        // on its own does not say where in the tree it sits.
+        options: departmentOptions(
+          (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+        ),
       },
       {
         field: "locationId",

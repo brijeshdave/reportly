@@ -7,6 +7,7 @@ import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
 import {
+  companies,
   departmentUserLocations,
   departmentUsers,
   departments,
@@ -45,11 +46,20 @@ export interface DepartmentMemberRow {
 export interface UserDepartmentRow {
   departmentId: string;
   companyId: string;
+  companyName: string;
   name: string;
   rank: string;
   reportsToId: string | null;
   reportsToName: string | null;
   locationIds: string[];
+}
+
+/** Just enough of a department to resolve its ancestors into a path. */
+export interface DepartmentAncestryRow {
+  id: string;
+  companyId: string;
+  parentId: string | null;
+  name: string;
 }
 
 export interface DownlineRow {
@@ -88,6 +98,23 @@ export async function listDepartments(companyId: string): Promise<DepartmentNode
     .where(eq(departments.companyId, companyId))
     .groupBy(departments.id)
     .orderBy(departments.name);
+}
+
+/**
+ * The bare tree of several companies at once — enough to resolve any of their
+ * departments into a full path without one query per company.
+ */
+export async function departmentAncestry(companyIds: string[]): Promise<DepartmentAncestryRow[]> {
+  if (companyIds.length === 0) return [];
+  return db
+    .select({
+      id: departments.id,
+      companyId: departments.companyId,
+      parentId: departments.parentId,
+      name: departments.name,
+    })
+    .from(departments)
+    .where(inArray(departments.companyId, companyIds));
 }
 
 export async function getDepartment(id: string, companyId: string): Promise<DepartmentRow | null> {
@@ -401,6 +428,7 @@ export async function departmentsForUser(userId: string): Promise<UserDepartment
     .select({
       departmentId: departments.id,
       companyId: departments.companyId,
+      companyName: companies.name,
       name: departments.name,
       rank: departmentUsers.rank,
       reportsToId: departmentUsers.reportsToId,
@@ -408,6 +436,7 @@ export async function departmentsForUser(userId: string): Promise<UserDepartment
     })
     .from(departmentUsers)
     .innerJoin(departments, eq(departments.id, departmentUsers.departmentId))
+    .innerJoin(companies, eq(companies.id, departments.companyId))
     .leftJoin(managers, eq(managers.id, departmentUsers.reportsToId))
     .where(eq(departmentUsers.userId, userId))
     .orderBy(departments.name);

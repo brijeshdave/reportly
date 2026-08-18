@@ -66,9 +66,11 @@ export function ScopePicker({
     .filter((a) => a.status === "active")
     .map((a) => ({ value: a.id, label: a.path }));
 
-  const departmentOptions: MultiSelectOption[] = (departments.data ?? []).map((d) => ({
+  // The full path, for the same reason as the assets above. This control has no
+  // second line to put the ancestors on, so they go in the label itself.
+  const departmentChoices: MultiSelectOption[] = (departments.data ?? []).map((d) => ({
     value: d.id,
-    label: d.name,
+    label: d.path,
   }));
 
   const peopleOptions: MultiSelectOption[] = (people.data ?? []).map((p) => ({
@@ -114,9 +116,9 @@ export function ScopePicker({
           <span className="font-medium">Departments</span>
           <MultiSelect
             label="Departments this report is about"
-            options={departmentOptions}
+            options={departmentChoices}
             selected={idsOf("department")}
-            onChange={(ids) => setKind("department", ids, departmentOptions)}
+            onChange={(ids) => setKind("department", ids, departmentChoices)}
             emptyLabel="None"
             disabled={disabled}
           />
