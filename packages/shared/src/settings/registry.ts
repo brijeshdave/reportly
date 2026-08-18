@@ -28,6 +28,14 @@ export interface SettingDef<S extends z.ZodTypeAny = z.ZodTypeAny> {
    */
   companyOverridable?: boolean;
   description: string;
+  /**
+   * Suggested keys for a `record` field, by field name.
+   *
+   * Declared beside the schema rather than worked out by the form, because only
+   * the setting knows what belongs in it — a record keyed by a plain string tells
+   * the form nothing, and the form guessing would be a second source of truth.
+   */
+  keyOptions?: Record<string, readonly string[]>;
 }
 
 // --- auth ---
@@ -260,6 +268,30 @@ export const logSinksSchema = z.object({
   database: z.boolean().default(true),
 });
 
+/**
+ * The areas that tag their log lines with a `feature`, offered as suggestions
+ * when adding an override.
+ *
+ * Suggestions rather than a closed list: the override map is keyed by a plain
+ * string on purpose, so a feature added tomorrow can be turned up today without
+ * waiting for a release. But an operator faced with an empty box and the words
+ * "Feature name" has to already know the answer, which is a poor way to learn it.
+ *
+ * Keep this in step with the `feature:` values the API actually logs.
+ */
+export const LOG_FEATURES = [
+  "api",
+  "auth",
+  "backups",
+  "client",
+  "debug",
+  "email",
+  "maintenance",
+  "notifications",
+  "reminders",
+  "routine-award",
+] as const;
+
 export const logLevelsSchema = z.object({
   default: logLevelSchema.default("info"),
   /** Per-feature overrides, e.g. `{ "auth": "debug" }`. */
@@ -299,6 +331,7 @@ export const LOG_LEVEL_SETTINGS: SettingDef<typeof logLevelsSchema> = {
   schema: logLevelsSchema,
   userOverridable: false,
   description: "Default log level and per-feature overrides",
+  keyOptions: { features: LOG_FEATURES },
 };
 
 export const LOG_RETENTION: SettingDef<typeof logRetentionSchema> = {

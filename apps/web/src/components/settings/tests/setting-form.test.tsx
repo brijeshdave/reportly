@@ -60,6 +60,61 @@ describe("generated controls", () => {
   });
 });
 
+describe("a record of per-feature overrides", () => {
+  it("suggests the feature names instead of leaving the operator to guess", async () => {
+    // The map is keyed by a plain string, so the schema cannot say what belongs
+    // in it and the box used to sit there empty saying only "Feature name". The
+    // setting declares its known keys; the form offers them.
+    render(
+      <SettingForm
+        def={LOG_LEVEL_SETTINGS}
+        value={{ default: "info", features: {} }}
+        onSave={onSave}
+      />,
+    );
+
+    const input = screen.getByLabelText(/Add an override to Features/i);
+    const listId = input.getAttribute("list");
+    expect(listId).toBeTruthy();
+
+    const options = document.querySelectorAll(`#${listId} option`);
+    const names = [...options].map((o) => o.getAttribute("value"));
+    expect(names).toEqual(expect.arrayContaining(["auth", "email", "notifications"]));
+  });
+
+  it("still accepts a name that is not on the list", async () => {
+    // A datalist and not a select, deliberately: a feature added tomorrow must be
+    // turn-up-able today, without waiting for the list to catch up.
+    const user = userEvent.setup({ delay: null });
+    render(
+      <SettingForm
+        def={LOG_LEVEL_SETTINGS}
+        value={{ default: "info", features: {} }}
+        onSave={onSave}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/Add an override to Features/i), "something-new");
+    await user.click(screen.getByRole("button", { name: /add/i }));
+
+    expect(screen.getByText("something-new")).toBeInTheDocument();
+  });
+
+  it("stops suggesting a feature once it is already overridden", () => {
+    render(
+      <SettingForm
+        def={LOG_LEVEL_SETTINGS}
+        value={{ default: "info", features: { auth: "debug" } }}
+        onSave={onSave}
+      />,
+    );
+
+    // Listed as a row with its own level, and no longer offered as one to add.
+    expect(screen.getByRole("combobox", { name: /Features for auth/i })).toHaveValue("debug");
+    expect(screen.getByText(/^Known:/)).not.toHaveTextContent(/\bauth\b/);
+  });
+});
+
 describe("saving", () => {
   it("cannot save until something changes", async () => {
     const user = userEvent.setup({ delay: null });

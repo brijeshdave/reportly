@@ -4,7 +4,7 @@
 // hand-written form that can drift from the schema that validates the write.
 import { describeSettingSchema, type SettingDef, type SettingField } from "@reportly/shared";
 import { Plus, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { Alert, Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
 import { Button, Card } from "@/components/ui/primitives.js";
@@ -29,6 +29,10 @@ function RecordField({
 }) {
   const [newKey, setNewKey] = useState("");
   const options = field.options ?? [];
+  const suggestions = field.keyOptions ?? [];
+  // What is left to add — a name already overridden is not a suggestion.
+  const remaining = suggestions.filter((name) => !(name in value));
+  const listId = useId();
 
   const add = () => {
     const key = newKey.trim();
@@ -42,7 +46,10 @@ function RecordField({
       <span className="text-sm font-medium">{field.label}</span>
 
       {Object.entries(value).length === 0 ? (
-        <p className="text-xs text-muted-foreground">No overrides. The default applies to all.</p>
+        <p className="text-xs text-muted-foreground">
+          No overrides — every area logs at the default. Add one to turn a single area up or down
+          without changing the rest.
+        </p>
       ) : null}
 
       {Object.entries(value).map(([key, entry]) => (
@@ -81,19 +88,49 @@ function RecordField({
       ))}
 
       <div className="flex items-center gap-2">
-        <Input
-          value={newKey}
-          onChange={(event) => setNewKey(event.target.value)}
-          placeholder="Feature name"
-          aria-label={`Add an override to ${field.label}`}
-          disabled={disabled}
-          className="h-8"
-        />
-        <Button variant="secondary" size="sm" onClick={add} disabled={disabled || newKey === ""}>
+        {/* `min-w-0` is doing real work here: without it the input refuses to
+            shrink below its content, overflows the flex row, and rides over the
+            Add button as soon as you type. The rows above already carry it. */}
+        <div className="min-w-0 flex-1">
+          <Input
+            value={newKey}
+            onChange={(event) => setNewKey(event.target.value)}
+            placeholder={
+              suggestions.length > 0 ? `e.g. ${suggestions[1] ?? suggestions[0]}` : "Feature name"
+            }
+            aria-label={`Add an override to ${field.label}`}
+            disabled={disabled}
+            list={suggestions.length > 0 ? listId : undefined}
+            className="h-8 w-full"
+          />
+          {/* A datalist, not a select: the map takes any string on purpose, so a
+              feature the list has not heard of must stay typeable. This offers
+              the known ones without closing the door on the rest. */}
+          {suggestions.length > 0 ? (
+            <datalist id={listId}>
+              {suggestions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          ) : null}
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={add}
+          disabled={disabled || newKey === ""}
+          className="shrink-0"
+        >
           <Plus className="h-4 w-4" />
           Add
         </Button>
       </div>
+
+      {suggestions.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Known: {remaining.length > 0 ? remaining.join(", ") : "all already overridden"}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -240,7 +277,14 @@ export function SettingForm({
   onSave: (next: SettingValue) => Promise<unknown>;
   disabled?: boolean;
 }) {
-  const fields = describeSettingSchema(def.schema);
+  const fields = describeSettingSchema(def.schema).map((f) =>
+    // The schema cannot say what a record's keys should be — a plain string key
+    // accepts anything — so the setting declares its suggestions and they are
+    // attached here.
+    f.kind === "record" && def.keyOptions?.[f.key]
+      ? { ...f, keyOptions: def.keyOptions[f.key] }
+      : f,
+  );
   const [draft, setDraft] = useState<SettingValue>(value);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

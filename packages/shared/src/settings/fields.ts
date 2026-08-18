@@ -16,6 +16,14 @@ export interface SettingField {
   max?: number;
   /** Allowed values for `kind: "enum"`, and for a record's values. */
   options?: readonly string[];
+  /**
+   * Suggested KEYS for `kind: "record"` — the values go in `options`.
+   *
+   * Suggestions, not a closed list: a record keyed by a plain string accepts
+   * anything on purpose, and narrowing that in the form would take the freedom
+   * away. But a bare text box tells an operator nothing about what belongs in it.
+   */
+  keyOptions?: readonly string[];
   /** "expiresInSeconds" -> "Expires in seconds". */
   label: string;
 }
