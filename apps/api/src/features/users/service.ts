@@ -490,31 +490,47 @@ const keep = (m: DepartmentMemberRow) => ({
   locationIds: m.locationIds,
 });
 
+/**
+ * Set which departments somebody belongs to, and optionally their place in each.
+ *
+ * `rank` has always been settable here. `reportsToId` and `locationIds` are new
+ * and **optional**, and the distinction matters: omitted means "leave it alone",
+ * which is what lets this endpoint stay the bulk "put them in these departments"
+ * call without quietly flattening a reporting line somebody built department by
+ * department. Passing `null` for `reportsToId` is a real value — top of the line.
+ */
 export async function assignDepartments(
   id: string,
-  entries: { departmentId: string; rank: string }[],
+  entries: {
+    departmentId: string;
+    rank: string;
+    reportsToId?: string | null;
+    locationIds?: string[];
+  }[],
 ): Promise<void> {
   await requireUser(id);
-  const wanted = new Map(entries.map((e) => [e.departmentId, e.rank]));
+  const wanted = new Map(entries.map((e) => [e.departmentId, e]));
   const current = await departmentsForUser(id);
   const touched = new Set([...wanted.keys(), ...current.map((c) => c.departmentId)]);
 
   for (const departmentId of touched) {
     const members: DepartmentMemberRow[] = await getMembers(departmentId);
     const others = members.filter((m) => m.userId !== id);
-    const rank = wanted.get(departmentId);
+    const entry = wanted.get(departmentId);
     const existing = members.find((m) => m.userId === id);
 
-    const next = rank
+    const next = entry
       ? [
           ...others.map(keep),
-          // Keep who they reported to, and their sites, when only their presence
-          // or rank is being confirmed from this side.
+          // Each field falls back to what is already there, so sending only a
+          // rank still leaves the line and the sites exactly as the department's
+          // own Members tab left them.
           {
             userId: id,
-            rank,
-            reportsToId: existing?.reportsToId ?? null,
-            locationIds: existing?.locationIds ?? [],
+            rank: entry.rank,
+            reportsToId:
+              entry.reportsToId !== undefined ? entry.reportsToId : (existing?.reportsToId ?? null),
+            locationIds: entry.locationIds ?? existing?.locationIds ?? [],
           },
         ]
       : others.map(keep);

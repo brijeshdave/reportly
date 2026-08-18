@@ -11,7 +11,13 @@ import {
   formatDate,
   formatDateTime,
 } from "@reportly/shared";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { KeyRound, MonitorSmartphone, Network, ShieldOff, UsersRound } from "lucide-react";
 import { useState } from "react";
@@ -24,12 +30,19 @@ import { HistoryTab } from "@/components/history-tab.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { MultiSelect } from "@/components/multi-select.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { UnsavedChangesProvider, useUnsavedChanges } from "@/components/unsaved-changes.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
-import { fetchDepartments, fetchDownline, fetchUserDepartments } from "@/services/departments.js";
+import {
+  fetchDepartmentMembers,
+  fetchDepartments,
+  fetchDownline,
+  fetchUserDepartments,
+} from "@/services/departments.js";
 import { fetchCompanyLocations } from "@/services/locations.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { RolePermissionMatrix } from "@/routes/roles/role-permissions.js";
 import {
   fetchUser,
@@ -181,6 +194,8 @@ function ProfileTab({ user }: { user: User }) {
   const canUpdate = usePermission(PERMISSIONS.USERS_UPDATE);
   const queryClient = useQueryClient();
 
+  const [name, setName] = useState(user.name);
+  const [email, setEmail] = useState(user.email);
   const [username, setUsername] = useState(user.username);
   const [designationId, setDesignationId] = useState<string | null>(user.designationId ?? null);
   const [employeeId, setEmployeeId] = useState(user.employeeId ?? "");
@@ -193,6 +208,8 @@ function ProfileTab({ user }: { user: User }) {
   const save = useMutation({
     mutationFn: () =>
       updateUser(user.id, {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
         username: username.trim().toLowerCase(),
         designationId,
         employeeId: employeeId.trim() === "" ? null : employeeId.trim(),
@@ -207,16 +224,17 @@ function ProfileTab({ user }: { user: User }) {
     },
   });
 
+  // Name, email and username moved into the form beside it — repeating them here
+  // as facts invited the reasonable conclusion that they could not be changed.
   const rows: [string, string][] = [
-    ["Name", user.name],
-    ["Email", user.email],
-    ["Username", user.username],
     ["Status", user.status],
     ["Joined", formatDateTime(user.createdAt)],
     ["Last updated", formatDateTime(user.updatedAt)],
   ];
 
   const dirty =
+    name.trim() !== user.name ||
+    email.trim().toLowerCase() !== user.email ||
     username.trim().toLowerCase() !== user.username ||
     designationId !== (user.designationId ?? null) ||
     employeeId.trim() !== (user.employeeId ?? "") ||
@@ -269,6 +287,33 @@ function ProfileTab({ user }: { user: User }) {
         >
           {save.error ? <ErrorAlert error={save.error} /> : null}
           {save.isSuccess && !dirty ? <Alert tone="success">Saved.</Alert> : null}
+
+          <Field label="Name">
+            {(props) => (
+              <Input
+                {...props}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                disabled={!canUpdate || save.isPending}
+              />
+            )}
+          </Field>
+
+          {/* Changing this clears the address's verified mark — a proof is about
+              an address, not a person, so moving it puts it out of reach of the
+              code that proved it. The service already does that; the hint is here
+              so the consequence is visible before the change, not after. */}
+          <Field label="Email" hint="Changing this marks the new address unverified">
+            {(props) => (
+              <Input
+                {...props}
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                disabled={!canUpdate || save.isPending}
+              />
+            )}
+          </Field>
 
           <Field label="Username">
             {(props) => (
@@ -990,32 +1035,162 @@ function AccessTab({ userId }: { userId: string }) {
  * that the department's own Members tab set — editing from here never disturbs the
  * rest of that department.
  */
+/** A department's name, found anywhere in the tree. */
+function nameOf(nodes: { id: string; name: string; children?: unknown[] }[], id: string): string {
+  for (const node of nodes) {
+    if (node.id === id) return node.name;
+    const found = nameOf(
+      (node.children ?? []) as { id: string; name: string; children?: unknown[] }[],
+      id,
+    );
+    if (found) return found;
+  }
+  return "";
+}
+
+/**
+ * One membership: the rank, who they report to, and which sites it covers.
+ *
+ * These used to be reachable only from each department's own Members tab, which
+ * meant setting up one person across three departments was three screens. The
+ * candidates come from the department itself — the API refuses anyone else — so
+ * they are fetched per row rather than guessed at.
+ */
+function MembershipRow({
+  userId,
+  membership,
+  name,
+  onEdit,
+}: {
+  userId: string;
+  membership: {
+    departmentId: string;
+    rank: string;
+    reportsToId: string | null;
+    locationIds: string[];
+  };
+  name: string;
+  onEdit: (
+    patch: Partial<{ rank: string; reportsToId: string | null; locationIds: string[] }>,
+  ) => void;
+}) {
+  const members = useQuery({
+    queryKey: ["departments", membership.departmentId, "members"],
+    queryFn: () => fetchDepartmentMembers(membership.departmentId),
+  });
+  const { data: session } = useSuspenseQuery(sessionQuery);
+  const sites = useQuery({
+    queryKey: ["locations", "of-company", session.companyId],
+    queryFn: () => fetchCompanyLocations(session.companyId!),
+    enabled: Boolean(session.companyId),
+  });
+
+  // Never offer somebody themselves: a person cannot report to themselves, and the
+  // API refuses the edge anyway.
+  const candidates = (members.data ?? []).filter((m) => m.userId !== userId);
+
+  return (
+    <Card className="flex flex-wrap items-end gap-3 p-3">
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
+
+      <label className="flex flex-col gap-0.5 text-[11px]">
+        <span className="text-muted-foreground">Rank</span>
+        <select
+          value={membership.rank}
+          onChange={(event) => onEdit({ rank: event.target.value })}
+          aria-label={`Rank in ${name}`}
+          className="h-8 w-40 rounded-lg border border-border bg-card px-2 text-xs"
+        >
+          <option value="hod">Head of Department</option>
+          <option value="lead">Team leader</option>
+          <option value="member">Member</option>
+        </select>
+      </label>
+
+      <div className="flex w-44 flex-col gap-0.5 text-[11px]">
+        <span className="text-muted-foreground">Reports to</span>
+        <SearchableSelect
+          value={membership.reportsToId ?? ""}
+          onChange={(value) => onEdit({ reportsToId: value || null })}
+          options={candidates.map((c) => ({ value: c.userId, label: c.name }))}
+          placeholder="Nobody (top of the line)"
+          ariaLabel={`Reports to in ${name}`}
+        />
+      </div>
+
+      <div className="flex w-40 flex-col gap-0.5 text-[11px]">
+        <span className="text-muted-foreground">Sites</span>
+        <MultiSelect
+          values={membership.locationIds}
+          onChange={(locationIds) => onEdit({ locationIds })}
+          options={(sites.data ?? []).map((site) => ({ value: site.id, label: site.name }))}
+          placeholder="All sites"
+          ariaLabel={`Sites in ${name}`}
+        />
+      </div>
+    </Card>
+  );
+}
+
 function DepartmentAssigner({
   userId,
   current,
 }: {
   userId: string;
-  current: { departmentId: string; rank: string }[];
+  current: {
+    departmentId: string;
+    name: string;
+    rank: string;
+    reportsToId: string | null;
+    locationIds: string[];
+  }[];
 }) {
   const canAssign = usePermission(PERMISSIONS.DEPARTMENTS_ASSIGN);
   const queryClient = useQueryClient();
   const all = useQuery({ queryKey: ["departments"], queryFn: fetchDepartments });
 
-  const [draft, setDraft] = useState<string[] | null>(null);
-  const chosen = draft ?? current.map((d) => d.departmentId);
+  // The draft holds the whole membership, not just which departments — rank, who
+  // they report to and which sites, because those are the things somebody came to
+  // this page to set and previously had to go department by department for.
+  type Membership = {
+    departmentId: string;
+    rank: string;
+    reportsToId: string | null;
+    locationIds: string[];
+  };
+  const [draft, setDraft] = useState<Membership[] | null>(null);
+  const chosen: Membership[] =
+    draft ??
+    current.map((d) => ({
+      departmentId: d.departmentId,
+      rank: d.rank,
+      reportsToId: d.reportsToId,
+      locationIds: d.locationIds,
+    }));
   useUnsavedChanges("departments", draft !== null);
 
-  const rankOf = new Map(current.map((d) => [d.departmentId, d.rank]));
+  const setChosenIds = (ids: string[]) => {
+    const byId = new Map(chosen.map((m) => [m.departmentId, m]));
+    setDraft(
+      // A department kept keeps everything about the membership; a new one starts
+      // as an ordinary member with nobody above them and every site.
+      ids.map(
+        (departmentId) =>
+          byId.get(departmentId) ?? {
+            departmentId,
+            rank: "member",
+            reportsToId: null,
+            locationIds: [],
+          },
+      ),
+    );
+  };
+
+  const edit = (departmentId: string, patch: Partial<Membership>) =>
+    setDraft(chosen.map((m) => (m.departmentId === departmentId ? { ...m, ...patch } : m)));
 
   const save = useMutation({
-    mutationFn: () =>
-      saveUserDepartments(
-        userId,
-        chosen.map((departmentId) => ({
-          departmentId,
-          rank: rankOf.get(departmentId) ?? "member",
-        })),
-      ),
+    mutationFn: () => saveUserDepartments(userId, chosen),
     onSuccess: async () => {
       setDraft(null);
       await queryClient.invalidateQueries({ queryKey: ["users", "departments", userId] });
@@ -1025,16 +1200,31 @@ function DepartmentAssigner({
 
   if (!canAssign) return null;
 
-  // The tree is nested; flatten it so every department is offered.
+  // The tree is nested; flatten it so every department is offered — and carry the
+  // ancestors as a hint.
+  //
+  // Indentation alone said where a department sat only while you could see its
+  // neighbours, which a search box immediately takes away: filter to "support" and
+  // two identically-named entries appear with nothing to tell them apart. The path
+  // is searchable too, so "facilities support" finds the right one directly.
+  //
+  // Note the list is already one company's — `GET /departments` is scoped to the
+  // active company — so this is about siblings in a tree, not about tenants.
   const flatten = (
     nodes: { id: string; name: string; children?: unknown[] }[],
     depth = 0,
-  ): { value: string; label: string }[] =>
+    trail: string[] = [],
+  ): { value: string; label: string; hint?: string }[] =>
     nodes.flatMap((node) => [
-      { value: node.id, label: `${"— ".repeat(depth)}${node.name}` },
+      {
+        value: node.id,
+        label: `${"— ".repeat(depth)}${node.name}`,
+        hint: trail.length > 0 ? trail.join(" › ") : undefined,
+      },
       ...flatten(
         (node.children ?? []) as { id: string; name: string; children?: unknown[] }[],
         depth + 1,
+        [...trail, node.name],
       ),
     ]);
 
@@ -1044,16 +1234,29 @@ function DepartmentAssigner({
       <label className="flex flex-col gap-1.5 text-sm">
         <span className="font-medium">Departments</span>
         <MultiSelect
-          values={chosen}
-          onChange={setDraft}
+          values={chosen.map((m) => m.departmentId)}
+          onChange={setChosenIds}
           options={flatten(all.data ?? [])}
           placeholder="Not in any department"
         />
-        <span className="text-xs text-muted-foreground">
-          The reporting line is set on the department's own Members tab; this only decides which
-          departments they are in.
-        </span>
       </label>
+
+      {chosen.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {chosen.map((membership) => (
+            <MembershipRow
+              key={membership.departmentId}
+              userId={userId}
+              membership={membership}
+              name={
+                current.find((d) => d.departmentId === membership.departmentId)?.name ??
+                nameOf(all.data ?? [], membership.departmentId)
+              }
+              onEdit={(patch) => edit(membership.departmentId, patch)}
+            />
+          ))}
+        </div>
+      ) : null}
       {draft !== null ? (
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>

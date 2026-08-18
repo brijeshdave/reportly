@@ -213,4 +213,66 @@ describe("placing a person from their own page", () => {
     expect(members.find((m: { userId: string }) => m.userId === other.id).rank).toBe("lead");
     expect(members.find((m: { userId: string }) => m.userId === id).rank).toBe("member");
   });
+
+  it("sets the reporting line and sites from the user's own page", async () => {
+    // These used to be reachable only from the department's Members tab, so
+    // setting one person up across three departments meant three screens.
+    const adminCookie = await superadmin();
+    const { id } = await member(adminCookie);
+    const boss = (
+      await inject("POST", "/users/invite", adminCookie, { email: "boss@acme.test", name: "Boss" })
+    ).json();
+    const site = (await inject("POST", "/locations", adminCookie, { name: "Plant 9" })).json();
+
+    const dept = (await inject("POST", "/departments", adminCookie, { name: "Packing" })).json();
+    await inject("PUT", `/departments/${dept.id}/members`, adminCookie, {
+      members: [{ userId: boss.id, rank: "hod" }],
+    });
+
+    const res = await inject("PUT", `/users/${id}/departments`, adminCookie, {
+      departments: [
+        { departmentId: dept.id, rank: "member", reportsToId: boss.id, locationIds: [site.id] },
+      ],
+    });
+    expect(res.statusCode, JSON.stringify(res.json())).toBe(200);
+
+    const members = (await inject("GET", `/departments/${dept.id}/members`, adminCookie)).json();
+    const mine = members.find((m: { userId: string }) => m.userId === id);
+    expect(mine.reportsToId).toBe(boss.id);
+    expect(mine.locationIds).toEqual([site.id]);
+  });
+
+  it("leaves the line and the sites alone when they are not given", async () => {
+    // The distinction the optional fields exist for: omitted is not null. A bulk
+    // "put them in these departments" call must not flatten a reporting line
+    // somebody built one department at a time.
+    const adminCookie = await superadmin();
+    const { id } = await member(adminCookie);
+    const boss = (
+      await inject("POST", "/users/invite", adminCookie, {
+        email: "chief@acme.test",
+        name: "Chief",
+      })
+    ).json();
+    const site = (await inject("POST", "/locations", adminCookie, { name: "Plant 10" })).json();
+
+    const dept = (await inject("POST", "/departments", adminCookie, { name: "Dispatch" })).json();
+    await inject("PUT", `/departments/${dept.id}/members`, adminCookie, {
+      members: [
+        { userId: boss.id, rank: "hod" },
+        { userId: id, rank: "member", reportsToId: boss.id, locationIds: [site.id] },
+      ],
+    });
+
+    // Only the rank is sent — a rename of their place, not of their line.
+    await inject("PUT", `/users/${id}/departments`, adminCookie, {
+      departments: [{ departmentId: dept.id, rank: "lead" }],
+    });
+
+    const members = (await inject("GET", `/departments/${dept.id}/members`, adminCookie)).json();
+    const mine = members.find((m: { userId: string }) => m.userId === id);
+    expect(mine.rank).toBe("lead");
+    expect(mine.reportsToId).toBe(boss.id);
+    expect(mine.locationIds).toEqual([site.id]);
+  });
 });

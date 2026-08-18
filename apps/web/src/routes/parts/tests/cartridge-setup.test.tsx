@@ -269,8 +269,10 @@ describe("what a service kind uses", () => {
   it("names what a kind uses, and what it requires", async () => {
     renderKinds();
     expect(await screen.findByText(/uses Toner Powder \(needs 1\)/)).toBeInTheDocument();
-    // A kind with no rules is unrestricted, and says so rather than "uses nothing".
-    expect(screen.getByText(/uses anything/)).toBeInTheDocument();
+    // A kind with no rules is unrestricted. It says so, and points at the control
+    // that changes it — the reported "why does Refill offer every consumable"
+    // was this feature existing and nothing on the screen naming it.
+    expect(screen.getByText(/offers every consumable — set Uses to narrow it/)).toBeInTheDocument();
   });
 
   it("saves a kind's rules with their quantities", async () => {

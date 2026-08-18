@@ -245,6 +245,101 @@ function CompatibilityEditor({
   );
 }
 
+/**
+ * The model's own facts: what it is called, and what its maker rates it for.
+ *
+ * Separate from "Fits" and "Rates" because they answer different questions and
+ * are changed at different times — but all three were missing until now, so a
+ * model created with a typo or an unknown page yield could never be corrected.
+ * The API has always accepted these; only the form was absent.
+ */
+function ModelDetailsEditor({ model }: { model: PartModel }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(model.name);
+  const [cycleLimit, setCycleLimit] = useState(model.cycleLimit?.toString() ?? "");
+  const [ratedPageYield, setRatedPageYield] = useState(model.ratedPageYield?.toString() ?? "");
+
+  const save = useMutation({
+    mutationFn: () =>
+      updatePartModel(model.id, {
+        name: name.trim(),
+        // Blank means "no rated limit", which is a real answer and not zero — the
+        // list already reads it as "no rated limit".
+        cycleLimit: cycleLimit.trim() === "" ? null : Number(cycleLimit),
+        ratedPageYield: ratedPageYield.trim() === "" ? null : Number(ratedPageYield),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["part-models"] });
+      setOpen(false);
+    },
+  });
+
+  if (!open) {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          // Re-read on open, so a cancelled edit leaves no draft behind.
+          setName(model.name);
+          setCycleLimit(model.cycleLimit?.toString() ?? "");
+          setRatedPageYield(model.ratedPageYield?.toString() ?? "");
+          setOpen(true);
+        }}
+      >
+        Edit
+      </Button>
+    );
+  }
+
+  return (
+    <Card className="w-full space-y-2 p-3">
+      {save.error ? <ErrorAlert error={save.error} /> : null}
+      <div className="grid gap-2 sm:grid-cols-3">
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">Name</span>
+          <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">Rated services</span>
+          <Input
+            type="number"
+            min={1}
+            value={cycleLimit}
+            placeholder="no limit"
+            onChange={(event) => setCycleLimit(event.target.value)}
+            className="h-8"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">Rated pages</span>
+          <Input
+            type="number"
+            min={1}
+            value={ratedPageYield}
+            placeholder="unknown"
+            onChange={(event) => setRatedPageYield(event.target.value)}
+            className="h-8"
+          />
+        </label>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          disabled={save.isPending || name.trim() === ""}
+          onClick={() => save.mutate()}
+        >
+          Save
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 /* --------------------------------- models --------------------------------- */
 
 function ModelsTab() {
@@ -400,6 +495,7 @@ function ModelsTab() {
                     types={deviceTypes.data ?? []}
                     loading={deviceTypes.isLoading}
                   />
+                  <ModelDetailsEditor model={model} />
                   <RatesEditor model={model} />
                   <StatusButton
                     status={model.status}
@@ -662,7 +758,9 @@ function KindsTab() {
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         What can be done to a part — Refill, Repair, whatever you call it — and what one is worth by
-        default.
+        default. <strong>Uses</strong> is where you say which consumables each one may take: set it
+        and the service form offers only those, so a Refill can be toner and nothing else. A kind
+        with no rules offers everything.
       </p>
 
       <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
@@ -721,12 +819,13 @@ function KindsTab() {
                 <p className="text-xs text-muted-foreground">
                   {kind.defaultPoints} points by default ·{" "}
                   {kind.consumables.length === 0
-                    ? "uses anything"
+                    ? "offers every consumable — set Uses to narrow it"
                     : `uses ${consumableNames(kind.consumables, allConsumables)}`}
                 </p>
               </div>
               <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
                 <div className="flex items-center gap-2">
+                  <KindDetailsEditor kind={kind} />
                   <KindConsumablesEditor kind={kind} />
                   <StatusButton
                     status={kind.status}
@@ -740,6 +839,147 @@ function KindsTab() {
         ))}
       </ul>
     </div>
+  );
+}
+
+/** A service kind's own facts: its name and what it pays by default. */
+function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(kind.name);
+  const [points, setPoints] = useState(String(kind.defaultPoints));
+
+  const save = useMutation({
+    mutationFn: () =>
+      updateServiceKind(kind.id, { name: name.trim(), defaultPoints: Number(points) }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["part-service-kinds"] });
+      setOpen(false);
+    },
+  });
+
+  if (!open) {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          setName(kind.name);
+          setPoints(String(kind.defaultPoints));
+          setOpen(true);
+        }}
+      >
+        Edit
+      </Button>
+    );
+  }
+
+  return (
+    <Card className="w-full space-y-2 p-3">
+      {save.error ? <ErrorAlert error={save.error} /> : null}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">Name</span>
+          <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">Points by default</span>
+          <Input
+            type="number"
+            min={0}
+            step={0.5}
+            value={points}
+            onChange={(event) => setPoints(event.target.value)}
+            className="h-8"
+          />
+        </label>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          disabled={save.isPending || name.trim() === ""}
+          onClick={() => save.mutate()}
+        >
+          Save
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/** A consumable's own facts: its name and the unit it is measured in. */
+function ConsumableDetailsEditor({ consumable }: { consumable: Consumable }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(consumable.name);
+  const [unit, setUnit] = useState<ConsumableUnit>(consumable.unit);
+
+  const save = useMutation({
+    mutationFn: () => updateConsumable(consumable.id, { name: name.trim(), unit }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["consumables"] });
+      setOpen(false);
+    },
+  });
+
+  if (!open) {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          setName(consumable.name);
+          setUnit(consumable.unit);
+          setOpen(true);
+        }}
+      >
+        Edit
+      </Button>
+    );
+  }
+
+  return (
+    <Card className="w-full space-y-2 p-3">
+      {save.error ? <ErrorAlert error={save.error} /> : null}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">Name</span>
+          <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-muted-foreground">Unit</span>
+          {/* A fixed set, not free text: the unit is what every recorded quantity
+              is counted in, and "g" and "grams" side by side would make the
+              consumption report meaningless. */}
+          <select
+            value={unit}
+            onChange={(event) => setUnit(event.target.value as ConsumableUnit)}
+            className="h-8 rounded-lg border border-border bg-card px-2 text-xs"
+          >
+            {CONSUMABLE_UNITS.map((option) => (
+              <option key={option} value={option}>
+                {CONSUMABLE_UNIT_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          disabled={save.isPending || name.trim() === ""}
+          onClick={() => save.mutate()}
+        >
+          Save
+        </Button>
+      </div>
+    </Card>
   );
 }
 
@@ -839,11 +1079,14 @@ function ConsumablesTab() {
               </p>
             </div>
             <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-              <StatusButton
-                status={consumable.status}
-                busy={toggle.isPending}
-                onToggle={() => toggle.mutate(consumable)}
-              />
+              <div className="flex items-center gap-2">
+                <ConsumableDetailsEditor consumable={consumable} />
+                <StatusButton
+                  status={consumable.status}
+                  busy={toggle.isPending}
+                  onToggle={() => toggle.mutate(consumable)}
+                />
+              </div>
             </Can>
           </li>
         ))}

@@ -23,6 +23,7 @@ import {
 import { Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { fetchCompanyLocations } from "@/services/locations.js";
 import {
   deleteDepartment,
@@ -364,24 +365,24 @@ function MemberRow({
         </select>
       </label>
 
-      <label className="flex flex-col gap-0.5 text-[11px]">
+      <div className="flex w-44 flex-col gap-0.5 text-[11px]">
         <span className="text-muted-foreground">Reports to</span>
-        <select
+        {/* Searchable: a department of forty is forty entries to scroll past, and
+            the name you want is the one thing you already know. The candidates are
+            the company's own people — the API refuses anyone else — so searching
+            narrows the right list rather than reaching outside it. */}
+        <SearchableSelect
           value={membership.reportsToId ?? ""}
-          onChange={(event) => onEdit({ reportsToId: event.target.value || null })}
+          onChange={(value) => onEdit({ reportsToId: value || null })}
+          options={candidates.map((candidate) => ({
+            value: candidate.userId,
+            label: candidate.name,
+          }))}
+          placeholder="Nobody (top of the line)"
           disabled={!canAssign}
-          aria-label={`Reports to: ${membership.name}`}
-          className="h-8 w-44 rounded-lg border border-border bg-card px-2 text-xs"
-        >
-          <option value="">Nobody (top of the line)</option>
-          {candidates.map((candidate) => (
-            <option key={candidate.userId} value={candidate.userId}>
-              {candidate.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
+          ariaLabel={`Reports to: ${membership.name}`}
+        />
+      </div>
       <div className="flex w-40 flex-col gap-0.5 text-[11px]">
         <span className="text-muted-foreground">Sites</span>
         {/* No sites picked means every site — so that is what the button says. */}

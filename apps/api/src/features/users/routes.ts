@@ -266,10 +266,20 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
         tags: ["Users"],
         summary: "Set the departments a user belongs to, and their rank in each",
         description:
-          "Every other member of each department keeps their place, and this person keeps who they report to.",
+          "Every other member of each department keeps their place. This person keeps who they report to and which sites they cover unless those are given explicitly.",
         params: idParams,
         body: z.object({
-          departments: z.array(z.object({ departmentId: z.guid(), rank: z.string() })),
+          departments: z.array(
+            z.object({
+              departmentId: z.guid(),
+              rank: z.string(),
+              // Optional, and "omitted" is not "null": leaving these out keeps
+              // whatever the department's own Members tab set, so a bulk
+              // assignment never flattens a reporting line by accident.
+              reportsToId: z.guid().nullable().optional(),
+              locationIds: z.array(z.guid()).optional(),
+            }),
+          ),
         }),
         response: { 200: z.object({ assigned: z.number().int() }) },
       },

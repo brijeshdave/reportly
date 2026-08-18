@@ -152,7 +152,13 @@ export const saveUserGroups = (id: string, ids: string[]) =>
 
 export const saveUserDepartments = (
   id: string,
-  departments: { departmentId: string; rank: string }[],
+  departments: {
+    departmentId: string;
+    rank: string;
+    // Omitted means "leave it as the department's own Members tab set it".
+    reportsToId?: string | null;
+    locationIds?: string[];
+  }[],
 ) => http.put<{ assigned: number }>(`/users/${id}/departments`, { departments });
 
 /** Every group, for the picker on a user's Groups tab. */
