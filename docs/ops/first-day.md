@@ -94,10 +94,16 @@ roles for each of the ten areas, with an admin, an editor and a viewer apiece.
 
 ## 5. The reporting line
 
-**Organisation → Organisation chart**, or each department's Members tab.
+**Organisation → Organisation chart**, or each department's Members tab, or the
+person's own page under **Users → Departments**.
 
 For every person, record their **rank**, who they **report to**, and optionally
 the **sites** their membership covers.
+
+The three routes set the same three things and differ only in what is quicker.
+The department's Members tab suits filling one department at a time; the user's
+own Departments tab suits somebody who sits in several, since all their
+memberships are on the one screen.
 
 This is the step people skip, and it is the one that matters most:
 

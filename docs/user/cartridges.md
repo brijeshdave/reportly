@@ -259,6 +259,21 @@ Nothing here is ever deleted. A service kind that scored somebody's work has to
 survive, or the history it scored stops meaning anything — so retiring one marks
 it **no longer offered** and leaves every past record intact.
 
+### Fixing what you typed
+
+Names are editable everywhere in **Cartridge setup**: a model's name, its rated
+services and rated pages; a service kind's name and default points; a
+consumable's name and unit. A mistake made at creation is corrected in place
+rather than retired and made again.
+
+Two of those change what later numbers mean rather than merely what they are
+called. **Rated pages** and **rated services** are compared against a part's
+running totals, so a correction moves every "past its rated life" verdict at
+once — which is the point, if the figure was wrong. A consumable's **unit** does
+not convert what is already recorded: quantities logged as grams stay the
+numbers they were. Change the unit only to correct a label, never to switch a
+consumable from grams to kilograms mid-life.
+
 ### What a kind uses
 
 **Cartridge setup → Service kinds → Uses.**
@@ -276,7 +291,8 @@ lists the drum, blades and chip with none required — a repair may be a repair
 without any spare at all.
 
 Tick nothing and the kind is **unrestricted**: everything offered, nothing
-required. That is how every kind behaved before these rules existed, so adding
+required — which is the usual reason a Refill offers a drum and a chip alongside
+the toner. The kind's row says so, and points at **Uses**. That is how every kind behaved before these rules existed, so adding
 them changed no kind already in use.
 
 The rules are enforced when the service is recorded, not merely in the form — a
