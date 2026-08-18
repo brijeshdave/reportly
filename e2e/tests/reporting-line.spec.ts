@@ -75,7 +75,11 @@ test("builds a reporting line and reads back the whole downline", async ({ page 
   await page.goto(`/users/${bossId}`);
   await page.getByRole("tab", { name: "Departments" }).click();
 
-  await expect(page.getByText(`Reports to nobody`)).toBeVisible();
+  // Read from the membership row, not the read-only card: this session may edit
+  // memberships, and somebody who can is shown the editable row *instead* of the
+  // card — the same fact twice on one screen was the thing that made a person
+  // wonder which one was real.
+  await expect(page.getByLabel(`Reports to in ${management}`)).toHaveText(/Nobody/);
   for (const person of [hod, lead, junior]) {
     await expect(page.getByRole("link", { name: person })).toBeVisible();
   }
@@ -84,6 +88,6 @@ test("builds a reporting line and reads back the whole downline", async ({ page 
   // And the junior, at the bottom, is below nobody.
   await page.goto(`/users/${juniorId}`);
   await page.getByRole("tab", { name: "Departments" }).click();
-  await expect(page.getByText(`Reports to ${lead}`)).toBeVisible();
+  await expect(page.getByLabel(`Reports to in ${platform}`)).toHaveText(lead);
   await expect(page.getByText("Nobody reports to them.")).toBeVisible();
 });

@@ -15,6 +15,7 @@ import {
   createGroup,
   createPerson,
   expectSignedIn,
+  pickFromCombo,
   signIn,
   signInAs,
   signOut,
@@ -107,7 +108,7 @@ test("a junior's work is split, reviewed by their manager, and lands as points",
   // opens on no department deliberately — "everyone, everywhere" is not a
   // standing anybody competes in — so pick the one the work was done in.
   await page.goto("/reports/leaderboard");
-  await page.getByLabel("Department").selectOption({ label: `Assembly ${tag}` });
+  await pickFromCombo(page, "Department", `Assembly ${tag}`);
   // Choosing a department refetches the standings, and under a full-suite load
   // that round trip has exceeded the default ten seconds. Longer here rather than
   // globally: this is the one assertion in the suite waiting on a fresh query

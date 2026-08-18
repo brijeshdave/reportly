@@ -119,6 +119,23 @@ export async function dismissPicker(page: Page): Promise<void> {
 }
 
 /**
+ * Choose from a SearchableSelect — the type-to-search dropdown the department
+ * pickers use.
+ *
+ * Not `selectOption`: this is a button and a portalled listbox, not a `<select>`,
+ * because the options carry a second line (a department's parents, or the company
+ * it is in) that a native option cannot render. The trigger still answers to its
+ * label, so the only thing that changes for a caller is opening it first.
+ *
+ * The name matches the option's own line, not the hint beneath it, and exactly —
+ * so "Maintenance" does not also pick "Maintenance (night)".
+ */
+export async function pickFromCombo(page: Page, label: string, name: string): Promise<void> {
+  await page.getByLabel(label, { exact: true }).click();
+  await page.getByRole("listbox").getByRole("option", { name, exact: true }).click();
+}
+
+/**
  * A group carrying one role.
  *
  * The seed ships only Superadmin, because a group is an organisation's own idea of
@@ -290,5 +307,7 @@ export async function addMember(
   // The search needs more than one character before it will look.
   await page.getByRole("button", { name: new RegExp(name) }).click();
   await page.getByLabel(`Rank: ${name}`).selectOption(rank);
-  if (reportsTo) await page.getByLabel(`Reports to: ${name}`).selectOption({ label: reportsTo });
+  // "Reports to" is a searchable dropdown rather than a `<select>` — a department
+  // of forty is forty entries to scroll past, and the name is the thing you know.
+  if (reportsTo) await pickFromCombo(page, `Reports to: ${name}`, reportsTo);
 }

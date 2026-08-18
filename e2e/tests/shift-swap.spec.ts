@@ -13,6 +13,7 @@ import {
   createGroup,
   createPerson,
   expectSignedIn,
+  pickFromCombo,
   signIn,
   signInAs,
   signOut,
@@ -64,7 +65,7 @@ test("a colleague swap is requested and approved", async ({ page }) => {
 
   // --- the roster: both of them on the same day, then published ---
   await page.goto("/schedule");
-  await page.getByLabel("Department").selectOption({ label: `Packing ${tag}` });
+  await pickFromCombo(page, "Department", `Packing ${tag}`);
 
   // A month has no roster until somebody starts one — the page offers a blank or a
   // carry-forward rather than inventing one.
