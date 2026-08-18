@@ -95,22 +95,33 @@ stored anywhere you can read it back; if you lose it, see
 Without `--host` it serves plain HTTP on port 8080, which is fine for a private
 network behind your own TLS but should not face the internet.
 
-<details>
-<summary>Or do it by hand</summary>
+### Or do it by hand
+
+Use this if you are not taking the Caddy profile — running behind your own
+reverse proxy, for instance.
 
 ```bash
 cp .env.production.example .env
 ${EDITOR:-nano} .env          # fill in every CHANGE-ME
+scripts/data-dirs.sh          # the bind-mounted backup directory
 docker compose -f compose.prod.yaml --profile tls up -d --build
 docker compose -f compose.prod.yaml exec api node dist/cli/index.js seed
 docker compose -f compose.prod.yaml exec api node dist/cli/index.js reset-superadmin
 ```
 
+::: danger Do not skip the seed
 Migrations are not in that list because they are not yours to remember: the
 compose file runs them as a `migrate` service that `api` waits on, so the app
 cannot start against a schema it has not migrated.
 
-</details>
+**Seeding is different.** It writes rows rather than structure — the permissions,
+the system roles, the Superadmin group and your superadmin account — and nothing
+does it for you. Skip it and the stack comes up looking healthy, then
+`reset-superadmin` reports _"Superadmin user not found"_ and there is no way in.
+
+`reset-superadmin` is a separate step again because the seeded account is created
+**with no password**; this is what prints one, once.
+:::
 
 ---
 

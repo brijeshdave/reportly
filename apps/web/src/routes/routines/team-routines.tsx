@@ -7,14 +7,15 @@ import {
   type Routine,
   type RoutineCadence,
 } from "@reportly/shared";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Award, ListChecks, Plus } from "lucide-react";
+import { Award, Building2, ListChecks, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Alert, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { awardRoutineMonth, fetchManagedRoutines } from "@/services/routines.js";
 import { Toolbar, ToolbarSearch, ToolbarSelect } from "@/routes/routines/filters.js";
 import { describeCadence } from "@/routes/routines/util.js";
@@ -46,6 +47,7 @@ function monthName(value: string): string {
 }
 
 export function TeamRoutinesPage() {
+  const { data: session } = useSuspenseQuery(sessionQuery);
   const navigate = useNavigate();
   const routines = useQuery({ queryKey: ["routines", "managed"], queryFn: fetchManagedRoutines });
   const all = routines.data ?? [];
@@ -98,6 +100,22 @@ export function TeamRoutinesPage() {
       return awardRoutineMonth(y!, m!);
     },
   });
+
+  // Company-scoped: these endpoints answer 400 without the header rather than
+  // returning nothing, so with "All companies" chosen the page showed a
+  // reference id where an instruction belonged.
+  if (!session.companyId) {
+    return (
+      <>
+        <PageHeader title="Team routines" />
+        <EmptyState
+          icon={Building2}
+          title="Pick a company first"
+          description="Choose a company in the top-bar switcher. Routines belong to a company's departments."
+        />
+      </>
+    );
+  }
 
   return (
     <>

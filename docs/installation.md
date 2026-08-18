@@ -124,11 +124,23 @@ EOF
 
 docker compose -f compose.prod.yaml up -d --build
 
-# Once, on first boot:
+# Once, on first boot — the seed is NOT automatic:
 docker compose -f compose.prod.yaml exec api node dist/cli/index.js migrate
 docker compose -f compose.prod.yaml exec api node dist/cli/index.js seed
 docker compose -f compose.prod.yaml exec api node dist/cli/index.js reset-superadmin
 ```
+
+::: warning The seed is a step you have to take
+The stack starts perfectly well without it and gives no hint anything is missing
+— until `reset-superadmin` says _"Superadmin user not found"_ and you have no way
+in. `seed` writes the permissions, the system roles, the Superadmin group and the
+account named by `SUPERADMIN_EMAIL`; `reset-superadmin` then gives that account a
+password and prints it once.
+
+Run these **inside the container**. `pnpm --filter @reportly/api cli …` is the
+development form: it runs TypeScript from source and needs a build that no
+deployment host has.
+:::
 
 `BETTER_AUTH_SECRET` signs session cookies. If it were left at its development
 default, anyone could forge a session. Compose will not start without it.

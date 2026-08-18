@@ -10,7 +10,8 @@
 // Every chart is fed straight from the API. Nothing is recomputed here: a figure
 // derived in the browser is a second definition of a number the reports already
 // answer, and the two drift the moment a rule changes.
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { Building2 } from "lucide-react";
 import { useState } from "react";
 
 import { ChartFrame } from "@/components/charts/chart-frame.js";
@@ -18,6 +19,8 @@ import { CompositionChart, RankedBarChart, TrendChart } from "@/components/chart
 import { withOther } from "@/components/charts/palette.js";
 import { PageTabs } from "@/components/page-tabs.js";
 import { Select } from "@/components/ui/form.js";
+import { EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { fetchInsights } from "@/services/analytics.js";
 import type { ChartPoint } from "@reportly/shared";
 
@@ -49,6 +52,7 @@ const TABS = [
 type TabId = (typeof TABS)[number]["id"];
 
 export function InsightsPage() {
+  const { data: session } = useSuspenseQuery(sessionQuery);
   const [days, setDays] = useState<number>(90);
   const [tab, setTab] = useState<TabId>("overview");
 
@@ -61,6 +65,22 @@ export function InsightsPage() {
   const windowLabel = data
     ? `${new Date(data.window.from).toLocaleDateString()} – ${new Date(data.window.to).toLocaleDateString()}`
     : undefined;
+
+  // The insights endpoint is company-scoped and answers 400 without the header,
+  // so with "All companies" chosen this page said only "the charts could not be
+  // loaded" — true, and useless. Say which company is missing instead.
+  if (!session.companyId) {
+    return (
+      <div className="flex flex-col gap-4">
+        <PageHeader title="Insights" />
+        <EmptyState
+          icon={Building2}
+          title="Pick a company first"
+          description="Choose a company in the top-bar switcher. Insights are drawn from one company's journal, so there is nothing to chart until one is chosen."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">

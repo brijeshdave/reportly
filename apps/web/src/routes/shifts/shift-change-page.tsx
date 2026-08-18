@@ -5,15 +5,16 @@
 // A requester can withdraw their own while it is still pending. Filters keep a busy
 // inbox decidable.
 import { formatDate, formatDateTime, type SwapRequest } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeftRight, Plus, Search } from "lucide-react";
+import { ArrowLeftRight, Building2, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { SegmentedTabs } from "@/components/segmented-tabs.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Input, Select, Spinner } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { cancelSwap, decideSwap, fetchSwaps } from "@/services/shifts.js";
 
 type Box = "inbox" | "mine" | "handled";
@@ -34,6 +35,7 @@ const STATUS_TONE = {
 const NO_SWAP = "__none__";
 
 export function ShiftChangePage() {
+  const { data: session } = useSuspenseQuery(sessionQuery);
   const navigate = useNavigate();
   const [box, setBox] = useState<Box>("inbox");
   const swaps = useQuery({ queryKey: ["swaps", box], queryFn: () => fetchSwaps(box) });
@@ -68,6 +70,22 @@ export function ShiftChangePage() {
   }, [swaps.data, search, status, from, to]);
 
   const pendingCount = (swaps.data ?? []).filter((s) => s.status === "pending").length;
+
+  // Company-scoped: these endpoints answer 400 without the header rather than
+  // returning nothing, so with "All companies" chosen the page showed a
+  // reference id where an instruction belonged.
+  if (!session.companyId) {
+    return (
+      <>
+        <PageHeader title="Shift change" />
+        <EmptyState
+          icon={Building2}
+          title="Pick a company first"
+          description="Choose a company in the top-bar switcher. Swaps are between colleagues in the same company."
+        />
+      </>
+    );
+  }
 
   return (
     <>

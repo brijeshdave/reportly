@@ -269,6 +269,63 @@ That is the flag that destroys a database. A bind mount survives it, which is on
 honest argument in its favour.
 :::
 
+### "Superadmin user not found — run `cli seed` first"
+
+The database has its schema but not its seed data. Migrations run automatically —
+the compose file runs them as a `migrate` service the API waits on — but
+**seeding is a separate, deliberate step**, because it writes rows rather than
+structure.
+
+```bash
+docker compose -f compose.prod.yaml exec api node dist/cli/index.js seed
+docker compose -f compose.prod.yaml exec api node dist/cli/index.js reset-superadmin
+```
+
+`seed` is idempotent: run it on a populated database and it adds only what is
+missing. It creates the permissions, the four system roles, the Superadmin group,
+a demo company, and the superadmin account named by `SUPERADMIN_EMAIL` — **with
+no password**. That is why `reset-superadmin` is a second step; it prints one,
+once.
+
+If `seed` runs cleanly and `reset-superadmin` still cannot find the account, the
+row exists under a **different** address. The superadmin is created at a fixed id,
+so changing `SUPERADMIN_EMAIL` after the first seed leaves the original row alone
+and the new address never appears. Check what is actually there:
+
+```bash
+docker compose -f compose.prod.yaml exec postgres \
+  psql -U "$POSTGRES_USER" -d reportly -c "select email, username from users limit 5;"
+```
+
+Then either set `SUPERADMIN_EMAIL` back to that address and restart the API, or
+update the row to the address you want. It is the same account either way.
+
+Worth confirming the variable arrived at all — an unset one silently falls back to
+its default, which is a different address again:
+
+```bash
+docker compose -f compose.prod.yaml exec api printenv SUPERADMIN_EMAIL
+```
+
+### "Cannot find module '@reportly/shared/dist/index.js'" when running the CLI
+
+You are running the **development** command on a server:
+
+```bash
+pnpm --filter @reportly/api cli reset-superadmin     # source, needs a build
+```
+
+That runs TypeScript from source, and `apps/api` imports `@reportly/shared`
+through its compiled output — which nothing has built on a deployment host. Use
+the container, which already has everything compiled:
+
+```bash
+docker compose -f compose.prod.yaml exec api node dist/cli/index.js reset-superadmin
+```
+
+Every CLI command works that way on a server: `migrate`, `seed`, `doctor`,
+`reset-superadmin`, `reset-2fa`, `storage:migrate`.
+
 ### The API will not start
 
 It validates its environment at startup and fails with the exact list of what is

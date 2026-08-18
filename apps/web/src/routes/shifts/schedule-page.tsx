@@ -20,6 +20,7 @@ import {
   Lock,
   LockOpen,
   Trophy,
+  Building2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -114,6 +115,22 @@ export function SchedulePage() {
     session.isSuperadmin || mine.some((d) => d.departmentId === effectiveDept && d.rank === "hod");
   // The brush is disabled while locked — only swaps move a locked schedule.
   const canEdit = canManage && !locked;
+
+  // Company-scoped: these endpoints answer 400 without the header rather than
+  // returning nothing, so with "All companies" chosen the page showed a
+  // reference id where an instruction belonged.
+  if (!session.companyId) {
+    return (
+      <>
+        <PageHeader title="Schedule" />
+        <EmptyState
+          icon={Building2}
+          title="Pick a company first"
+          description="Choose a company in the top-bar switcher. The rota is per department, and departments belong to a company."
+        />
+      </>
+    );
+  }
 
   return (
     <>

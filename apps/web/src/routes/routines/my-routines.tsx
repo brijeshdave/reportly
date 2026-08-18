@@ -15,7 +15,7 @@ import {
   type RoutineOccurrenceState,
 } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { CheckCircle2, ListChecks, Paperclip, Pencil } from "lucide-react";
+import { Building2, CheckCircle2, ListChecks, Paperclip, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { AttachmentsPanel } from "@/components/attachments-panel.js";
@@ -94,6 +94,22 @@ export function MyRoutinesPage() {
   }, [all, routine, state, dir]);
 
   const loading = occ.isLoading || routines.isLoading;
+
+  // Company-scoped: these endpoints answer 400 without the header rather than
+  // returning nothing, so with "All companies" chosen the page showed a
+  // reference id where an instruction belonged.
+  if (!session.companyId) {
+    return (
+      <>
+        <PageHeader title="My routines" />
+        <EmptyState
+          icon={Building2}
+          title="Pick a company first"
+          description="Choose a company in the top-bar switcher. Routines belong to a company's departments, so there is nothing due until one is chosen."
+        />
+      </>
+    );
+  }
 
   return (
     <>

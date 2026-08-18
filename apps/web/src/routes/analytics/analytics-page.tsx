@@ -10,14 +10,15 @@
 //     nothing failed and MTTR when nothing was closed; both mean "unmeasured", and
 //     showing 0 would rank the healthiest line in the plant as the worst.
 import { type AssetReliability, PERMISSIONS, formatDate } from "@reportly/shared";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Activity, AlertTriangle, Clock, Factory, Repeat } from "lucide-react";
+import { Activity, AlertTriangle, Building2, Clock, Factory, Repeat } from "lucide-react";
 
 import { AssetCascadePicker } from "@/components/asset-cascade-picker.js";
 import { Select, Spinner } from "@/components/ui/form.js";
 import { Badge, Card, EmptyState, PageHeader, StatCard } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { fetchAssetReliability, fetchRecurring } from "@/services/analytics.js";
 import { fetchAssets } from "@/services/assets.js";
 
@@ -50,6 +51,7 @@ function humanMinutes(minutes: number | null): string {
 }
 
 export function AnalyticsPage() {
+  const { data: session } = useSuspenseQuery(sessionQuery);
   const [assetId, setAssetId] = useState<string>("");
   const [days, setDays] = useState<number>(90);
 
@@ -81,6 +83,22 @@ export function AnalyticsPage() {
     queryFn: () => fetchRecurring({ ...windowFor(days), assetId: selectedId || undefined }),
     enabled: Boolean(selectedId),
   });
+
+  // Company-scoped: the asset tree these figures roll up belongs to one company,
+  // and the endpoint answers 400 without the header rather than returning
+  // nothing. With "All companies" chosen this page failed with a reference id.
+  if (!session.companyId) {
+    return (
+      <>
+        <PageHeader title="Analytics" />
+        <EmptyState
+          icon={Building2}
+          title="Pick a company first"
+          description="Choose a company in the top-bar switcher. The reliability figures roll up one company's asset tree, so there is nothing to measure until one is chosen."
+        />
+      </>
+    );
+  }
 
   return (
     <>

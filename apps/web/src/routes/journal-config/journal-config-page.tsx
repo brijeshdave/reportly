@@ -9,14 +9,15 @@
 // without it.
 import { PERMISSIONS } from "@reportly/shared";
 import { useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
-import { Download, Upload } from "lucide-react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { Building2, Download, Upload } from "lucide-react";
 import { useState } from "react";
 
 import { usePermission } from "@/components/can.js";
 import { ImportDialog } from "@/components/import-dialog.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
-import { Button, PageHeader } from "@/components/ui/primitives.js";
+import { Button, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { CategoriesTab } from "@/routes/journal-config/categories-tab.js";
 import { DeviceTypesTab } from "@/routes/journal-config/device-types-tab.js";
 import { SeveritiesTab } from "@/routes/journal-config/severities-tab.js";
@@ -48,7 +49,29 @@ export function ReportConfigPage({ tab }: { tab: string }) {
   const canImport = usePermission(PERMISSIONS.JOURNAL_CONFIG_IMPORT);
   const [importOpen, setImportOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { data: session } = useSuspenseQuery(sessionQuery);
   const activeTab = TABS.some((candidate) => candidate.id === tab) ? tab : "severities";
+
+  // Categories, tags and device types belong to a company's departments, so the
+  // API cannot answer without knowing which company — it returns 400 with
+  // "X-Company-Id header is required". Say that in words rather than letting a
+  // reference id stand where an instruction belongs: with "All companies"
+  // selected every tab here fails, and nothing on the page hints why.
+  if (!session.companyId) {
+    return (
+      <>
+        <PageHeader
+          title="Journal setup"
+          description="The severity ladder, the status workflow, and each department's own words."
+        />
+        <EmptyState
+          icon={Building2}
+          title="Pick a company first"
+          description="Choose a company in the top-bar switcher. Categories, tags and device types belong to a company's departments, so there is nothing to show until one is chosen."
+        />
+      </>
+    );
+  }
 
   return (
     <>
