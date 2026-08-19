@@ -58,6 +58,30 @@ export async function backupsRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   app.get(
+    "/backups/:id/log",
+    {
+      preHandler: guard,
+      schema: {
+        tags: ["Backups"],
+        summary: "What one backup attempt said — its captured output",
+        description:
+          "Plain text: when it ran, what was run, how it ended, and the tool's own output, " +
+          "redacted of anything credential-shaped. Kept on the attempt rather than in the log " +
+          "database, which is switchable and pruned.",
+        params: z.object({ id: z.guid() }),
+      },
+    },
+    async (request, reply) => {
+      const { body, filename } = await backups.backupLog(request.params.id);
+      reply
+        .header("content-type", "text/plain; charset=utf-8")
+        .header("content-disposition", `attachment; filename="${filename}"`)
+        .header("cache-control", "no-store");
+      return reply.send(body);
+    },
+  );
+
+  app.get(
     "/backups/:id/download",
     {
       preHandler: guard,

@@ -4,7 +4,16 @@
 // (superadmin only) and behind a typed confirmation.
 import { BACKUP_KIND_LABELS, type Backup, type BackupKind, formatDateTime } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Archive, Database, Download, HardDrive, RotateCcw, Trash2, Upload } from "lucide-react";
+import {
+  Archive,
+  Database,
+  Download,
+  FileText,
+  HardDrive,
+  RotateCcw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
@@ -14,7 +23,13 @@ import { useState } from "react";
 
 import { sessionQuery } from "@/lib/queries.js";
 import { RestoreDialog } from "@/routes/backups/restore-dialog.js";
-import { deleteBackup, downloadBackup, fetchBackups, runBackup } from "@/services/backups.js";
+import {
+  deleteBackup,
+  downloadBackup,
+  downloadBackupLog,
+  fetchBackups,
+  runBackup,
+} from "@/services/backups.js";
 
 function humanSize(bytes: number): string {
   if (bytes <= 0) return "—";
@@ -121,9 +136,17 @@ export function BackupsPage() {
                     {b.status === "completed" ? (
                       <Badge tone="success">Completed</Badge>
                     ) : (
-                      <Badge tone="danger" title={b.error ?? undefined}>
-                        Failed
-                      </Badge>
+                      <span className="flex flex-col items-start gap-1">
+                        <Badge tone="danger">Failed</Badge>
+                        {/* Readable, not hovered: the reason a backup stopped
+                            working was a tooltip on a screen nobody was looking
+                            at — and unreachable entirely on a touchscreen. */}
+                        {b.error ? (
+                          <span className="max-w-md whitespace-pre-wrap break-words text-xs text-destructive">
+                            {b.error}
+                          </span>
+                        ) : null}
+                      </span>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted-foreground">
@@ -144,6 +167,22 @@ export function BackupsPage() {
                           }
                         >
                           <Download className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                      {b.hasLog ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Log for ${BACKUP_KIND_LABELS[b.kind]} backup`}
+                          title="What this attempt said"
+                          onClick={() =>
+                            void downloadBackupLog(
+                              b.id,
+                              `backup-${b.kind}-${b.createdAt.slice(0, 10)}.log`,
+                            )
+                          }
+                        >
+                          <FileText className="h-4 w-4" />
                         </Button>
                       ) : null}
                       {b.status === "completed" && canRestore ? (

@@ -27,6 +27,8 @@ export const backupSchema = z.object({
   sizeBytes: z.number().int().nonnegative(),
   /** Why a run failed, when it did. */
   error: z.string().nullable(),
+  /** Whether this attempt kept its output — fetch it from `/backups/:id/log`. */
+  hasLog: z.boolean(),
   /** Who ran it — null for the scheduled job. */
   createdById: z.string().nullable(),
   createdByName: z.string().nullable(),

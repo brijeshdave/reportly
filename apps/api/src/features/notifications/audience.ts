@@ -44,7 +44,8 @@ const UPLINE_DEPTH = 3;
  * Two rules hold for every audience, which is why they live here and not in the
  * dozen places that emit:
  *
- *   - the actor is never their own recipient
+ *   - the actor is never their own recipient, unless the type asks for them back
+ *     (`includeActor` — a failure needs to reach whoever caused it)
  *   - a recipient outside the event's company is not a recipient
  */
 export async function resolveAudience(event: NotificationEvent): Promise<string[]> {
@@ -52,7 +53,13 @@ export async function resolveAudience(event: NotificationEvent): Promise<string[
   if (!def) return [];
 
   const candidates = await candidatesFor(def, event);
-  const unique = [...new Set(candidates)].filter((id) => id && id !== event.actorUserId);
+  // The actor is excluded by default — nobody needs telling what they just did —
+  // but a type may ask for them back. A failure is that case: whoever pressed the
+  // button is exactly who must hear that it did not work.
+  const keepActor = def.includeActor === true;
+  const unique = [...new Set(candidates)].filter(
+    (id) => id && (keepActor || id !== event.actorUserId),
+  );
 
   // A system-wide event has no company to filter by, and its audience was already
   // resolved from a permission across the whole installation. Passing it through

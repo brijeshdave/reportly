@@ -244,6 +244,25 @@ describe("an event about the installation, not a tenant", () => {
     expect(await unreadOf(author.cookie)).toBe(0);
   });
 
+  it("tells the person who caused a failure, unlike every other event", async () => {
+    const admin = await superadmin();
+    const me = (await inject("GET", "/me", admin)).json();
+
+    // The rule everywhere else is that nobody needs telling what they just did.
+    // For a failure it is wrong: a backup taken by hand, failing quietly, is how
+    // an operator ends up believing they have a backup. With one operator — the
+    // one who pressed the button — excluding the actor told nobody at all.
+    await dispatch({
+      type: "backup.failed",
+      companyId: null,
+      actorUserId: me.user.id,
+      title: "A database backup failed",
+      body: "pg_dump exited 1",
+    });
+
+    expect(await unreadOf(admin)).toBeGreaterThan(0);
+  });
+
   it("does not widen an ordinary notification to other companies", async () => {
     const admin = await superadmin();
     const { manager, author } = await buildTeam(admin);

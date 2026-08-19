@@ -123,6 +123,16 @@ believes it is production.** It has the reminder cron and six notification
 channels, and the first scheduled job after the restore emails and messages real
 staff and customers from your laptop.
 
+**When a backup fails.** The row says why, in the list itself — no hovering. Every
+attempt also keeps its own log: press the document icon to download what that run
+said (when it started, what was run, how it ended, and the tool's output). It is
+stored with the attempt, so it is still there weeks later whether or not the log
+database is switched on. Passwords are stripped from it before it is written.
+
+A failure also notifies everyone holding `backups:manage` — **including whoever
+pressed the button**. Every other kind of event skips the person who caused it;
+for a failure that rule left a manual backup failing silently to nobody at all.
+
 > **Percent-encode the password in `DATABASE_URL`.** `@`, `#`, `/` and `?` are
 > reserved in a URL, and while the app's driver copes, other tools read the same
 > string differently. Use `%40` for `@`, `%23` for `#`, `%2F` for `/`. `cli doctor`

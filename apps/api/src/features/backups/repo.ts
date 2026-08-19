@@ -2,7 +2,7 @@
 // The only code touching the `backups` table — the catalogue of dumps/archives the
 // Backups page lists and restores from. The bytes live in storage under `storage_key`.
 import { alias } from "drizzle-orm/pg-core";
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, lt, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import { backups, users } from "@/core/db/schema.js";
@@ -14,6 +14,7 @@ export interface BackupRow {
   sizeBytes: number;
   status: string;
   error: string | null;
+  hasLog: boolean;
   createdById: string | null;
   createdByName: string | null;
   createdAt: Date;
@@ -28,6 +29,9 @@ const cols = {
   sizeBytes: backups.sizeBytes,
   status: backups.status,
   error: backups.error,
+  // Whether there is output to read, not the output itself: a log per row would
+  // make the list payload enormous for a screen that shows one line each.
+  hasLog: sql<boolean>`${backups.log} IS NOT NULL`,
   createdById: backups.createdBy,
   createdByName: creator.name,
   createdAt: backups.createdAt,
@@ -46,12 +50,20 @@ export async function getBackup(id: string): Promise<BackupRow | null> {
   return row ?? null;
 }
 
+/** One attempt's captured output, fetched only when somebody asks to read it. */
+export async function getBackupLog(id: string): Promise<string | null> {
+  const [row] = await db.select({ log: backups.log }).from(backups).where(eq(backups.id, id));
+  return row?.log ?? null;
+}
+
 export interface NewBackup {
   kind: string;
   storageKey: string;
   sizeBytes: number;
   status: string;
   error: string | null;
+  /** The attempt's own output, redacted and capped. */
+  log: string | null;
   createdBy: string | null;
 }
 

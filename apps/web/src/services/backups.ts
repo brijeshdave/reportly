@@ -13,6 +13,10 @@ export const runBackup = (kind: BackupKind) =>
 export const downloadBackup = (id: string, filename: string) =>
   download(`/backups/${id}/download`, filename);
 
+/** What one attempt said, as a .log file. */
+export const downloadBackupLog = (id: string, filename: string) =>
+  download(`/backups/${id}/log`, filename);
+
 export const deleteBackup = (id: string) => http.delete<void>(`/backups/${id}`);
 
 /** Restore a stored backup — destructive, superadmin-only, needs the RESTORE confirmation. */

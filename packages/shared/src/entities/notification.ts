@@ -101,6 +101,16 @@ export interface NotificationTypeDef {
    */
   systemWide?: boolean;
   /**
+   * Tell the person who caused it, too.
+   *
+   * The general rule is that nobody needs telling what they just did, and for
+   * "Priya assigned you a task" that is right. It is wrong for a *failure*: the
+   * person who pressed the button is precisely who needs to know it did not work.
+   * A manual backup that failed notified nobody, because the only operator was
+   * the actor and the actor is always excluded.
+   */
+  includeActor?: boolean;
+  /**
    * The channels a fresh install sends on, before an administrator has chosen.
    * In-app is on everywhere (see `DEFAULT_INAPP` below); anything beyond that is
    * an opinion about what is worth an interruption.
@@ -289,10 +299,13 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     type: "backup.failed",
     category: "system",
     label: "A backup failed",
-    description: "A scheduled database or file backup did not complete.",
+    description: "A database or file backup did not complete.",
     audience: "operators",
     permission: "backups:manage",
     systemWide: true,
+    // Including whoever asked for it: a backup taken by hand and failing silently
+    // is how an operator ends up believing they have a backup.
+    includeActor: true,
     defaultChannels: INAPP_AND_EMAIL,
   },
   {

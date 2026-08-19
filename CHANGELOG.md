@@ -68,6 +68,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   database password and clear `backups.error`** — the value was at rest in three
   places.
 
+### Added
+
+- **Every backup attempt keeps its own log, and failures say why in the row.** The
+  reason a backup failed was a tooltip on a badge — unreachable on a touchscreen,
+  and invisible on a screen nobody was hovering over. It is now printed in the row,
+  and each attempt (successful or not) carries a downloadable transcript: when it
+  ran, what ran, how it ended, and the tool's own output, redacted of anything
+  credential-shaped. Kept with the attempt rather than in the log database, which
+  is switchable and pruned.
+- **A failed backup now tells whoever asked for it.** Notifications skip the person
+  who caused the event — right for "Priya assigned you a task", wrong for a
+  failure. On an installation with one operator it meant a manual backup could fail
+  and notify nobody at all.
+
 ### Fixed
 
 - **`cli backup:database` hung for ever when a backup failed.** Notifying opens a

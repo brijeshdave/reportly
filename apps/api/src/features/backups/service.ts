@@ -32,6 +32,7 @@ import {
   deleteBackupRow,
   expiredBackups,
   getBackup,
+  getBackupLog,
   insertBackup,
   lastCompleted,
   listBackups as listBackupRows,
@@ -62,6 +63,34 @@ export function runCapture(
   });
 }
 
+/**
+ * What an attempt is worth keeping: what ran, what it said, and how it ended.
+ *
+ * Capped, because a tool having a bad day can produce megabytes and this lives in
+ * a row somebody will read in a browser. Redacted, because the whole reason this
+ * feature exists is that a tool's output turned out to carry a password.
+ */
+const LOG_CAP = 64_000;
+
+function attemptLog(parts: {
+  command: string;
+  startedAt: Date;
+  outcome: string;
+  stderr?: string;
+  sizeBytes?: number;
+}): string {
+  const lines = [
+    `started  ${parts.startedAt.toISOString()}`,
+    `finished ${new Date().toISOString()}`,
+    `command  ${parts.command}`,
+    `outcome  ${parts.outcome}`,
+  ];
+  if (parts.sizeBytes !== undefined) lines.push(`size     ${parts.sizeBytes} bytes`);
+  const output = (parts.stderr ?? "").trim();
+  if (output) lines.push("", "output", redactSecrets(output));
+  return lines.join("\n").slice(0, LOG_CAP);
+}
+
 function serialize(row: BackupRow): Backup {
   return {
     id: row.id,
@@ -69,6 +98,7 @@ function serialize(row: BackupRow): Backup {
     status: row.status === "failed" ? "failed" : "completed",
     sizeBytes: row.sizeBytes,
     error: row.error,
+    hasLog: row.hasLog,
     createdById: row.createdById,
     createdByName: row.createdByName,
     createdAt: row.createdAt.toISOString(),
@@ -88,6 +118,8 @@ export const pgRestoreArgv = (): string[] => env.PG_RESTORE_CMD.trim().split(/\s
 /** Take a database backup: pg_dump custom format → storage. Records a row either way. */
 export async function runDatabaseBackup(by: string | null): Promise<Backup> {
   const key = `backups/db/${stamp()}.dump`;
+  const startedAt = new Date();
+  let transcript = "";
   try {
     const [cmd, ...prefix] = forwardPasswordThroughDocker(pgDumpArgv());
     // Connection by flags with the password in the child's environment: a URL on
@@ -99,6 +131,15 @@ export async function runDatabaseBackup(by: string | null): Promise<Backup> {
       undefined,
       target.childEnv,
     );
+    // Kept before the throw, so a failure has a transcript rather than only a
+    // one-line message.
+    transcript = attemptLog({
+      command: cmd!,
+      startedAt,
+      outcome: code === 0 ? "completed" : `pg_dump exited ${code}`,
+      stderr,
+      sizeBytes: code === 0 ? stdout.length : undefined,
+    });
     if (code !== 0) throw new Error(redactSecrets(stderr.trim()) || `pg_dump exited ${code}`);
     await activeStorage().put(key, stdout, "application/octet-stream");
     const id = await insertBackup({
@@ -107,6 +148,7 @@ export async function runDatabaseBackup(by: string | null): Promise<Backup> {
       sizeBytes: stdout.length,
       status: "completed",
       error: null,
+      log: transcript,
       createdBy: by,
     });
     return serialize((await getBackup(id))!);
@@ -121,6 +163,7 @@ export async function runDatabaseBackup(by: string | null): Promise<Backup> {
       sizeBytes: 0,
       status: "failed",
       error: message.slice(0, 2000),
+      log: transcript || attemptLog({ command: "pg_dump", startedAt, outcome: message }),
       createdBy: by,
     });
     // System-wide: a backup belongs to the installation, not a tenant, so this
@@ -142,6 +185,8 @@ export async function runDatabaseBackup(by: string | null): Promise<Backup> {
 /** Take a files backup: tar.gz of the local upload store → storage. Records a row either way. */
 export async function runFilesBackup(by: string | null): Promise<Backup> {
   const key = `backups/files/${stamp()}.tar.gz`;
+  const startedAt = new Date();
+  let transcript = "";
   try {
     if (env.STORAGE_BACKEND !== "local") {
       throw new Error(
@@ -169,6 +214,13 @@ export async function runFilesBackup(by: string | null): Promise<Backup> {
       "--exclude=./backups",
       ".",
     ]);
+    transcript = attemptLog({
+      command: "tar",
+      startedAt,
+      outcome: code === 0 ? "completed" : `tar exited ${code}`,
+      stderr,
+      sizeBytes: code === 0 ? stdout.length : undefined,
+    });
     if (code !== 0) throw new Error(stderr.trim() || `tar exited ${code}`);
     await activeStorage().put(key, stdout, "application/gzip");
     const id = await insertBackup({
@@ -177,6 +229,7 @@ export async function runFilesBackup(by: string | null): Promise<Backup> {
       sizeBytes: stdout.length,
       status: "completed",
       error: null,
+      log: transcript,
       createdBy: by,
     });
     return serialize((await getBackup(id))!);
@@ -191,6 +244,7 @@ export async function runFilesBackup(by: string | null): Promise<Backup> {
       sizeBytes: 0,
       status: "failed",
       error: message.slice(0, 2000),
+      log: transcript || attemptLog({ command: "tar", startedAt, outcome: message }),
       createdBy: by,
     });
     // System-wide: a backup belongs to the installation, not a tenant, so this
@@ -228,6 +282,18 @@ export async function pruneBackups(kind: BackupKind, cutoff: Date): Promise<numb
 }
 
 /** Load a backup's bytes for download. */
+/** One attempt's transcript, as a text file named after the attempt. */
+export async function backupLog(id: string): Promise<{ body: string; filename: string }> {
+  const row = await getBackup(id);
+  if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Backup not found");
+  const log = await getBackupLog(id);
+  if (!log) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "This attempt kept no output");
+  }
+  const when = row.createdAt.toISOString().slice(0, 19).replace(/[:]/g, "-");
+  return { body: log, filename: `backup-${row.kind}-${when}.log` };
+}
+
 export async function downloadBackup(
   id: string,
 ): Promise<{ backup: Backup; body: Buffer; filename: string }> {

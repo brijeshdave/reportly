@@ -1882,6 +1882,14 @@ export const backups = pgTable(
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
     status: text("status").notNull().default("completed"), // 'completed' | 'failed'
     error: text("error"),
+    /**
+     * What the attempt said — the tool's own output, redacted, capped.
+     *
+     * Kept on the row rather than left to the log database, which is switchable
+     * and pruned: the reason a backup failed three weeks ago should still be
+     * readable today, next to the attempt it belongs to.
+     */
+    log: text("log"),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

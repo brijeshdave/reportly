@@ -15,6 +15,13 @@
       "when": 1786100400000,
       "tag": "0001_site_rotas",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786186800000,
+      "tag": "0002_backup_attempt_log",
+      "breakpoints": true
     }
   ]
 }

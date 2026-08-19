@@ -114,6 +114,29 @@ describe("backups", () => {
     expect(entries.some((e) => e.startsWith("./backups"))).toBe(false);
   });
 
+  // Whether pg_dump exists on the host decides whether this backup completes, so
+  // the assertions are about the transcript being kept and readable — which is
+  // true either way, and is the thing that was missing.
+  it("keeps what each attempt said, and hands it back as a file", async () => {
+    const admin = await superadmin();
+    const backup = (await inject("POST", "/backups?kind=database", admin)).json();
+
+    // The list says whether there is anything to read, without carrying it: a
+    // transcript per row would make this screen's payload enormous.
+    expect(backup.hasLog).toBe(true);
+    expect(JSON.stringify(backup)).not.toContain("command  ");
+
+    const log = await inject("GET", `/backups/${backup.id}/log`, admin);
+    expect(log.statusCode).toBe(200);
+    expect(log.headers["content-type"]).toContain("text/plain");
+    expect(log.headers["content-disposition"]).toContain(".log");
+    // When it ran, what ran, and how it ended — enough to answer "why did this
+    // fail?" weeks later, when log retention has pruned its side of the story.
+    expect(log.body).toContain("started");
+    expect(log.body).toContain("command");
+    expect(log.body).toContain("outcome");
+  });
+
   it("refuses the backup endpoints without authentication", async () => {
     const res = await app.inject({
       method: "GET",
