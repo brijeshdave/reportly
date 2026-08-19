@@ -93,6 +93,28 @@ spec at `/api/v1/docs`. Hand-maintained API docs rot; generated ones cannot.
 One gotcha: a route parameter that should 404 rather than 400 must be
 `z.string()` and checked in the handler, or the schema rejects it first.
 
+### When does a picker get to stay a native `<select>`?
+
+When its options are **written in the code**: a priority, a cadence, a status, a
+month. Those are as long today as they will be next year.
+
+Anything **fed by a server query** — people, departments, sites, assets, devices,
+models — uses `components/searchable-select.tsx` (one value) or
+`components/multi-select.tsx` (several). Not a row-count rule: a list that is five
+rows in the demo database is four hundred in a real one, and nobody re-checks that
+number a year later.
+
+Two things follow for anyone converting one:
+
+- **Give it `Field`'s id.** `{...props}` from `Field` carries `id` and
+  `aria-describedby`, and both controls accept them. Without the id the `<label>`
+  points at nothing and a screen reader announces an unnamed button.
+- **Fix the e2e spec in the same commit.** `selectOption` throws on a button, and
+  the options only exist in the DOM while the popover is open — so assertions
+  about a _closed_ control's contents (which a native select allowed) have to be
+  reworked into opening it. `pickFromCombo` in `e2e/tests/helpers.ts` is the
+  standard way to drive one.
+
 ### Why do departments carry a `path` and a `companyName`?
 
 Because a picker rendering `d.name` is ambiguous, and it is ambiguous in a way the

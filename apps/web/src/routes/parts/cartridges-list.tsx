@@ -24,6 +24,7 @@ import { Can } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Textarea } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
@@ -135,13 +136,13 @@ function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () =>
         </Field>
         <Field label="Model">
           {(props) => (
-            <Select {...props} value={partModelId} onChange={(e) => setPartModelId(e.target.value)}>
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              {...props}
+              value={partModelId}
+              onChange={setPartModelId}
+              options={models.map((model) => ({ value: model.id, label: model.name }))}
+              placeholder="Choose a model…"
+            />
           )}
         </Field>
       </div>

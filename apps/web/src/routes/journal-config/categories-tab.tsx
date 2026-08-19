@@ -8,6 +8,8 @@ import { Network, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Input, Spinner } from "@/components/ui/form.js";
+import { departmentOptions } from "@/lib/department-options.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, EmptyState } from "@/components/ui/primitives.js";
 import { fetchDepartments } from "@/services/departments.js";
@@ -60,17 +62,17 @@ export function CategoriesTab({ canManage }: { canManage: boolean }) {
     <div className="flex max-w-3xl flex-col gap-4">
       <label className="flex max-w-xs flex-col gap-1 text-xs">
         <span className="text-muted-foreground">Department</span>
-        <select
+        {/* Searchable, with each department's parents underneath — the same picker
+            as everywhere else a department is chosen. */}
+        <SearchableSelect
+          ariaLabel="Department"
           value={active}
-          onChange={(event) => setDepartmentId(event.target.value)}
-          className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
-        >
-          {(departments.data ?? []).map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
-            </option>
-          ))}
-        </select>
+          onChange={setDepartmentId}
+          options={departmentOptions(
+            (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+          )}
+          placeholder="Choose a department…"
+        />
       </label>
 
       {categories.isLoading ? <Spinner /> : null}

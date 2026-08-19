@@ -31,6 +31,8 @@ import {
 import { Avatar } from "@/components/avatar.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { Input, Spinner } from "@/components/ui/form.js";
+import { departmentOptions } from "@/lib/department-options.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import { buildForest, subtreeOf, type ChartNode } from "@/routes/organization/org-chart.js";
@@ -233,36 +235,31 @@ function Chart({ companyName }: { companyName: string | undefined }) {
       <Card className="flex flex-wrap items-end gap-3 p-4">
         <label className="flex flex-col gap-1 text-xs">
           <span className="text-muted-foreground">Department</span>
-          <select
+          <SearchableSelect
+            ariaLabel="Department"
             value={departmentId}
-            onChange={(event) => setDepartmentId(event.target.value)}
-            aria-label="Department"
-            className="h-9 rounded-xl border border-border bg-card px-3 text-sm"
-          >
-            <option value="">All departments</option>
-            {(departments.data ?? []).map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
+            onChange={setDepartmentId}
+            options={departmentOptions(
+              (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+            )}
+            placeholder="All departments"
+          />
         </label>
 
         <label className="flex flex-col gap-1 text-xs">
           <span className="text-muted-foreground">Focus on</span>
-          <select
+          {/* The whole company's people: a list to search, never one to scroll. */}
+          <SearchableSelect
+            ariaLabel="Focus on"
             value={focusUserId}
-            onChange={(event) => setFocusUserId(event.target.value)}
-            aria-label="Focus on"
-            className="h-9 rounded-xl border border-border bg-card px-3 text-sm"
-          >
-            <option value="">Everyone</option>
-            {people.map((person) => (
-              <option key={person.userId} value={person.userId}>
-                {person.name}
-              </option>
-            ))}
-          </select>
+            onChange={setFocusUserId}
+            options={people.map((person) => ({
+              value: person.userId,
+              label: person.name,
+              hint: person.departmentName ?? undefined,
+            }))}
+            placeholder="Everyone"
+          />
         </label>
 
         <label className="flex flex-1 flex-col gap-1 text-xs">

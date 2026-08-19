@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { usePermission } from "@/components/can.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchLocations } from "@/services/locations.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Input, Select, Spinner } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState } from "@/components/ui/primitives.js";
@@ -353,16 +354,18 @@ function AddAssetForm({
         </label>
         <label className="flex flex-col gap-1 text-xs">
           <span className="text-muted-foreground">Site</span>
-          <Select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
-            {/* Unset means "not placed", which stays visible to everyone — an
-                unplaced asset is unplaced, not restricted. */}
-            <option value="">Not set</option>
-            {(locations.data ?? []).map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </Select>
+          {/* Unset means "not placed", which stays visible to everyone — an
+              unplaced asset is unplaced, not restricted. */}
+          <SearchableSelect
+            ariaLabel="Site"
+            value={locationId}
+            onChange={setLocationId}
+            options={(locations.data ?? []).map((location) => ({
+              value: location.id,
+              label: location.name,
+            }))}
+            placeholder="Not set"
+          />
         </label>
         <Button
           size="sm"

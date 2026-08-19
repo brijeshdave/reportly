@@ -23,6 +23,21 @@ at the bottom of the sidebar.
 | See where you are signed in    | Your account → Security → Sessions |
 | Pick a theme and page size     | Your account → Preferences         |
 
+### Choosing from a long list
+
+Anywhere the app asks you to pick a **person, department, site, asset, device or
+model**, the box opens a list you can type into. Start typing any part of what you
+are looking for — the list narrows as you type, and it searches the smaller second
+line as well as the name, so "platform" finds the person in Platform and "acme"
+finds the department at Acme.
+
+It works without a mouse: **↓** opens it, **↑ ↓** move, **Enter** chooses, and
+**Esc** closes it without changing anything. Where you may pick several people,
+Enter adds or removes one and the list stays open so you can keep going.
+
+Short fixed lists — priority, cadence, a status — stay as ordinary dropdowns.
+There is nothing to search in five words you can already see.
+
 ### Filing journal entries
 
 Everyone logs their work under **Journal** — an **issue/breakdown** or a routine

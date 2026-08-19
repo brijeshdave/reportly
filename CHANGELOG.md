@@ -8,6 +8,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Every long list is now a dropdown you can type into.** Assigning a task or a
+  routine, handing an entry over, choosing a device, a model, a site or a
+  department: each opens a searchable list rather than a native select you had to
+  scroll, and each option carries a second line — a person's department, a
+  department's parents — so two of the same name are finally tellable apart. The
+  controls work from the keyboard throughout (↓ opens, arrows move, Enter chooses,
+  Esc closes; in a multi-select Enter toggles and the list stays open), and they
+  take the field's id so a label points at something. Short fixed lists —
+  priority, cadence, status — stay as they were.
 - **A rota belongs to a site, not just a department.** A department spans several
   plants whose teams never share a building, but a schedule was one calendar for
   all of them — and a colleague swap could be offered between two sites fifty

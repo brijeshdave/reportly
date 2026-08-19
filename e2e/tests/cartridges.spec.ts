@@ -12,7 +12,7 @@
 // and then goes and looks at the ledger.
 import { expect, test } from "@playwright/test";
 
-import { openNavGroup, unique } from "./helpers.js";
+import { openNavGroup, pickFromCombo, unique } from "./helpers.js";
 
 /**
  * The company's Modules tab, which is where the switch lives.
@@ -87,7 +87,7 @@ test("a cartridge goes out, comes back faulty, and the points are taken back", a
   // Device types belong to a department, and the tab opens on whichever sorts
   // first. Naming it here keeps this in step with the device below — a type in
   // one department and a device in another simply do not meet.
-  await page.getByLabel("Department").selectOption({ label: "Engineering" });
+  await pickFromCombo(page, "Department", "Engineering");
   await page.getByPlaceholder("e.g. Pump").fill(deviceType);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   // The saved row is an editable text box, so its name is a value rather than
@@ -96,8 +96,8 @@ test("a cartridge goes out, comes back faulty, and the points are taken back", a
 
   await page.goto("/devices/new");
   await page.getByLabel("Name").fill(printer);
-  await page.getByLabel("Department").selectOption({ label: "Engineering" });
-  await page.getByLabel("Type").selectOption({ label: deviceType });
+  await pickFromCombo(page, "Department", "Engineering");
+  await pickFromCombo(page, "Type", deviceType);
   await page.getByRole("button", { name: /save|create/i }).click();
 
   // --- the catalogues, which the register needs before it can hold anything ---
@@ -125,7 +125,7 @@ test("a cartridge goes out, comes back faulty, and the points are taken back", a
   await page.goto("/cartridges");
   await page.getByRole("button", { name: "Register" }).click();
   await page.getByLabel("Identifier").fill(identifier);
-  await page.getByLabel("Model").selectOption({ label: "Test cartridge" });
+  await pickFromCombo(page, "Model", "Test cartridge");
   await page.getByRole("button", { name: "Register" }).last().click();
   // The register is a table now, so the identifier is a link in its own cell.
   await page.getByRole("link", { name: identifier }).click();
@@ -147,10 +147,11 @@ test("a cartridge goes out, comes back faulty, and the points are taken back", a
   // The picker offers only machines this model fits, named with their type. The
   // company also owns desktops and switches by now; none of them are here, which
   // is the point — a picker that leads people into refusals stops being trusted.
-  const picker = page.getByLabel("Printer", { exact: true });
-  await expect(picker).toHaveText(new RegExp(`${printer} — ${deviceType}`));
-  await expect(picker.getByRole("option")).toHaveCount(2); // "Choose…" and the one that fits
-  await picker.selectOption({ index: 1 });
+  await page.getByLabel("Printer", { exact: true }).click();
+  const options = page.getByRole("listbox").getByRole("option");
+  await expect(options).toHaveCount(1); // just the one that fits
+  await expect(options.first()).toHaveText(new RegExp(`${printer}${deviceType}`));
+  await options.first().click();
   await page.getByLabel("Printer's page counter").fill("48120");
   await page.getByRole("button", { name: "Install", exact: true }).last().click();
   await page.getByRole("button", { name: "Book in" }).click();
@@ -176,7 +177,7 @@ test("a cartridge goes out, comes back faulty, and the points are taken back", a
 
   // --- send it out and have it fail ---
   await page.getByRole("button", { name: "Install" }).click();
-  await page.getByLabel("Printer", { exact: true }).selectOption({ index: 1 });
+  await pickFromCombo(page, "Printer", printer);
   await page.getByRole("button", { name: "Install", exact: true }).last().click();
 
   await page.getByRole("button", { name: "Book in" }).click();

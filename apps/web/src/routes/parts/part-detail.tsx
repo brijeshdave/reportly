@@ -31,6 +31,7 @@ import { useState } from "react";
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 
@@ -128,15 +129,19 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
       {deploy.error ? <ErrorAlert error={deploy.error} /> : null}
       <Field label="Printer" hint={`Only machines ${part.partModelName} fits are listed.`}>
         {(props) => (
-          <Select {...props} value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-            <option value="">Choose…</option>
-            {(devices.data ?? []).map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.name}
-                {device.typeName ? ` — ${device.typeName}` : ""}
-              </option>
-            ))}
-          </Select>
+          <SearchableSelect
+            {...props}
+            value={deviceId}
+            onChange={setDeviceId}
+            // The type goes underneath rather than trailing the name: a floor of
+            // fifty printers is a list to search, not to read.
+            options={(devices.data ?? []).map((device) => ({
+              value: device.id,
+              label: device.name,
+              hint: device.typeName ?? undefined,
+            }))}
+            placeholder="Choose…"
+          />
         )}
       </Field>
       {!devices.isLoading && (devices.data ?? []).length === 0 ? (

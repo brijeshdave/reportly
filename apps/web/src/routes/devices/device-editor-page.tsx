@@ -11,7 +11,9 @@ import { useState, type FormEvent } from "react";
 
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
-import { Field, Input, Select, Spinner } from "@/components/ui/form.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
+import { Field, Input, Spinner } from "@/components/ui/form.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { createDevice, deleteDevice, fetchAssets, updateDevice } from "@/services/assets.js";
@@ -181,24 +183,25 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
 
           <Field label="Department" hint="Who owns it. The type list comes from this department.">
             {(props) => (
-              <Select
+              <SearchableSelect
                 {...props}
                 value={departmentId}
-                onChange={(event) => {
-                  setDepartmentId(event.target.value);
+                onChange={(value) => {
+                  setDepartmentId(value);
                   // The types belonged to the old department; keeping one would save
                   // a type this device's owner does not have.
                   setTypeId("");
                 }}
                 disabled={save.isPending}
-              >
-                <option value="">None</option>
-                {(departments.data ?? []).map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </Select>
+                options={departmentOptions(
+                  (departments.data ?? []).map((d) => ({
+                    value: d.id,
+                    name: d.name,
+                    path: d.path,
+                  })),
+                )}
+                placeholder="None"
+              />
             )}
           </Field>
 
@@ -211,21 +214,16 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
             }
           >
             {(props) => (
-              <Select
+              <SearchableSelect
                 {...props}
                 value={typeId}
-                onChange={(event) => setTypeId(event.target.value)}
+                onChange={setTypeId}
                 disabled={save.isPending || !departmentId}
-              >
-                <option value="">None</option>
-                {(deviceTypes.data ?? [])
+                options={(deviceTypes.data ?? [])
                   .filter((t) => t.status === "active")
-                  .map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-              </Select>
+                  .map((type) => ({ value: type.id, label: type.name }))}
+                placeholder="None"
+              />
             )}
           </Field>
 
@@ -234,19 +232,17 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
             hint="Only the sites you have access to are listed. Leave unset if it is not tied to one."
           >
             {(props) => (
-              <Select
+              <SearchableSelect
                 {...props}
                 value={locationId}
-                onChange={(event) => setLocationId(event.target.value)}
+                onChange={setLocationId}
                 disabled={save.isPending}
-              >
-                <option value="">Not set</option>
-                {(locations.data ?? []).map((location) => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </Select>
+                options={(locations.data ?? []).map((location) => ({
+                  value: location.id,
+                  label: location.name,
+                }))}
+                placeholder="Not set"
+              />
             )}
           </Field>
 

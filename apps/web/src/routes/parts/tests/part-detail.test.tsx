@@ -283,8 +283,11 @@ describe("the install picker", () => {
     renderDetail(TECHNICIAN);
 
     await userEvent.click(await screen.findByRole("button", { name: /install/i }));
-    const picker = await screen.findByLabelText("Printer");
-    expect(picker).toHaveTextContent("Reception LJ-01 — Printers LaserJet");
+    // Opened, because the options of a searchable dropdown exist only while it is
+    // open — a native select kept them in the DOM whether or not anyone looked.
+    await userEvent.click(await screen.findByLabelText("Printer"));
+    const option = await screen.findByRole("option", { name: /Reception LJ-01/ });
+    expect(option).toHaveTextContent("Printers LaserJet");
     expect(parts.fetchFittingDevices).toHaveBeenCalledWith("p1");
   });
 
