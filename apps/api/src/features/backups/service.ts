@@ -15,6 +15,11 @@ import {
 } from "@reportly/shared";
 
 import { env } from "@/core/env.js";
+import {
+  forwardPasswordThroughDocker,
+  pgTarget,
+  redactSecrets,
+} from "@/features/backups/pg-connection.js";
 import { AppError } from "@/core/errors.js";
 import { notify } from "@/core/queue/notifications.js";
 import { logger } from "@/core/logger.js";
@@ -37,9 +42,13 @@ export function runCapture(
   cmd: string,
   args: string[],
   stdin?: Buffer,
+  childEnv?: NodeJS.ProcessEnv,
 ): Promise<{ code: number; stdout: Buffer; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(cmd, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      ...(childEnv ? { env: childEnv } : {}),
+    });
     const out: Buffer[] = [];
     let err = "";
     child.stdout.on("data", (d: Buffer) => out.push(d));
@@ -80,15 +89,17 @@ export const pgRestoreArgv = (): string[] => env.PG_RESTORE_CMD.trim().split(/\s
 export async function runDatabaseBackup(by: string | null): Promise<Backup> {
   const key = `backups/db/${stamp()}.dump`;
   try {
-    const [cmd, ...prefix] = pgDumpArgv();
-    const { code, stdout, stderr } = await runCapture(cmd!, [
-      ...prefix,
-      "-Fc",
-      "--no-owner",
-      "--no-privileges",
-      env.DATABASE_URL,
-    ]);
-    if (code !== 0) throw new Error(stderr.trim() || `pg_dump exited ${code}`);
+    const [cmd, ...prefix] = forwardPasswordThroughDocker(pgDumpArgv());
+    // Connection by flags with the password in the child's environment: a URL on
+    // the command line is a password in every error message that quotes it back.
+    const target = pgTarget(env.DATABASE_URL);
+    const { code, stdout, stderr } = await runCapture(
+      cmd!,
+      [...prefix, "-Fc", "--no-owner", "--no-privileges", ...target.args],
+      undefined,
+      target.childEnv,
+    );
+    if (code !== 0) throw new Error(redactSecrets(stderr.trim()) || `pg_dump exited ${code}`);
     await activeStorage().put(key, stdout, "application/octet-stream");
     const id = await insertBackup({
       kind: "database",
@@ -100,7 +111,9 @@ export async function runDatabaseBackup(by: string | null): Promise<Backup> {
     });
     return serialize((await getBackup(id))!);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Redacted once, here, so the row, the log line and the notification below
+    // cannot disagree about what is safe to show.
+    const message = redactSecrets(err instanceof Error ? err.message : String(err));
     logger.error({ feature: "backups", err: message }, "Database backup failed");
     const id = await insertBackup({
       kind: "database",
@@ -168,7 +181,9 @@ export async function runFilesBackup(by: string | null): Promise<Backup> {
     });
     return serialize((await getBackup(id))!);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Redacted once, here, so the row, the log line and the notification below
+    // cannot disagree about what is safe to show.
+    const message = redactSecrets(err instanceof Error ? err.message : String(err));
     logger.error({ feature: "backups", err: message }, "Files backup failed");
     const id = await insertBackup({
       kind: "files",

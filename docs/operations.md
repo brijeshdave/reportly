@@ -2,8 +2,16 @@
 
 ## The command line
 
-Run from the repository, or inside the API container with
-`node dist/cli/index.js <command>`.
+Run from the repository with `pnpm --filter @reportly/api cli <command>`, or
+**inside the API container** with `node dist/cli/index.js <command>`:
+
+```bash
+docker compose exec api node dist/cli/index.js doctor
+```
+
+The container has no workspace, so the `pnpm --filter` form there makes corepack
+try to install one and fails with `EACCES`. Note `exec api` — the _service_ name,
+not the container name.
 
 | Command                 | What it does                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------- |
@@ -114,6 +122,11 @@ database — but never as-is. **A development server holding production data sti
 believes it is production.** It has the reminder cron and six notification
 channels, and the first scheduled job after the restore emails and messages real
 staff and customers from your laptop.
+
+> **Percent-encode the password in `DATABASE_URL`.** `@`, `#`, `/` and `?` are
+> reserved in a URL, and while the app's driver copes, other tools read the same
+> string differently. Use `%40` for `@`, `%23` for `#`, `%2F` for `/`. `cli doctor`
+> now proves the backup tools can really connect, so run it after any change.
 
 **Getting the dump across.** No new machinery: on the production server open
 **Backups** (needs `backups:manage`), press **Back up now** for the database, then

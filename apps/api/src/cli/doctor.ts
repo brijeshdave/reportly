@@ -12,6 +12,11 @@ import { randomUUID } from "node:crypto";
 
 import { pingPool, appPool, logPool } from "@/core/db/pool.js";
 import { env } from "@/core/env.js";
+import {
+  forwardPasswordThroughDocker,
+  pgTarget,
+  redactSecrets,
+} from "@/features/backups/pg-connection.js";
 import { verifyMailer } from "@/core/mail/mailer.js";
 import { pingRedis } from "@/core/redis.js";
 import { activeStorage } from "@/core/storage/index.js";
@@ -132,6 +137,64 @@ async function checkStorage(): Promise<Check> {
  * pg_dump refuses to dump a server newer than itself, so an older client is a
  * backup feature that looks configured and fails at the moment it is needed.
  */
+/**
+ * Can pg_dump actually reach the database?
+ *
+ * Existing and being new enough is not the same as working: the tools connect
+ * with their own parser and their own network view, and a backup that only fails
+ * at 2am is the worst way to find out. `--schema-only` with no output is the
+ * cheapest thing that proves a real connection.
+ */
+async function checkBackupConnection(): Promise<Check> {
+  const [cmd, ...prefix] = forwardPasswordThroughDocker(pgDumpArgv());
+  try {
+    const target = pgTarget(env.DATABASE_URL);
+    const { code, stderr } = await runCapture(
+      cmd!,
+      [...prefix, "--schema-only", "--table", "___doctor_probe_does_not_exist", ...target.args],
+      undefined,
+      target.childEnv,
+    );
+    // A missing table is a fine answer — it proves we connected and were understood.
+    if (code === 0 || /no matching tables/i.test(stderr)) {
+      return ok("pg_dump connection", `reaches ${target.args[1]}`);
+    }
+    return fail("pg_dump connection", redactSecrets(stderr.trim()).slice(0, 300));
+  } catch (err) {
+    return fail("pg_dump connection", redactSecrets(reason(err)));
+  }
+}
+
+/**
+ * A password made of letters and digits, or a deployment that has thought about it.
+ *
+ * `@`, `/`, `:`, `#` and `?` are punctuation inside a URL, and the compose file
+ * uses one value in two ways — raw as the Postgres password, and interpolated into
+ * DATABASE_URL. Percent-encoding it there would fix the URL and break the login,
+ * since the encoded text would become the literal password. So the workable answer
+ * is a password that needs no encoding, and this says so before a backup discovers
+ * it at two in the morning.
+ */
+function checkPasswordCharacters(): Check {
+  let password: string;
+  try {
+    password = new URL(env.DATABASE_URL).password;
+  } catch {
+    return warn("database password", "DATABASE_URL could not be parsed to check it.");
+  }
+
+  const reserved = [...new Set([...password].filter((c) => "@/:#?&%".includes(c)))];
+  if (reserved.length === 0) return ok("database password", "no characters that need encoding");
+
+  return warn(
+    "database password",
+    `contains ${reserved.map((c) => `"${c}"`).join(", ")}, which a URL treats as punctuation. ` +
+      "Tools that parse DATABASE_URL themselves may read the wrong host. Prefer a password " +
+      "of letters and digits — with this compose file, percent-encoding it would change the " +
+      "password itself.",
+  );
+}
+
 async function checkBackupTools(): Promise<Check[]> {
   const server = await serverMajor();
   const checks: Check[] = [];
@@ -202,7 +265,9 @@ export async function runDoctor(): Promise<boolean> {
     await checkRedis(),
     await checkMail(),
     await checkStorage(),
+    checkPasswordCharacters(),
     ...(await checkBackupTools()),
+    await checkBackupConnection(),
     ...checkConfig(),
   ];
 

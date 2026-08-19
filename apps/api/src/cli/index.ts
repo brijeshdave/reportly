@@ -27,6 +27,7 @@ import { seedDemoData } from "@/core/db/seed/demo.js";
 import { seedDatabase } from "@/core/db/seed/index.js";
 import { env } from "@/core/env.js";
 import { runLogMigrations } from "@/core/logdb/migrate.js";
+import { closeNotificationQueue } from "@/core/queue/notifications.js";
 import { redis } from "@/core/redis.js";
 import { runDatabaseBackup } from "@/features/backups/service.js";
 
@@ -275,6 +276,12 @@ main()
   .finally(async () => {
     // Every connection must be closed or the process never exits. `reset-superadmin`
     // reads the password policy, which goes through the Redis-backed settings cache.
+    //
+    // The queues count too, and they are easy to miss because only some paths open
+    // one: a *failing* backup notifies, and notifying opens the notification queue.
+    // So `cli backup:database` exited cleanly when it worked and hung for ever when
+    // it did not — the case a nightly cron most needs to finish and report.
+    await closeNotificationQueue();
     await appPool.end();
     await logPool.end();
     await redis.quit();

@@ -9,6 +9,11 @@
 import { readFile } from "node:fs/promises";
 
 import { scrubForDevelopment, DEV_PASSWORD } from "@/features/backups/dev-scrub.js";
+import {
+  forwardPasswordThroughDocker,
+  pgTarget,
+  redactSecrets,
+} from "@/features/backups/pg-connection.js";
 import { env } from "@/core/env.js";
 import { logger } from "@/core/logger.js";
 import { pgRestoreArgv, runCapture } from "@/features/backups/service.js";
@@ -63,16 +68,21 @@ function assertSafeTarget(): void {
 
 /** pg_restore into the target, replacing what is there. */
 async function restoreInto(databaseUrl: string, dump: Buffer, label: string): Promise<void> {
-  const [cmd, ...prefix] = pgRestoreArgv();
+  const [cmd, ...prefix] = forwardPasswordThroughDocker(pgRestoreArgv());
+  const target = pgTarget(databaseUrl);
   const { code, stderr } = await runCapture(
     cmd!,
-    [...prefix, "--clean", "--if-exists", "--no-owner", "--no-privileges", "-d", databaseUrl],
+    [...prefix, "--clean", "--if-exists", "--no-owner", "--no-privileges", ...target.args],
     dump,
+    target.childEnv,
   );
   // pg_restore reports non-zero for harmless "does not exist" noise on --clean, so
   // the exit code alone is not the signal; a real failure names an error.
   if (code !== 0 && /error:/i.test(stderr)) {
-    logger.error({ feature: "backups", stderr: stderr.slice(0, 2000) }, `${label} restore failed`);
+    logger.error(
+      { feature: "backups", stderr: redactSecrets(stderr).slice(0, 2000) },
+      `${label} restore failed`,
+    );
     throw new Error(`${label} restore failed — see the log for pg_restore's output.`);
   }
 }
@@ -84,7 +94,9 @@ export async function restoreDev(options: RestoreDevOptions): Promise<void> {
   }
 
   const dump = await readFile(options.file);
-  console.log(`\nRestoring ${options.file} into ${env.DATABASE_URL.replace(/:[^:@]*@/, ":***@")}`);
+  // Not a hand-rolled mask: `:[^:@]*@` stops at the first `@`, so a password
+  // containing one is only half hidden — which is the bug this whole change is about.
+  console.log(`\nRestoring ${options.file} into ${redactSecrets(env.DATABASE_URL)}`);
   await restoreInto(env.DATABASE_URL, dump, "Database");
 
   // Straight on, in the same run. Nothing else may happen in between.

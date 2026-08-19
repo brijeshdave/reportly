@@ -9,6 +9,26 @@ import { z } from "zod";
 
 loadDotenv();
 
+/**
+ * A boolean from an environment variable, which is always a string.
+ *
+ * **Not `z.coerce.boolean()`**: that is `Boolean(value)`, and every non-empty
+ * string is truthy — so `ALLOW_INSECURE_HTTP=false` switched insecure HTTP *on*.
+ * An operator who writes the safe value explicitly, exactly as the documentation
+ * shows, got the dangerous one. Found in production, 2026-08-19.
+ *
+ * Anything unrecognised fails the boot rather than guessing, in keeping with the
+ * rest of this file: a misspelled flag is a question, not a default.
+ */
+const envBool = (fallback: boolean) =>
+  z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.enum(["true", "false", "1", "0", "yes", "no", "on", "off"]))
+    .transform((value) => ["true", "1", "yes", "on"].includes(value))
+    .default(fallback);
+
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -16,13 +36,10 @@ export const envSchema = z.object({
     .describe(
       "Runtime mode. `production` refuses insecure defaults at boot (see `ALLOW_INSECURE_HTTP`).",
     ),
-  ALLOW_INSECURE_HTTP: z.coerce
-    .boolean()
-    .default(false)
-    .describe(
-      "Permit `production` to run over plain HTTP. Session cookies then lose the `Secure` " +
-        "flag and travel in clear text. Only for a trusted private network.",
-    ),
+  ALLOW_INSECURE_HTTP: envBool(false).describe(
+    "Permit `production` to run over plain HTTP. Session cookies then lose the `Secure` " +
+      "flag and travel in clear text. Only for a trusted private network.",
+  ),
   HOST: z.string().default("0.0.0.0").describe("Interface the API binds to."),
   PORT: z.coerce.number().int().positive().default(3000).describe("Port the API listens on."),
   LOG_LEVEL: z
@@ -75,13 +92,10 @@ export const envSchema = z.object({
       "Path to a MaxMind GeoLite2 `.mmdb` for geolocating security-event IPs. " +
         "Unset (the default) records no location; see core/geoip.ts to enable.",
     ),
-  ALLOW_REGISTRATION: z.coerce
-    .boolean()
-    .default(false)
-    .describe(
-      "Allow public self-service sign-up. Off by default — accounts are created by " +
-        "an administrator or by invitation. Superadmin and invite flows are unaffected.",
-    ),
+  ALLOW_REGISTRATION: envBool(false).describe(
+    "Allow public self-service sign-up. Off by default — accounts are created by " +
+      "an administrator or by invitation. Superadmin and invite flows are unaffected.",
+  ),
 
   CORS_ORIGIN: z
     .string()
@@ -177,7 +191,7 @@ export const envSchema = z.object({
 
   SMTP_HOST: z.string().default("localhost").describe("Outbound mail host (dev: Mailpit)."),
   SMTP_PORT: z.coerce.number().int().positive().default(1025).describe("Outbound mail port."),
-  SMTP_SECURE: z.coerce.boolean().default(false).describe("Use TLS when connecting to SMTP."),
+  SMTP_SECURE: envBool(false).describe("Use TLS when connecting to SMTP."),
   SMTP_USER: z.string().optional().describe("SMTP username, when the relay requires one."),
   SMTP_PASS: z.string().optional().describe("SMTP password, when the relay requires one."),
   MAIL_FROM: z

@@ -43,7 +43,39 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   where there is only one, and otherwise stays on the central rota, where the
   people already rostered on it continue to appear.
 
+### Security
+
+- **`ALLOW_INSECURE_HTTP=false` turned insecure HTTP on.** The three boolean
+  environment flags were coerced with `Boolean(value)`, and every non-empty string
+  is truthy — so writing the safe value explicitly produced the dangerous one,
+  while the startup check reported it as on and the file said false. It did not
+  need anybody to be explicit either: the shipped `compose.prod.yaml` passes
+  `${ALLOW_INSECURE_HTTP:-false}`, so **every production install has had insecure
+  HTTP permitted and session cookies without the `Secure` flag** — with no value an
+  operator could write to turn it off. `ALLOW_REGISTRATION` is not passed by
+  compose, so open sign-up needed somebody to write it. Flags are now
+  read as `true/false`, `1/0`, `yes/no` or `on/off`, and anything else refuses to
+  boot rather than guessing.
+- **A failed backup could publish the database password.** `pg_dump` was given the
+  whole connection URL, so a password containing an unescaped `@` made it resolve
+  the wrong host and quote the mangled string back — and that message was stored
+  on the backup row, shown in the UI, sent as a failure notification by email, and
+  logged. The credential no longer reaches the command line at all (connection by
+  flags, password in the child's environment, forwarded rather than printed
+  through a `docker exec` wrapper), and every captured message is scrubbed of URL
+  user info, known passwords and `PGPASSWORD=` echoes before it is stored, logged
+  or sent. Applies to restores too. **If you have seen a failed backup, rotate the
+  database password and clear `backups.error`** — the value was at rest in three
+  places.
+
 ### Fixed
+
+- **`cli backup:database` hung for ever when a backup failed.** Notifying opens a
+  queue connection and the command closed only its database pools, so the one path
+  a nightly cron most needs to finish — the failing one — never exited.
+- **`cli doctor` now proves the backup tools can connect**, not merely that they
+  exist and are new enough. A wrong password or an unreachable host used to be
+  discovered by a backup failing at 2am.
 
 - **Department pickers said which department, never which company.** A name is
   unique within a company but not across them, so anybody belonging to a
