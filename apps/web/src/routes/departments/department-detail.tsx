@@ -10,7 +10,7 @@ import { Plus, UsersRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Avatar } from "@/components/avatar.js";
-import { MultiSelect } from "@/components/ui/multi-select.js";
+import { MultiSelect } from "@/components/multi-select.js";
 import { Can, usePermission } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { HistoryTab } from "@/components/history-tab.js";
@@ -392,11 +392,11 @@ function MemberRow({
             central person works at all of them by definition, so the picker goes
             quiet rather than offering a choice that would not be honoured. */}
         <MultiSelect
-          label={`Sites: ${membership.name}`}
+          ariaLabel={`Sites: ${membership.name}`}
           options={sites.map((site) => ({ value: site.id, label: site.name }))}
-          selected={membership.isCentral ? [] : membership.locationIds}
+          values={membership.isCentral ? [] : membership.locationIds}
           onChange={(locationIds) => onEdit({ locationIds })}
-          emptyLabel={membership.isCentral ? "Travels — central rota" : "All sites"}
+          placeholder={membership.isCentral ? "Travels — central rota" : "All sites"}
           disabled={!canAssign || membership.isCentral}
         />
       </div>

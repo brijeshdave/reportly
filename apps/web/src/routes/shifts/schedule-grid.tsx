@@ -20,7 +20,7 @@ import { X } from "lucide-react";
 import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { Avatar } from "@/components/avatar.js";
-import { MultiSelect } from "@/components/ui/multi-select.js";
+import { MultiSelect } from "@/components/multi-select.js";
 import { cn } from "@/lib/cn.js";
 import { SHIFT_COLOR_CLASSES, STATE_CHIP } from "@/routes/shifts/shift-colors.js";
 import { bulkAssign } from "@/services/shifts.js";
@@ -496,11 +496,11 @@ function SelectionToolbar({
         <span className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground">Where</span>
           <MultiSelect
-            label={`Sites for ${memberName}`}
+            ariaLabel={`Sites for ${memberName}`}
             options={siteOptions.map((site) => ({ value: site.id, label: site.name }))}
-            selected={whereIds}
+            values={whereIds}
             onChange={setWhereIds}
-            emptyLabel="Not said"
+            placeholder="Not said"
             disabled={busy}
           />
         </span>

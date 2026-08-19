@@ -11,10 +11,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
 import { useState } from "react";
 
-import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select.js";
+import { MultiSelect } from "@/components/multi-select.js";
+import type { SelectOption } from "@/components/searchable-select.js";
 import { Input, Spinner } from "@/components/ui/form.js";
 import { Badge } from "@/components/ui/primitives.js";
 import { AssetCascadePicker } from "@/components/asset-cascade-picker.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { assetOptions as buildAssetOptions, assetsAtSite } from "@/lib/asset-paths.js";
 import { fetchAssets, fetchDevices } from "@/services/assets.js";
 import { fetchDepartments, fetchOrgPeople } from "@/services/departments.js";
@@ -48,7 +50,7 @@ export function ScopePicker({
   const idsOf = (kind: TargetKind) => value.filter((t) => t.kind === kind).map((t) => t.id);
 
   /** Replace one kind's picks wholesale, leaving the other kinds untouched. */
-  const setKind = (kind: TargetKind, ids: string[], options: MultiSelectOption[]) => {
+  const setKind = (kind: TargetKind, ids: string[], options: SelectOption[]) => {
     const others = value.filter((t) => t.kind !== kind);
     const picked = ids.map((id) => ({
       kind,
@@ -62,18 +64,17 @@ export function ScopePicker({
   // that shows three identical strings offers no way to choose the right one.
   // Labels are resolved from the full tree so an already-chosen asset at another site
   // still draws its chip; only the *choices* are scoped.
-  const assetOptions: MultiSelectOption[] = buildAssetOptions(allAssets)
+  const assetOptions: SelectOption[] = buildAssetOptions(allAssets)
     .filter((a) => a.status === "active")
     .map((a) => ({ value: a.id, label: a.path }));
 
-  // The full path, for the same reason as the assets above. This control has no
-  // second line to put the ancestors on, so they go in the label itself.
-  const departmentChoices: MultiSelectOption[] = (departments.data ?? []).map((d) => ({
-    value: d.id,
-    label: d.path,
-  }));
+  // Name first, ancestors underneath — the control has a second line now, so the
+  // path no longer has to be crammed into the label.
+  const departmentChoices: SelectOption[] = departmentOptions(
+    (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+  );
 
-  const peopleOptions: MultiSelectOption[] = (people.data ?? []).map((p) => ({
+  const peopleOptions: SelectOption[] = (people.data ?? []).map((p) => ({
     value: p.userId,
     label: p.name,
   }));
@@ -115,11 +116,11 @@ export function ScopePicker({
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Departments</span>
           <MultiSelect
-            label="Departments this report is about"
+            ariaLabel="Departments this report is about"
             options={departmentChoices}
-            selected={idsOf("department")}
+            values={idsOf("department")}
             onChange={(ids) => setKind("department", ids, departmentChoices)}
-            emptyLabel="None"
+            placeholder="None"
             disabled={disabled}
           />
         </label>
@@ -127,11 +128,11 @@ export function ScopePicker({
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">People</span>
           <MultiSelect
-            label="People this report is about"
+            ariaLabel="People this report is about"
             options={peopleOptions}
-            selected={idsOf("user")}
+            values={idsOf("user")}
             onChange={(ids) => setKind("user", ids, peopleOptions)}
-            emptyLabel="None"
+            placeholder="None"
             disabled={disabled}
           />
         </label>
