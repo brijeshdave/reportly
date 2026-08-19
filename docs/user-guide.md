@@ -354,6 +354,10 @@ for each person set three things:
 | **Sites**      | Which locations their membership covers. Select none to mean _all_ of them.  |
 | **Central**    | They travel between sites — rostered on the department's central rota.       |
 
+Rank, reporting line, sites and **Central** can all be set from either end: the
+department's **Members** tab, or **Users → _the person_ → Departments**. Whichever
+page you are already on is the right one.
+
 So a typical shape is: the boss in Management reporting to nobody; the HOD of
 Engineering reporting **up to the boss** — a person in a _different_ department, which
 is allowed and expected; the team leaders reporting to the HOD; and the juniors

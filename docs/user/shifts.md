@@ -41,7 +41,8 @@ Some people are not at a site: they work a general shift and go where they are
 needed — a full day at one plant, or one plant in the morning and another after
 lunch.
 
-Tick **Central** against them on the department's Members tab. They are then
+Tick **Central** against them — on the department's **Members** tab, or on
+**Users → _the person_ → Departments**, whichever you are nearer. They are then
 rostered on the department's **central rota**, chosen from the same site picker,
 and they appear on no site's rota — they are scheduled once, in one place.
 

@@ -1079,12 +1079,18 @@ function MembershipRow({
     rank: string;
     reportsToId: string | null;
     locationIds: string[];
+    isCentral: boolean;
   };
   name: string;
   /** Which company it is in, and where in that company's tree. */
   where: string;
   onEdit: (
-    patch: Partial<{ rank: string; reportsToId: string | null; locationIds: string[] }>,
+    patch: Partial<{
+      rank: string;
+      reportsToId: string | null;
+      locationIds: string[];
+      isCentral: boolean;
+    }>,
   ) => void;
 }) {
   const members = useQuery({
@@ -1148,13 +1154,32 @@ function MembershipRow({
       <div className="flex w-40 flex-col gap-0.5 text-[11px]">
         <span className="text-muted-foreground">Sites</span>
         <MultiSelect
-          values={membership.locationIds}
+          values={membership.isCentral ? [] : membership.locationIds}
           onChange={(locationIds) => onEdit({ locationIds })}
           options={(sites.data ?? []).map((site) => ({ value: site.id, label: site.name }))}
-          placeholder="All sites"
+          placeholder={membership.isCentral ? "Travels — central rota" : "All sites"}
           ariaLabel={`Sites in ${name}`}
+          disabled={membership.isCentral}
         />
       </div>
+
+      {/* Also here, not only on the department's own Members tab: placing somebody
+          is done from whichever page you happen to be on, and "central" is part of
+          placing them. Clearing the sites with it keeps the two from disagreeing
+          about where this person works. */}
+      <label className="flex w-28 items-start gap-2 text-[11px]">
+        <input
+          type="checkbox"
+          checked={membership.isCentral}
+          onChange={(event) => onEdit({ isCentral: event.target.checked, locationIds: [] })}
+          aria-label={`Central staff in ${name}`}
+          className="mt-0.5 h-3.5 w-3.5 rounded border-border"
+        />
+        <span>
+          <span className="block text-muted-foreground">Central</span>
+          <span className="block text-[10px] text-muted-foreground">Travels between sites</span>
+        </span>
+      </label>
     </Card>
   );
 }
@@ -1173,6 +1198,8 @@ function DepartmentAssigner({ userId, current }: { userId: string; current: User
     rank: string;
     reportsToId: string | null;
     locationIds: string[];
+    /** Travelling staff — rostered on the department's central rota. */
+    isCentral: boolean;
   };
   const [draft, setDraft] = useState<Membership[] | null>(null);
   const chosen: Membership[] =
@@ -1182,6 +1209,7 @@ function DepartmentAssigner({ userId, current }: { userId: string; current: User
       rank: d.rank,
       reportsToId: d.reportsToId,
       locationIds: d.locationIds,
+      isCentral: d.isCentral,
     }));
   useUnsavedChanges("departments", draft !== null);
 
@@ -1197,6 +1225,7 @@ function DepartmentAssigner({ userId, current }: { userId: string; current: User
             rank: "member",
             reportsToId: null,
             locationIds: [],
+            isCentral: false,
           },
       ),
     );

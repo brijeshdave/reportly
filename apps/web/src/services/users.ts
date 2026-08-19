@@ -158,6 +158,8 @@ export const saveUserDepartments = (
     // Omitted means "leave it as the department's own Members tab set it".
     reportsToId?: string | null;
     locationIds?: string[];
+    /** Travelling staff — rostered on the department's central rota. */
+    isCentral?: boolean;
   }[],
 ) => http.put<{ assigned: number }>(`/users/${id}/departments`, { departments });
 
