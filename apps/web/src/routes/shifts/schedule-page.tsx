@@ -62,14 +62,20 @@ export function SchedulePage() {
   // than the absence of one, so the picker names it.
   const [locationId, setLocationId] = useState<string>("");
   const [touched, setTouched] = useState(false);
+  const [siteTouched, setSiteTouched] = useState(false);
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [view, setView] = useState<ScheduleView>("actual");
 
-  // Default to the viewer's own department when they are in exactly one and are not a
-  // company-wide scheduler; otherwise they pick.
-  const mine = myDepartments.data ?? [];
-  const defaultDept = !canManage && mine.length === 1 ? mine[0]!.departmentId : null;
+  // Open on the viewer's own rota rather than on two empty pickers.
+  //
+  // The app already knows where somebody works — their membership in the active
+  // company, and the sites it covers — so making them say it again before the page
+  // shows anything is asking a question it can answer itself. A scheduler gets the
+  // same treatment when they are in a department; only somebody in none is asked,
+  // because then there is genuinely nothing to go on.
+  const mine = (myDepartments.data ?? []).filter((d) => d.companyId === session.companyId);
+  const defaultDept = mine[0]?.departmentId ?? null;
   const effectiveDept = touched ? departmentId : (departmentId ?? defaultDept);
   // `GET /departments` answers flat — the nesting lives in `path`, which the
   // options carry as each entry's second line. (This used to recurse into a
@@ -78,20 +84,36 @@ export function SchedulePage() {
     (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
   );
 
+  const activeSites = (sites.data ?? []).filter((site) => site.status === "active");
+  const siteOptions = activeSites.map((site) => ({ value: site.id, label: site.name }));
+
+  /**
+   * Which rota to open at, for the department in view.
+   *
+   * Follows the membership: central staff open on the central rota, everyone else
+   * on the site their membership covers. A membership covering no site in
+   * particular covers all of them, so the first site they can reach is as good an
+   * answer as any — and any answer beats an empty page. Recomputed when the
+   * department changes, until the person picks a site themselves.
+   */
+  const membership = mine.find((d) => d.departmentId === effectiveDept) ?? null;
+  const derivedSite = membership
+    ? membership.isCentral
+      ? ""
+      : (membership.locationIds[0] ?? activeSites[0]?.id ?? "")
+    : (activeSites[0]?.id ?? "");
+  const effectiveSite = siteTouched ? locationId : derivedSite;
+
   // Which rota every mutation is about. One place, because three buttons start a
   // rota and a fourth would eventually forget.
-  const siteArg = locationId === "" ? { central: true } : { locationId };
-
-  const siteOptions = (sites.data ?? [])
-    .filter((site) => site.status === "active")
-    .map((site) => ({ value: site.id, label: site.name }));
+  const siteArg = effectiveSite === "" ? { central: true } : { locationId: effectiveSite };
 
   const grid = useQuery({
-    queryKey: ["schedule", effectiveDept, locationId, year, month],
+    queryKey: ["schedule", effectiveDept, effectiveSite, year, month],
     queryFn: () =>
       fetchSchedule({
         departmentId: effectiveDept!,
-        ...(locationId === "" ? {} : { locationId }),
+        ...(effectiveSite === "" ? {} : { locationId: effectiveSite }),
         year,
         month,
       }),
@@ -100,7 +122,7 @@ export function SchedulePage() {
 
   const invalidate = () =>
     queryClient.invalidateQueries({
-      queryKey: ["schedule", effectiveDept, locationId, year, month],
+      queryKey: ["schedule", effectiveDept, effectiveSite, year, month],
     });
 
   const create = useMutation({
@@ -163,6 +185,9 @@ export function SchedulePage() {
                 onChange={(value) => {
                   setTouched(true);
                   setDepartmentId(value || null);
+                  // The site belonged to the department you were on; let the new
+                  // one answer for itself rather than carrying Plant A across.
+                  setSiteTouched(false);
                 }}
                 options={options}
                 placeholder="Choose a department…"
@@ -173,8 +198,11 @@ export function SchedulePage() {
             <div className="w-56">
               <SearchableSelect
                 ariaLabel="Site"
-                value={locationId}
-                onChange={setLocationId}
+                value={effectiveSite}
+                onChange={(value) => {
+                  setSiteTouched(true);
+                  setLocationId(value);
+                }}
                 options={siteOptions}
                 placeholder="Central (travelling staff)"
               />

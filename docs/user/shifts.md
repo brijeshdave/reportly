@@ -86,6 +86,14 @@ which is the point — the plan stays as a record of what was intended.
 
 You need `shifts:manage` (the **Shifts admin** role).
 
+**The page opens on your own rota.** It takes the department you belong to in the
+company you are in, and the site your membership covers — or the central rota if
+you are marked as travelling — so arriving at Schedule shows a roster rather than
+two empty boxes. Change either picker and it stays changed; changing the
+department re-answers the site, since the old one belonged to the old department.
+Somebody in no department at all is still asked, because then there is nothing to
+go on.
+
 1. Open **Schedule** and pick the department, the site, and the month. Both lists
    are searchable, and the department one shows each department's parents
    underneath its name. Choose **Central (travelling staff)** for the rota of
