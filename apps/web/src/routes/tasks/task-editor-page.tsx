@@ -10,6 +10,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { sessionQuery } from "@/lib/queries.js";
@@ -90,11 +91,15 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
 
   if (mode === "edit" && existing.isLoading) return <Spinner />;
 
+  // The name to choose by, and underneath it what tells two of the same name apart.
+  // A downline of forty is forty entries to scroll past, and the name is the one
+  // thing the person assigning already knows — so this list is searchable.
   const people = [
-    ...(me ? [{ id: me.id, name: `${me.name} (you)` }] : []),
+    ...(me ? [{ value: me.id, label: `${me.name} (you)` }] : []),
     ...(downline.data ?? []).map((d) => ({
-      id: d.userId,
-      name: `${d.name}${d.designation ? ` — ${d.designation}` : ""}`,
+      value: d.userId,
+      label: d.name,
+      hint: [d.designation, d.departmentName].filter(Boolean).join(" · ") || undefined,
     })),
   ];
 
@@ -146,13 +151,13 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
             }
           >
             {(props) => (
-              <Select {...props} value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
+              <SearchableSelect
+                {...props}
+                value={assigneeId}
+                onChange={setAssigneeId}
+                options={people}
+                placeholder="Choose who does it"
+              />
             )}
           </Field>
 

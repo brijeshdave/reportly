@@ -5,7 +5,7 @@
 // container, but toggles values without closing, shows how many are picked, and
 // offers a one-click clear.
 import { Check, ChevronsUpDown, Search } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
 import type { SelectOption } from "@/components/searchable-select.js";
@@ -20,23 +20,32 @@ interface Coords {
 }
 
 export function MultiSelect({
+  id,
   values,
   onChange,
   options,
   placeholder = "Any",
   disabled,
   ariaLabel,
+  "aria-describedby": describedBy,
 }: {
+  /** Put `Field`'s id here, or its `<label for>` points at nothing. */
+  id?: string;
   values: string[];
   onChange: (values: string[]) => void;
   options: SelectOption[];
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
+  "aria-describedby"?: string;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // The row the arrows are on. Unlike the single-select there is no "clear" row to
+  // start above, so -1 simply means "nothing aimed at yet".
+  const [active, setActive] = useState(-1);
   const [coords, setCoords] = useState<Coords | null>(null);
 
   const chosen = new Set(values);
@@ -92,16 +101,64 @@ export function MultiSelect({
     onChange(chosen.has(value) ? values.filter((v) => v !== value) : [...values, value]);
   };
 
+  /**
+   * Arrows move, Enter toggles, Escape leaves.
+   *
+   * Enter deliberately does *not* close: picking several is the whole reason this
+   * control exists, and a list that shut after each choice would make choosing
+   * three people three round trips.
+   */
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const last = filtered.length - 1;
+      if (last < 0) return;
+      setActive((current) => {
+        if (event.key === "ArrowDown") return current >= last ? 0 : current + 1;
+        return current <= 0 ? last : current - 1;
+      });
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const option = filtered[active];
+      if (option) toggle(option.value);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      setQuery("");
+      setActive(-1);
+      buttonRef.current?.focus();
+    }
+  };
+
+  // Keep the active row in view; optional, and absent in jsdom.
+  useEffect(() => {
+    if (!open) return;
+    const row = listRef.current?.querySelector('[data-active="true"]');
+    if (row instanceof HTMLElement) row.scrollIntoView?.({ block: "nearest" });
+  }, [active, open]);
+
   return (
     <>
       <button
         ref={buttonRef}
+        id={id}
         type="button"
         disabled={disabled}
         aria-label={ariaLabel}
+        aria-describedby={describedBy}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" && !open) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
         className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         <span className={cn("truncate", !summary && "text-muted-foreground")}>
@@ -132,14 +189,18 @@ export function MultiSelect({
                   <input
                     autoFocus
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setActive(-1);
+                    }}
+                    onKeyDown={onKeyDown}
                     placeholder="Search…"
                     aria-label="Search options"
                     className="h-7 w-full bg-transparent text-sm focus-visible:outline-none"
                   />
                 </div>
 
-                <div className="flex-1 overflow-y-auto pt-1">
+                <div ref={listRef} className="flex-1 overflow-y-auto pt-1">
                   {values.length > 0 ? (
                     <button
                       type="button"
@@ -155,7 +216,7 @@ export function MultiSelect({
                       No matches
                     </p>
                   ) : (
-                    filtered.map((option) => {
+                    filtered.map((option, index) => {
                       const isOn = chosen.has(option.value);
                       return (
                         <button
@@ -163,8 +224,13 @@ export function MultiSelect({
                           type="button"
                           role="option"
                           aria-selected={isOn}
+                          data-active={index === active}
+                          onMouseEnter={() => setActive(index)}
                           onClick={() => toggle(option.value)}
-                          className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted"
+                          className={cn(
+                            "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
+                            index === active ? "bg-muted" : "",
+                          )}
                         >
                           <span className="min-w-0">
                             <span className="block truncate">{option.label}</span>

@@ -14,6 +14,7 @@ import {
   createGroup,
   createPerson,
   expectSignedIn,
+  pickFromCombo,
   signIn,
   signInAs,
   signOut,
@@ -53,7 +54,7 @@ test("a task assigned to somebody reaches their bell, and can be cleared", async
   // --- the thing that happens ---
   await page.goto("/tasks/new");
   await page.getByLabel("Title").fill(title);
-  await page.getByLabel("Assign to").selectOption({ label: staffName });
+  await pickFromCombo(page, "Assign to", staffName);
   await page.getByRole("button", { name: "Assign", exact: true }).click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]{36}$/);
 

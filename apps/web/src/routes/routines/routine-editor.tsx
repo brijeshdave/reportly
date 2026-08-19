@@ -15,7 +15,7 @@ import { useState, type FormEvent } from "react";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner } from "@/components/ui/form.js";
-import { MultiSelect } from "@/components/ui/multi-select.js";
+import { MultiSelect } from "@/components/multi-select.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
@@ -81,9 +81,16 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
   );
 
   // The manager may assign to themselves or anyone below them.
+  // Searchable, with each person's department underneath: a downline of forty was a
+  // checkbox list you had to scroll, and two people of the same name were two
+  // identical rows.
   const options = [
     { value: session.user.id, label: `${session.user.name} (you)` },
-    ...(downline.data ?? []).map((m) => ({ value: m.userId, label: m.name })),
+    ...(downline.data ?? []).map((m) => ({
+      value: m.userId,
+      label: m.name,
+      hint: [m.designation, m.departmentName].filter(Boolean).join(" · ") || undefined,
+    })),
   ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i);
 
   const save = useMutation({
@@ -298,11 +305,11 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
           <div>
             <span className="mb-1 block text-sm font-medium">Assign to</span>
             <MultiSelect
-              label="Assignees"
+              ariaLabel="Assignees"
               options={options}
-              selected={assigneeIds}
+              values={assigneeIds}
               onChange={setAssigneeIds}
-              emptyLabel="Pick people…"
+              placeholder="Pick people…"
             />
             <p className="mt-1 text-xs text-muted-foreground">
               Any of them may complete each occurrence.

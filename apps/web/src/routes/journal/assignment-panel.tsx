@@ -11,8 +11,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, Users, X } from "lucide-react";
 import { useState } from "react";
 
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { Select, Spinner } from "@/components/ui/form.js";
+import { Spinner } from "@/components/ui/form.js";
 import { Badge, Button, Card } from "@/components/ui/primitives.js";
 import {
   assignReport,
@@ -87,19 +88,17 @@ export function AssignmentPanel({ report }: { report: JournalEntry }) {
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
-          <Select
-            aria-label="Assignee"
-            value={assigneeId}
-            onChange={(event) => setAssigneeId(event.target.value)}
-            className="flex-1"
-          >
-            <option value="">Nobody</option>
-            {people.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-              </option>
-            ))}
-          </Select>
+          <div className="flex-1">
+            {/* Searchable: handing work over means finding one person in a downline,
+                and the name is what you know. */}
+            <SearchableSelect
+              ariaLabel="Assignee"
+              value={assigneeId}
+              onChange={setAssigneeId}
+              options={people.map((person) => ({ value: person.id, label: person.name }))}
+              placeholder="Nobody"
+            />
+          </div>
           <Button
             size="sm"
             onClick={() => assign.mutate()}

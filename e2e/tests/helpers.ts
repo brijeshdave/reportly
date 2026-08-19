@@ -123,16 +123,23 @@ export async function dismissPicker(page: Page): Promise<void> {
  * pickers use.
  *
  * Not `selectOption`: this is a button and a portalled listbox, not a `<select>`,
- * because the options carry a second line (a department's parents, or the company
- * it is in) that a native option cannot render. The trigger still answers to its
- * label, so the only thing that changes for a caller is opening it first.
- *
- * The name matches the option's own line, not the hint beneath it, and exactly —
- * so "Maintenance" does not also pick "Maintenance (night)".
+ * because the options carry a second line (a department's parents, a person's
+ * department, the company it is in) that a native option cannot render. The
+ * trigger still answers to its label, so the only thing that changes for a caller
+ * is opening it first.
  */
 export async function pickFromCombo(page: Page, label: string, name: string): Promise<void> {
   await page.getByLabel(label, { exact: true }).click();
-  await page.getByRole("listbox").getByRole("option", { name, exact: true }).click();
+  // Matched on the option's own first line, not its accessible name: an option
+  // carries a second line (a department, a company, a site), and that text joins
+  // the accessible name — so `{ name, exact: true }` matches nothing at all, while
+  // a loose match would take "Maintenance (night)" for "Maintenance".
+  await page
+    .getByRole("listbox")
+    .getByRole("option")
+    .filter({ has: page.getByText(name, { exact: true }) })
+    .first()
+    .click();
 }
 
 /**
