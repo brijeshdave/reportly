@@ -8,6 +8,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`cli restore:dev` — work on a copy of production without endangering anybody.**
+  Loads a backup into a development database and makes it safe in the same run:
+  every local password becomes the development one, two-factor and sessions go,
+  emails keep their name but move to `@dev.local`, phone numbers and provider
+  secrets are erased, and every notification channel but the in-app bell is
+  switched off. The journal, routines, rotas, assets and points survive, because
+  that is the point of the copy. Refuses to run unless `ALLOW_DEV_RESTORE=true`,
+  `NODE_ENV` is not production, the database is local, and a confirmation phrase
+  is typed. The log database is restored only when asked for.
 - **Every long list is now a dropdown you can type into.** Assigning a task or a
   routine, handing an entry over, choosing a device, a model, a site or a
   department: each opens a searchable list rather than a native select you had to

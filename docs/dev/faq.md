@@ -93,6 +93,34 @@ spec at `/api/v1/docs`. Hand-maintained API docs rot; generated ones cannot.
 One gotcha: a route parameter that should 404 rather than 400 must be
 `z.string()` and checked in the handler, or the schema rejects it first.
 
+### Can I work on a copy of production?
+
+Yes, through `cli restore:dev` — never by restoring a dump and getting on with it.
+The reason is in `features/backups/dev-scrub.ts`: the risk is not the rows, it is
+that the app on your laptop still believes it is production. It has the reminder
+cron and six notification channels pointed at real addresses, and it does not know
+the database underneath it changed.
+
+So restore and scrub are one command and one transaction, and there is deliberately
+no "scrub later" mode. The scrub also switches every channel but the in-app bell
+off — belt and braces, because an erased address and a live channel still add up to
+a job that runs.
+
+Two decisions worth knowing before changing it:
+
+- **Emails keep their local part and lose the domain.** `priya@real.example`
+  becomes `priya@dev.local`. Anonymising them entirely would make a copy nobody can
+  navigate — you would not know whose account you were looking at — and email is
+  the sign-in handle.
+- **Only credential accounts get the development password.** An OIDC account has no
+  local password, and giving it one would invent a way in that production does not
+  have.
+
+The test plants a real-looking hash, TOTP secret, mobile number, provider token and
+SSO client secret, runs the scrub, and asserts each is gone — then signs in as the
+scrubbed user through the real auth route. A scrub with a missed column looks
+exactly like one that works.
+
 ### When does a picker get to stay a native `<select>`?
 
 When its options are **written in the code**: a priority, a cadence, a status, a

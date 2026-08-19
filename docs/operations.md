@@ -107,6 +107,54 @@ Restore with `psql "$DATABASE_URL" < dump.sql`, then run `cli migrate`.
 > `docker compose down -v` deletes the Postgres **and** Redis volumes. There is no
 > confirmation prompt. Use `docker compose down` (no `-v`) to stop the stack.
 
+### Working on a copy of production, safely
+
+To reproduce something with real data, load a production backup into a development
+database — but never as-is. **A development server holding production data still
+believes it is production.** It has the reminder cron and six notification
+channels, and the first scheduled job after the restore emails and messages real
+staff and customers from your laptop.
+
+**Getting the dump across.** No new machinery: on the production server open
+**Backups** (needs `backups:manage`), press **Back up now** for the database, then
+**Download** the row it creates. Copy that file to the development machine. Backups
+are also taken on a schedule, so any recent row will do — you do not have to make a
+fresh one.
+
+`restore:dev` then restores and makes it safe in one run:
+
+```bash
+ALLOW_DEV_RESTORE=true pnpm --filter @reportly/api cli restore:dev   --file reportly-2026-08-19.dump   --confirm "overwrite my development database"
+```
+
+It refuses unless all of these hold: `NODE_ENV` is not `production`,
+`ALLOW_DEV_RESTORE=true`, `DATABASE_URL` points at a local database, and the
+confirmation phrase is typed. Then, in the same transaction as the restore:
+
+| Made safe                                               | Kept                       |
+| ------------------------------------------------------- | -------------------------- |
+| Every local password becomes `Admin@123`                | Journal entries            |
+| Two-factor removed, everyone signed out                 | Routines, rotas, shifts    |
+| Emails keep their name, lose the domain — `x@dev.local` | Assets, devices, parts     |
+| Phone numbers, Discord handles, provider tokens erased  | Departments and the line   |
+| Twilio/Telegram/Discord and OIDC secrets deleted        | Points and the audit trail |
+| Every channel but the in-app bell switched off          |                            |
+
+Add `--logs <dump>` to restore the log database too; without it your development
+logs are left alone.
+
+**What it does about notifications.** Every channel except the in-app bell is
+switched off, in both places that decide: the app-wide delivery setting and each
+person's own preferences. Mobile numbers, WhatsApp/Telegram flags and Discord
+handles are erased outright, so even a channel switched back on by hand has no
+number to reach. Turn individual channels on again from **Settings → Notifications**
+if a piece of work needs them.
+
+**Two things it cannot do for you.** It does not touch `.env` — if you copied
+production's, your development box is still holding production secrets and pointing
+at production's SMTP. And it restores the database only: attachments live in the
+file store, so downloads will 404 unless you restore that separately.
+
 ## Log database sizing
 
 Logs live in their own database so their volume can never affect the application.

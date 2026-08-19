@@ -9,10 +9,12 @@
 //   pnpm --filter @reportly/api cli storage:migrate [--dry-run]
 //   pnpm --filter @reportly/api cli doctor
 //   pnpm --filter @reportly/api cli backup:database
+//   pnpm --filter @reportly/api cli restore:dev --file <dump> [--logs <dump>] --confirm "..."
 //   pnpm --filter @reportly/api cli seed:demo
 import { eq } from "drizzle-orm";
 
 import { runDoctor } from "@/cli/doctor.js";
+import { restoreDev } from "@/cli/restore-dev.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { migrateStorage } from "@/core/storage/migrate.js";
 import { resetTwoFactor } from "@/core/auth/two-factor.js";
@@ -32,7 +34,15 @@ const command = process.argv[2];
 
 const USAGE =
   "Usage: cli <migrate|seed|reset-superadmin [--password-stdin]|reset-2fa <email>|" +
-  "storage:migrate [--dry-run]|doctor|backup:database|seed:demo|seed:demo-cartridges [companyId]>";
+  "storage:migrate [--dry-run]|doctor|backup:database|" +
+  "restore:dev --file <dump> [--logs <dump>] --confirm <phrase>|" +
+  "seed:demo|seed:demo-cartridges [companyId]>";
+
+/** `--flag value` out of argv, for the few commands that take one. */
+function flag(name: string): string | undefined {
+  const at = process.argv.indexOf(`--${name}`);
+  return at === -1 ? undefined : process.argv[at + 1];
+}
 
 /**
  * The company to seed into when none was named.
@@ -230,6 +240,23 @@ async function main(): Promise<void> {
         );
       } else {
         console.error(`\nDatabase backup FAILED: ${backup.error ?? "unknown error"}\n`);
+        process.exitCode = 1;
+      }
+      break;
+    }
+    case "restore:dev": {
+      const file = flag("file");
+      if (!file) {
+        console.error(`restore:dev needs --file <dump>.\n${USAGE}`);
+        process.exitCode = 1;
+        break;
+      }
+      try {
+        await restoreDev({ file, confirm: flag("confirm"), logsFile: flag("logs") });
+      } catch (err) {
+        // The refusals are the point of the command, so they read as instructions
+        // rather than as a stack trace.
+        console.error(`\n${err instanceof Error ? err.message : String(err)}\n`);
         process.exitCode = 1;
       }
       break;

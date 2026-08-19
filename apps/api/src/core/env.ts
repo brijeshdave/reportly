@@ -135,6 +135,20 @@ export const envSchema = z.object({
    * Off by default and deliberately so: upgrading a server must never silently
    * expose a screen that can pause the queue carrying every password reset.
    */
+  /**
+   * Lets `cli restore:dev` wipe this database and load a production dump into it.
+   *
+   * Off unless set, and refused outright when NODE_ENV is production or the
+   * database is not local. A command that drops a database should take more than
+   * one mistake to fire.
+   */
+  ALLOW_DEV_RESTORE: z
+    .enum(["true", "false"])
+    .default("false")
+    .describe(
+      "Set `true` to allow `cli restore:dev` to wipe this database and load a " +
+        "production backup into it. Development machines only.",
+    ),
   QUEUE_ADMIN: z
     .enum(QUEUE_ADMIN_MODES)
     .default("off")
