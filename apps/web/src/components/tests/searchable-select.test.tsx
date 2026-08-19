@@ -97,6 +97,18 @@ describe("SearchableSelect", () => {
     expect(onChange).toHaveBeenCalledWith("c");
   });
 
+  // The bug this pins: an option's hint is part of its accessible name and matches
+  // text filters, so "Engineering" found Backend — whose parent is Engineering —
+  // and a screenshot of the leaderboard came out empty because of it.
+  it("makes each option addressable by its own name, not its second line", async () => {
+    const { user } = setup();
+    await user.click(screen.getByLabelText("Assign to"));
+
+    const byOwnName = document.querySelectorAll('[data-label="Engineering"]');
+    expect(byOwnName).toHaveLength(0); // "Engineering" is only ever a hint here
+    expect(document.querySelectorAll('[data-label="Anita Rao"]')).toHaveLength(1);
+  });
+
   it("takes an id so a Field's label points at the control", () => {
     render(
       <>

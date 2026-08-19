@@ -130,16 +130,11 @@ export async function dismissPicker(page: Page): Promise<void> {
  */
 export async function pickFromCombo(page: Page, label: string, name: string): Promise<void> {
   await page.getByLabel(label, { exact: true }).click();
-  // Matched on the option's own first line, not its accessible name: an option
-  // carries a second line (a department, a company, a site), and that text joins
-  // the accessible name — so `{ name, exact: true }` matches nothing at all, while
-  // a loose match would take "Maintenance (night)" for "Maintenance".
-  await page
-    .getByRole("listbox")
-    .getByRole("option")
-    .filter({ has: page.getByText(name, { exact: true }) })
-    .first()
-    .click();
+  // Addressed by the option's own name. Not the accessible name (the second line
+  // joins it, so an exact match finds nothing) and not a text filter either — the
+  // second line matches that, which is how "Engineering" once picked Backend,
+  // whose parent is Engineering.
+  await page.getByRole("listbox").locator(`[data-label="${name}"]`).first().click();
 }
 
 /**

@@ -77,24 +77,16 @@ const SHOTS: Shot[] = [
   {
     name: "leaderboard",
     path: "/reports/leaderboard",
-    // Opens on "Pick a department" and shows nothing until one is chosen.
-    // Targeted by its own options rather than by position: the first <select> on
-    // any page is the company switcher in the topbar, and picking that one
-    // changes the company while leaving the empty state exactly as it was.
+    // Opens on "Pick a department" and shows nothing until one is chosen. The
+    // picker is the app's searchable dropdown — a button and a portalled listbox,
+    // not a <select> — so it is opened and clicked the way a person does.
     prepare: async (page) => {
-      const picker = page.locator("select").filter({ hasText: "Choose a department" });
-      await picker.waitFor();
-      // By name, not by index: the list is the department tree, so position
+      await page.getByLabel("Department", { exact: true }).click();
+      // By name, not by position: the list is the department tree, and position
       // depends on the shape of the org. Engineering is where seed:demo puts
-      // everybody, and picking an empty department yields "No points yet" —
-      // a screenshot of a working feature looking broken.
-      const value = await picker
-        .locator("option")
-        .filter({ hasText: "Engineering" })
-        .first()
-        .getAttribute("value");
-      if (!value) throw new Error("no Engineering option in the department picker");
-      await picker.selectOption(value);
+      // everybody, and picking an empty department yields "No points yet" — a
+      // screenshot of a working feature looking broken.
+      await page.getByRole("listbox").locator('[data-label="Engineering"]').first().click();
     },
     ready: (page) => page.getByRole("heading", { name: "Leaderboard", exact: true }).waitFor(),
   },

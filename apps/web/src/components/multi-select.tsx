@@ -224,6 +224,10 @@ export function MultiSelect({
                           type="button"
                           role="option"
                           aria-selected={isOn}
+                          // The option's own name, addressable on its own. Its second line joins
+                          // the accessible name and matches text filters too, so "Engineering"
+                          // otherwise also finds Backend — whose parent is Engineering.
+                          data-label={option.label}
                           data-active={index === active}
                           onMouseEnter={() => setActive(index)}
                           onClick={() => toggle(option.value)}
