@@ -10,6 +10,7 @@ import type {
   CreateSwapRequest,
   Schedule,
   ScheduleEntry,
+  MyEntry,
   ScheduleGrid,
   Shift,
   SwapRequest,
@@ -40,12 +41,27 @@ export function deleteShift(id: string): Promise<void> {
 
 // --- schedules (the calendar) ---
 
+/** Omit `locationId` for the department's central rota — the travelling staff. */
 export function fetchSchedule(params: {
   departmentId: string;
+  locationId?: string;
   year: number;
   month: number;
 }): Promise<ScheduleGrid> {
   return http.get<ScheduleGrid>("/schedules", { query: params });
+}
+
+/**
+ * Your own cells in a department for a month, across every rota it has. The
+ * shift-change form is built from these: you know the day you want changed, not
+ * which of the department's rotas that day sits on.
+ */
+export function fetchMyEntries(params: {
+  departmentId: string;
+  year: number;
+  month: number;
+}): Promise<MyEntry[]> {
+  return http.get<MyEntry[]>("/schedules/my-entries", { query: params });
 }
 
 export function createSchedule(input: CreateSchedule): Promise<Schedule> {
@@ -90,7 +106,14 @@ export function fetchSwaps(box: "inbox" | "mine" | "handled"): Promise<SwapReque
 export function decideSwap(
   swapId: string,
   decision: "approve" | "reject",
-  opts: { counterpartEntryId?: string; noSwap?: boolean } = {},
+  opts: {
+    counterpartEntryId?: string;
+    noSwap?: boolean;
+    /** Allow a counterpart on another site's rota — refused without it, and the
+     *  reason travels with the decision. */
+    allowCrossSite?: boolean;
+    crossSiteReason?: string;
+  } = {},
 ): Promise<SwapRequest> {
   return http.post<SwapRequest>(`/swaps/${swapId}/decision`, { decision, ...opts });
 }

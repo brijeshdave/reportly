@@ -26,8 +26,9 @@ by a reviewer. The review can override, up as well as down. Points feed a
 leaderboard scoped to your own reporting line, and every change is on the record
 with who made it.
 
-**Work that recurs.** Shifts with a per-department calendar and colleague swaps
-that route to the right approver. Routines — the weekly check, the monthly clean —
+**Work that recurs.** Shifts with a calendar per department and site — plus a
+central rota for staff who travel between them — and colleague swaps that route to
+the right approver. Routines — the weekly check, the monthly clean —
 with compliance tracking and month-end awards.
 
 **The figures.** Saved report views over the journal: issues this month,

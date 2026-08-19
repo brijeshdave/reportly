@@ -155,6 +155,12 @@ export const scheduleSchema = z
     id: uuidSchema,
     departmentId: uuidSchema,
     departmentName: z.string(),
+    /**
+     * The site this rota is for. **Null is the central rota** — the people who
+     * travel rather than belong to one site, scheduled apart from every plant.
+     */
+    locationId: uuidSchema.nullable(),
+    locationName: z.string().nullable(),
     year: yearSchema,
     month: monthSchema,
     status: scheduleStatusSchema,
@@ -175,6 +181,13 @@ export const scheduleEntrySchema = z.object({
   state: entryStateSchema,
   plannedShiftId: uuidSchema.nullable(),
   plannedState: entryStateSchema.nullable(),
+  /**
+   * Which sites this day involved — for central staff, who work one general shift
+   * but may spend it at one plant or two. An indication for whoever reads the
+   * rota: no hours, no halves, nothing computed from it. Always empty on a site
+   * rota, where the site is the rota's own.
+   */
+  locationIds: z.array(uuidSchema),
 });
 
 export type ScheduleEntry = z.infer<typeof scheduleEntrySchema>;
@@ -202,6 +215,11 @@ export type Coverage = z.infer<typeof coverageSchema>;
 export const scheduleGridSchema = z.object({
   departmentId: uuidSchema,
   departmentName: z.string(),
+  /** Null means this is the department's central rota. */
+  locationId: uuidSchema.nullable(),
+  locationName: z.string().nullable(),
+  /** The company's sites, for tagging a central person's day. Empty on a site rota. */
+  locationOptions: z.array(z.object({ id: uuidSchema, name: nameSchema })),
   year: yearSchema,
   month: monthSchema,
   schedule: scheduleSchema.nullable(),
@@ -227,8 +245,35 @@ export const scheduleGridSchema = z.object({
 
 export type ScheduleGrid = z.infer<typeof scheduleGridSchema>;
 
+/**
+ * One of the caller's own cells, with the rota it is on. What the shift-change form
+ * is built from: somebody asking to change a day knows the day, not which rota the
+ * day belongs to.
+ */
+export const myEntrySchema = z.object({
+  entryId: uuidSchema,
+  scheduleId: uuidSchema,
+  date: dateOnlySchema,
+  shiftId: uuidSchema.nullable(),
+  shiftName: z.string().nullable(),
+  state: entryStateSchema,
+  /** Null when the cell is on the department's central rota. */
+  locationId: uuidSchema.nullable(),
+  locationName: z.string().nullable(),
+});
+export type MyEntry = z.infer<typeof myEntrySchema>;
+
+export const myEntriesQuerySchema = z.object({
+  departmentId: uuidSchema,
+  year: z.coerce.number().int().min(2000).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+});
+export type MyEntriesQuery = z.infer<typeof myEntriesQuerySchema>;
+
 export const scheduleQuerySchema = z.object({
   departmentId: uuidSchema,
+  /** Omit for the department's central rota — the travelling staff. */
+  locationId: uuidSchema.optional(),
   year: z.coerce.number().int().min(2000).max(2100),
   month: z.coerce.number().int().min(1).max(12),
 });
@@ -236,6 +281,15 @@ export type ScheduleQuery = z.infer<typeof scheduleQuerySchema>;
 
 export const createScheduleSchema = z.object({
   departmentId: uuidSchema,
+  /** The site this rota is for. Omit it only together with `central`. */
+  locationId: uuidSchema.optional(),
+  /**
+   * Start the central rota — the travelling staff — rather than a site's.
+   *
+   * Explicit, because "no site" would otherwise mean two different things, and the
+   * one it silently meant was a rota with none of the department's staff on it.
+   */
+  central: z.boolean().optional(),
   year: yearSchema,
   month: monthSchema,
   /** Copy an existing month's roster forward, mapped by day-of-month. */
@@ -254,6 +308,12 @@ export const assignEntrySchema = z.object({
   userId: z.string(),
   shiftId: uuidSchema.nullable(),
   state: entryStateSchema.default("working"),
+  /**
+   * Which sites this day involved — central rota only, where it is the whole point:
+   * one general shift, one plant or two. Rejected on a site rota, whose site is the
+   * rota's own.
+   */
+  locationIds: z.array(uuidSchema).max(10).optional(),
 });
 export type AssignEntry = z.infer<typeof assignEntrySchema>;
 
@@ -266,6 +326,8 @@ export const bulkAssignSchema = z.object({
   userId: z.string(),
   dates: z.array(dateOnlySchema).min(1).max(45),
   set: z.object({ shiftId: uuidSchema.nullable(), state: entryStateSchema }).nullable(),
+  /** Sites to tag each of those days with — central rota only. */
+  locationIds: z.array(uuidSchema).max(10).optional(),
 });
 export type BulkAssign = z.infer<typeof bulkAssignSchema>;
 
@@ -331,6 +393,11 @@ export const swapCandidateSchema = z.object({
   userId: z.string(),
   name: z.string(),
   shiftName: z.string().nullable(),
+  /**
+   * Null when they are on the same rota — the ordinary case. Set when they are on
+   * another site's rota, which an approver may allow but has to do deliberately.
+   */
+  otherSiteName: z.string().nullable(),
 });
 export type SwapCandidate = z.infer<typeof swapCandidateSchema>;
 
@@ -353,6 +420,9 @@ export const swapRequestSchema = z.object({
   /** Colleagues working that day the manager may swap with (populated for the inbox). */
   candidates: z.array(swapCandidateSchema),
   note: z.string().nullable(),
+  /** Set when an approver deliberately allowed a swap between two sites. */
+  crossSite: z.boolean(),
+  crossSiteReason: z.string().nullable(),
   status: swapStatusSchema,
   /** Who decided it, and when — so an approver has a record of what they did. */
   approverUserId: z.string().nullable(),
@@ -378,6 +448,13 @@ export const swapDecisionSchema = z.object({
   counterpartEntryId: uuidSchema.optional(),
   /** On approve, grant the change with no swap — the requester is simply taken off the shift. */
   noSwap: z.boolean().optional(),
+  /**
+   * Allow a counterpart from another site's rota. Refused without this, and the
+   * reason is required with it: somebody reading the rota later needs to know why
+   * two plants traded a shift, and "the manager said so" is not that.
+   */
+  allowCrossSite: z.boolean().optional(),
+  crossSiteReason: z.string().trim().min(3).max(500).optional(),
 });
 export type SwapDecision = z.infer<typeof swapDecisionSchema>;
 

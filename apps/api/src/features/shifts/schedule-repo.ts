@@ -1,15 +1,24 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Data access for the per-department monthly schedules and their cells. Kept beside
 // the shift-catalogue repo; the two share the `shifts` table but nothing else.
-import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
-import { scheduleEntries, schedules, shifts, users } from "@/core/db/schema.js";
+import {
+  locations,
+  scheduleEntries,
+  scheduleEntryLocations,
+  schedules,
+  shifts,
+  users,
+} from "@/core/db/schema.js";
 
 export interface ScheduleRow {
   id: string;
   companyId: string;
   departmentId: string;
+  /** Null is the central rota — the people who travel rather than sit at one site. */
+  locationId: string | null;
   year: number;
   month: number;
   status: string;
@@ -34,6 +43,7 @@ const scheduleCols = {
   id: schedules.id,
   companyId: schedules.companyId,
   departmentId: schedules.departmentId,
+  locationId: schedules.locationId,
   year: schedules.year,
   month: schedules.month,
   status: schedules.status,
@@ -54,8 +64,15 @@ const entryCols = {
   plannedState: scheduleEntries.plannedState,
 };
 
+/**
+ * One department's rota for a month **at one site**. A null `locationId` asks for
+ * the central rota, and must match a null column rather than compare equal to it —
+ * `eq(col, null)` is never true in SQL, which would silently answer "no rota yet"
+ * and offer to start a second one.
+ */
 export async function getScheduleByMonth(
   departmentId: string,
+  locationId: string | null,
   year: number,
   month: number,
   companyId: string,
@@ -66,6 +83,7 @@ export async function getScheduleByMonth(
     .where(
       and(
         eq(schedules.departmentId, departmentId),
+        locationId === null ? isNull(schedules.locationId) : eq(schedules.locationId, locationId),
         eq(schedules.year, year),
         eq(schedules.month, month),
         eq(schedules.companyId, companyId),
@@ -85,12 +103,13 @@ export async function getScheduleById(id: string, companyId: string): Promise<Sc
 export async function insertSchedule(
   companyId: string,
   departmentId: string,
+  locationId: string | null,
   year: number,
   month: number,
 ): Promise<ScheduleRow> {
   const [row] = await db
     .insert(schedules)
-    .values({ companyId, departmentId, year, month })
+    .values({ companyId, departmentId, locationId, year, month })
     .returning(scheduleCols);
   return row!;
 }
@@ -244,6 +263,8 @@ export async function replaceDays(
   dates: string[],
   insert: { shiftId: string | null; state: string } | null,
   published: boolean,
+  /** Sites to tag every replaced day with — central rota only. */
+  locationIds: string[] = [],
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const existing = await tx
@@ -299,6 +320,27 @@ export async function replaceDays(
           };
         }),
       );
+      // The old cells went with the delete above, and their site tags cascaded with
+      // them — so this sets the whole set for the days just written, never merges.
+      if (locationIds.length > 0) {
+        const written = await tx
+          .select({ id: scheduleEntries.id })
+          .from(scheduleEntries)
+          .where(
+            and(
+              eq(scheduleEntries.scheduleId, scheduleId),
+              eq(scheduleEntries.userId, userId),
+              inArray(scheduleEntries.date, dates),
+            ),
+          );
+        await tx
+          .insert(scheduleEntryLocations)
+          .values(
+            written.flatMap((entry) =>
+              locationIds.map((locationId) => ({ entryId: entry.id, locationId })),
+            ),
+          );
+      }
     }
   });
 }
@@ -349,4 +391,91 @@ export async function exchangeEntries(
       .set({ shiftId: a.shiftId, state: a.state, updatedAt: new Date() })
       .where(eq(scheduleEntries.id, bId));
   });
+}
+
+/* --------------------------- where a day was spent -------------------------- */
+
+/**
+ * The sites tagged on each cell of a rota, keyed by entry id.
+ *
+ * Only central rotas carry these: on a site rota the site is the rota's own, and
+ * repeating it on every cell would be noise that can also disagree with itself.
+ */
+export async function locationsByEntry(scheduleId: string): Promise<Map<string, string[]>> {
+  const rows = await db
+    .select({
+      entryId: scheduleEntryLocations.entryId,
+      locationId: scheduleEntryLocations.locationId,
+    })
+    .from(scheduleEntryLocations)
+    .innerJoin(scheduleEntries, eq(scheduleEntries.id, scheduleEntryLocations.entryId))
+    .where(eq(scheduleEntries.scheduleId, scheduleId));
+
+  const byEntry = new Map<string, string[]>();
+  for (const row of rows) {
+    byEntry.set(row.entryId, [...(byEntry.get(row.entryId) ?? []), row.locationId]);
+  }
+  return byEntry;
+}
+
+/** Replace the sites tagged on one cell — the whole set, like every other set here. */
+export async function setEntryLocations(entryId: string, locationIds: string[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(scheduleEntryLocations).where(eq(scheduleEntryLocations.entryId, entryId));
+    if (locationIds.length > 0) {
+      await tx
+        .insert(scheduleEntryLocations)
+        .values(locationIds.map((locationId) => ({ entryId, locationId })));
+    }
+  });
+}
+
+/**
+ * One person's own cells in a department for a month, across **every** rota it has
+ * — each site's and the central one.
+ *
+ * Asking somebody to name the rota their shift is on before they can ask to change
+ * it is asking them to know the org chart. They know the day; this finds the cell.
+ */
+export async function myEntriesInDepartment(
+  companyId: string,
+  departmentId: string,
+  userId: string,
+  year: number,
+  month: number,
+): Promise<
+  (EntryRow & {
+    locationId: string | null;
+    locationName: string | null;
+    shiftName: string | null;
+  })[]
+> {
+  return db
+    .select({
+      id: scheduleEntries.id,
+      scheduleId: scheduleEntries.scheduleId,
+      date: scheduleEntries.date,
+      userId: scheduleEntries.userId,
+      shiftId: scheduleEntries.shiftId,
+      state: scheduleEntries.state,
+      plannedShiftId: scheduleEntries.plannedShiftId,
+      plannedState: scheduleEntries.plannedState,
+      locationId: schedules.locationId,
+      locationName: locations.name,
+      shiftName: shifts.name,
+    })
+    .from(scheduleEntries)
+    .innerJoin(schedules, eq(schedules.id, scheduleEntries.scheduleId))
+    .leftJoin(locations, eq(locations.id, schedules.locationId))
+    .leftJoin(shifts, eq(shifts.id, scheduleEntries.shiftId))
+    .where(
+      and(
+        eq(schedules.companyId, companyId),
+        eq(schedules.departmentId, departmentId),
+        eq(schedules.year, year),
+        eq(schedules.month, month),
+        eq(scheduleEntries.userId, userId),
+      ),
+    )
+    .orderBy(asc(scheduleEntries.date));
 }

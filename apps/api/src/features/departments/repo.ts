@@ -38,6 +38,7 @@ export interface DepartmentMemberRow {
   designation: string | null;
   employeeId: string | null;
   rank: string;
+  isCentral: boolean;
   reportsToId: string | null;
   reportsToName: string | null;
   locationIds: string[];
@@ -49,6 +50,7 @@ export interface UserDepartmentRow {
   companyName: string;
   name: string;
   rank: string;
+  isCentral: boolean;
   reportsToId: string | null;
   reportsToName: string | null;
   locationIds: string[];
@@ -262,6 +264,7 @@ export async function getMembers(departmentId: string): Promise<DepartmentMember
         designation: designations.name,
         employeeId: users.employeeId,
         rank: departmentUsers.rank,
+        isCentral: departmentUsers.isCentral,
         reportsToId: departmentUsers.reportsToId,
         reportsToName: managers.name,
       })
@@ -280,6 +283,7 @@ export async function getMembers(departmentId: string): Promise<DepartmentMember
 export interface MemberInput {
   userId: string;
   rank: string;
+  isCentral: boolean;
   reportsToId: string | null;
   locationIds: string[];
 }
@@ -296,6 +300,7 @@ export async function setMembers(departmentId: string, members: MemberInput[]): 
         departmentId,
         userId: m.userId,
         rank: m.rank,
+        isCentral: m.isCentral,
         reportsToId: m.reportsToId,
       })),
     );
@@ -431,6 +436,7 @@ export async function departmentsForUser(userId: string): Promise<UserDepartment
       companyName: companies.name,
       name: departments.name,
       rank: departmentUsers.rank,
+      isCentral: departmentUsers.isCentral,
       reportsToId: departmentUsers.reportsToId,
       reportsToName: managers.name,
     })

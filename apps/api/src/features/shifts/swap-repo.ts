@@ -8,7 +8,9 @@ import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/core/db/index.js";
 import {
   departmentUsers,
+  locations,
   scheduleEntries,
+  schedules,
   shiftSwapRequests,
   shifts,
   users,
@@ -28,6 +30,8 @@ export interface SwapRow {
   counterpartShiftName: string | null;
   counterpartEntryId: string | null;
   note: string | null;
+  crossSite: boolean;
+  crossSiteReason: string | null;
   status: string;
   approverUserId: string | null;
   approverName: string | null;
@@ -60,6 +64,8 @@ function baseQuery() {
         counterpartShiftName: counterpartShift.name,
         counterpartEntryId: shiftSwapRequests.counterpartEntryId,
         note: shiftSwapRequests.note,
+        crossSite: shiftSwapRequests.crossSite,
+        crossSiteReason: shiftSwapRequests.crossSiteReason,
         status: shiftSwapRequests.status,
         approverUserId: shiftSwapRequests.approverUserId,
         approverName: approver.name,
@@ -308,4 +314,105 @@ export async function pendingForSchedule(scheduleId: string): Promise<
   return rows.filter(
     (r): r is typeof r & { requesterEntryId: string } => r.requesterEntryId !== null,
   );
+}
+
+/* ------------------------------ across two sites ---------------------------- */
+
+/**
+ * Colleagues working that day on the department's *other* site rotas.
+ *
+ * Offered so an approver can see that a cross-site trade is possible at all — the
+ * ordinary list is one rota, which is what makes same-site the default. Picking one
+ * of these is still refused unless the approver says so explicitly.
+ */
+export async function crossSiteCandidatesFor(
+  scheduleId: string,
+  date: string,
+  excludeUserId: string,
+  departmentId: string,
+  companyId: string,
+): Promise<
+  { entryId: string; userId: string; name: string; shiftName: string | null; siteName: string }[]
+> {
+  const [self] = await db
+    .select({ year: schedules.year, month: schedules.month })
+    .from(schedules)
+    .where(eq(schedules.id, scheduleId));
+  if (!self) return [];
+
+  const hods = db
+    .select({ id: departmentUsers.userId })
+    .from(departmentUsers)
+    .where(and(eq(departmentUsers.departmentId, departmentId), eq(departmentUsers.rank, "hod")));
+
+  return (
+    db
+      .select({
+        entryId: scheduleEntries.id,
+        userId: scheduleEntries.userId,
+        name: users.name,
+        shiftName: shifts.name,
+        siteName: locations.name,
+      })
+      .from(scheduleEntries)
+      .innerJoin(schedules, eq(schedules.id, scheduleEntries.scheduleId))
+      // An inner join on locations also drops the central rota, deliberately: travelling
+      // staff are not somebody a plant trades a shift with.
+      .innerJoin(locations, eq(locations.id, schedules.locationId))
+      .innerJoin(users, eq(users.id, scheduleEntries.userId))
+      .leftJoin(shifts, eq(shifts.id, scheduleEntries.shiftId))
+      .where(
+        and(
+          eq(schedules.companyId, companyId),
+          eq(schedules.departmentId, departmentId),
+          eq(schedules.year, self.year),
+          eq(schedules.month, self.month),
+          ne(schedules.id, scheduleId),
+          eq(scheduleEntries.date, date),
+          eq(scheduleEntries.state, "working"),
+          ne(scheduleEntries.userId, excludeUserId),
+          notInArray(scheduleEntries.userId, hods),
+        ),
+      )
+      .orderBy(users.name)
+  );
+}
+
+/** One cell and the rota it sits on, for a counterpart that is not on the caller's. */
+export async function entryWithSchedule(
+  entryId: string,
+  companyId: string,
+): Promise<{
+  id: string;
+  scheduleId: string;
+  departmentId: string;
+  locationId: string | null;
+  date: string;
+  userId: string;
+  shiftId: string | null;
+  state: string;
+} | null> {
+  const [row] = await db
+    .select({
+      id: scheduleEntries.id,
+      scheduleId: scheduleEntries.scheduleId,
+      departmentId: schedules.departmentId,
+      locationId: schedules.locationId,
+      date: scheduleEntries.date,
+      userId: scheduleEntries.userId,
+      shiftId: scheduleEntries.shiftId,
+      state: scheduleEntries.state,
+    })
+    .from(scheduleEntries)
+    .innerJoin(schedules, eq(schedules.id, scheduleEntries.scheduleId))
+    .where(and(eq(scheduleEntries.id, entryId), eq(schedules.companyId, companyId)));
+  return row ?? null;
+}
+
+/** Record that an approver allowed a trade between two sites, and why. */
+export async function markCrossSite(swapId: string, reason: string): Promise<void> {
+  await db
+    .update(shiftSwapRequests)
+    .set({ crossSite: true, crossSiteReason: reason, updatedAt: new Date() })
+    .where(eq(shiftSwapRequests.id, swapId));
 }

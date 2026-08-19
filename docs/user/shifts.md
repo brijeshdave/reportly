@@ -10,10 +10,54 @@ runs the roster, then changed by the people working it.
 |                  | What it is                                                               |
 | ---------------- | ------------------------------------------------------------------------ |
 | **Shifts**       | The catalogue — Morning, Afternoon, Night, and what hours each means     |
-| **Schedule**     | A department's calendar: one cell per person per day                     |
+| **Schedule**     | A rota: one cell per person per day, for one department at one site      |
 | **Shift change** | A request to change your own cell, decided by someone with the authority |
 
-The catalogue is defined once. The schedule is built per department, per month.
+The catalogue is defined once. A rota is built **per department, per site, per
+month** — see below.
+
+---
+
+## A rota belongs to a site
+
+A department usually spans more than one site, and those teams do not work in the
+same building. So each has its own rota: pick the department **and** the site at
+the top of the Schedule page.
+
+What follows from that:
+
+- **Who is on it.** The people whose membership covers that site. Somebody placed
+  at no site in particular counts as being at all of them, so they appear on every
+  site's rota — the same meaning "no sites" has everywhere else in Reportly.
+- **Swaps stay within it.** A colleague swap is offered only between people on the
+  same rota, because a swap between two plants is not usually a swap at all. A
+  manager can still allow one deliberately — see below.
+- **Coverage is per site.** "Nobody on Night on the 14th" now means nobody at
+  _that_ site, which is the question worth asking.
+
+### Travelling staff and the central rota
+
+Some people are not at a site: they work a general shift and go where they are
+needed — a full day at one plant, or one plant in the morning and another after
+lunch.
+
+Tick **Central** against them on the department's Members tab. They are then
+rostered on the department's **central rota**, chosen from the same site picker,
+and they appear on no site's rota — they are scheduled once, in one place.
+
+On the central rota each day can say **where** it was spent: pick one site or two
+in the **Where** box when setting the days. The cell shows the initials, with the
+full names on hover.
+
+This is a note for whoever reads the rota, not a timesheet. Reportly does not
+record hours, halves of days, or which plant came first — only that the day
+involved those sites.
+
+**The central rota is managed by the department's Head of Department.**
+
+> **To see who is visiting a plant on a given day, read the central rota** — a
+> site's rota shows only its own people. Travelling staff do not appear as
+> visiting cover on it.
 
 ---
 
@@ -41,8 +85,10 @@ which is the point — the plan stays as a record of what was intended.
 
 You need `shifts:manage` (the **Shifts admin** role).
 
-1. Open **Schedule** and pick the department and month. The department list is
-   searchable and shows each department's parents underneath its name.
+1. Open **Schedule** and pick the department, the site, and the month. Both lists
+   are searchable, and the department one shows each department's parents
+   underneath its name. Choose **Central (travelling staff)** for the rota of
+   people who move between sites.
 2. Fill cells. You can drag across several days to set them in one go, and fill
    a whole weekday down the column — most rosters are a repeating pattern with
    exceptions, so set the pattern and then fix the exceptions.
@@ -104,6 +150,19 @@ decision is yours, not theirs.
 
 Every decision is recorded with who made it and when. **Handled** shows the ones
 you have decided.
+
+### Swapping across two sites
+
+The candidate list is the people on the same rota, and normally that is the whole
+answer. Colleagues on the department's **other** sites are listed too, marked with
+where they are — because occasionally somebody genuinely does cover both.
+
+Choosing one of those is refused unless you confirm it and **say why**. The reason
+is kept with the request: somebody reading the rota next month can see why two
+plants traded a shift.
+
+Central staff cannot be swapped with a site's rota at all. They are scheduled
+centrally; changing their day is an edit to the central rota, not a swap.
 
 ---
 

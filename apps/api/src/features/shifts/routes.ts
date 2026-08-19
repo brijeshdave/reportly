@@ -13,6 +13,8 @@ import {
   createSwapRequestSchema,
   scheduleEntrySchema,
   scheduleGridSchema,
+  myEntriesQuerySchema,
+  myEntrySchema,
   scheduleQuerySchema,
   scheduleSchema,
   shiftSchema,
@@ -164,6 +166,26 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
       schedule.getGrid(request.ctx!, activeCompany(request.ctx!.companyId), request.query),
   );
 
+  // Static path, so it is declared before "/schedules/:id" can swallow it.
+  app.get(
+    "/schedules/my-entries",
+    {
+      preHandler: guard(PERMISSIONS.SHIFTS_READ),
+      schema: {
+        tags: ["Shifts"],
+        summary: "Your own cells in a department for a month, across every rota it has",
+        description:
+          "A department has a rota per site plus a central one, and somebody asking to change a " +
+          "day knows the day rather than which rota it belongs to. Each cell says which rota it " +
+          "is on, so the shift-change form can be built without asking.",
+        querystring: myEntriesQuerySchema,
+        response: { 200: z.array(myEntrySchema) },
+      },
+    },
+    async (request) =>
+      schedule.myEntries(request.ctx!, activeCompany(request.ctx!.companyId), request.query),
+  );
+
   app.post(
     "/schedules",
     {
@@ -216,7 +238,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) => {
       const companyId = activeCompany(request.ctx!.companyId);
-      return schedule.bulkAssign(request.ctx!.userId, companyId, request.params.id, request.body);
+      return schedule.bulkAssign(request.ctx!, companyId, request.params.id, request.body);
     },
   );
 
@@ -257,11 +279,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) => {
       const companyId = activeCompany(request.ctx!.companyId);
-      const published = await schedule.publishSchedule(
-        request.ctx!.userId,
-        companyId,
-        request.params.id,
-      );
+      const published = await schedule.publishSchedule(request.ctx!, companyId, request.params.id);
       await recordAudit(request, request.ctx!, { action: "schedule.publish", after: published });
       return published;
     },

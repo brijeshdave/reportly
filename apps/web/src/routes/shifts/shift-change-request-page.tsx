@@ -15,7 +15,7 @@ import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchUserDepartments } from "@/services/departments.js";
-import { fetchSchedule, requestSwap } from "@/services/shifts.js";
+import { fetchMyEntries, fetchSchedule, requestSwap } from "@/services/shifts.js";
 
 export function ShiftChangeRequestPage() {
   const { data: session } = useSuspenseQuery(sessionQuery);
@@ -52,9 +52,11 @@ export function ShiftChangeRequestPage() {
     }
   };
 
-  const grid = useQuery({
-    queryKey: ["schedule", effectiveDept, year, month],
-    queryFn: () => fetchSchedule({ departmentId: effectiveDept as string, year, month }),
+  // My own cells, wherever I am rostered: a department has a rota per site plus a
+  // central one, and the person asking for a change knows the day, not the rota.
+  const mine = useQuery({
+    queryKey: ["schedule", "my-entries", effectiveDept, year, month],
+    queryFn: () => fetchMyEntries({ departmentId: effectiveDept as string, year, month }),
     enabled: effectiveDept !== null,
   });
 
@@ -62,23 +64,32 @@ export function ShiftChangeRequestPage() {
   const [counterpartEntryId, setCounterpartEntryId] = useState("");
   const [note, setNote] = useState("");
 
-  const data = grid.data;
-  const shiftName = (id: string | null) => data?.shifts.find((s) => s.id === id)?.name ?? "—";
-
-  // My own changeable cells this month (a working shift or a weekly off), and — once one
-  // is chosen — colleagues working that day.
+  // My own changeable cells this month (a working shift or a weekly off).
   const mineShifts = useMemo(
     () =>
-      (data?.entries ?? [])
-        .filter(
-          (e) => e.userId === me && ((e.state === "working" && e.shiftId) || e.state === "off"),
-        )
+      (mine.data ?? [])
+        .filter((e) => (e.state === "working" && e.shiftId) || e.state === "off")
         .sort((a, b) => a.date.localeCompare(b.date)),
-    [data, me],
+    [mine.data],
   );
   const cellLabel = (e: (typeof mineShifts)[number]) =>
-    e.state === "off" ? "W/O" : shiftName(e.shiftId);
-  const chosen = mineShifts.find((e) => e.id === requesterEntryId);
+    e.state === "off" ? "W/O" : (e.shiftName ?? "—");
+  const chosen = mineShifts.find((e) => e.entryId === requesterEntryId);
+
+  // The colleagues to suggest come from the rota the chosen cell is on — which is
+  // also what makes a suggestion same-site by construction.
+  const grid = useQuery({
+    queryKey: ["schedule", effectiveDept, chosen?.locationId ?? "", year, month],
+    queryFn: () =>
+      fetchSchedule({
+        departmentId: effectiveDept as string,
+        ...(chosen?.locationId ? { locationId: chosen.locationId } : {}),
+        year,
+        month,
+      }),
+    enabled: effectiveDept !== null && chosen !== undefined,
+  });
+  const data = grid.data;
   // The department's HOD is never a swap target — they approve changes, not take them.
   const hodIds = useMemo(
     () => new Set((data?.members ?? []).filter((m) => m.isHod).map((m) => m.userId)),
@@ -175,12 +186,14 @@ export function ShiftChangeRequestPage() {
             </div>
           </div>
 
-          {grid.isLoading ? (
+          {/* Driven by your own cells, not by whether a particular rota exists: a
+              department now has one per site plus a central one, and "is there a
+              schedule" is no longer a single yes or no. Having no shifts covers
+              both cases a person can act on — no rota, or a rota without you. */}
+          {mine.isLoading ? (
             <Spinner />
-          ) : grid.error ? (
-            <ErrorAlert error={grid.error} />
-          ) : !data?.schedule ? (
-            <Alert tone="info">There is no schedule for this month yet — pick another month.</Alert>
+          ) : mine.error ? (
+            <ErrorAlert error={mine.error} />
           ) : mineShifts.length === 0 ? (
             <Alert tone="info">
               You have no shifts to change in {formatMonthYear(year, month)}.
@@ -199,8 +212,12 @@ export function ShiftChangeRequestPage() {
                   >
                     <option value="">Choose a shift…</option>
                     {mineShifts.map((e) => (
-                      <option key={e.id} value={e.id}>
+                      <option key={e.entryId} value={e.entryId}>
                         {formatDate(`${e.date}T00:00:00`)} · {cellLabel(e)}
+                        {/* Which rota it is on — a person on two of them would
+                            otherwise see the same day twice with nothing to choose
+                            between the entries. */}
+                        {e.locationName ? ` · ${e.locationName}` : " · Central"}
                       </option>
                     ))}
                   </Select>
@@ -218,7 +235,8 @@ export function ShiftChangeRequestPage() {
                       <option value="">No suggestion — let the manager choose</option>
                       {candidates.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {nameOf(c.userId)} · {shiftName(c.shiftId)}
+                          {nameOf(c.userId)} ·{" "}
+                          {data?.shifts.find((sh) => sh.id === c.shiftId)?.name ?? "—"}
                         </option>
                       ))}
                     </Select>

@@ -11,7 +11,7 @@ technical work across multiple companies and locations.
 | **Scoring and points**     | Every finished entry is scored twice — a split by the author, a review by their manager — and the points roll up the reporting line.                       |
 | **Downtime**               | How long production was stopped, recorded separately from how long a person worked, and only for the asset and device types that can actually stop a line. |
 | **Tasks**                  | Work intended, as opposed to work recorded. Completing one leads into a journal entry.                                                                     |
-| **Shifts**                 | A per-department calendar, with colleague swaps that route to the right approver.                                                                          |
+| **Shifts**                 | A calendar per department and site, a central rota for travelling staff, and colleague swaps that route to the right approver.                             |
 | **Routines**               | Recurring duties — the weekly check, the monthly clean — with compliance tracking and month-end awards.                                                    |
 | **Reports**                | Saved views over the journal, printable and exportable.                                                                                                    |
 | **Analytics and insights** | MTBF, MTTR and availability rolled up through the asset tree; charts for the shape of the work.                                                            |

@@ -116,6 +116,10 @@ async function fixture(admin: string) {
   const ravi = await makeUser(admin, "ravi", memberGroup);
   const sam = await makeUser(admin, "sam", memberGroup);
 
+  // A rota belongs to a department *at a site*, so the fixture names one. These
+  // members cover no site in particular, which means all of them — so they are on
+  // this site's rota like any other.
+  const site = (await inject("GET", "/locations", admin)).json()[0];
   const dept = (await inject("POST", "/departments", admin, { name: "Ops" })).json();
   await inject("PUT", `/departments/${dept.id}/members`, admin, {
     members: [
@@ -126,7 +130,12 @@ async function fixture(admin: string) {
   });
 
   const schedule = (
-    await inject("POST", "/schedules", admin, { departmentId: dept.id, year: 2026, month: 8 })
+    await inject("POST", "/schedules", admin, {
+      departmentId: dept.id,
+      locationId: site.id,
+      year: 2026,
+      month: 8,
+    })
   ).json();
   await inject("POST", `/schedules/${schedule.id}/assign`, admin, {
     date: DAY,
@@ -142,12 +151,21 @@ async function fixture(admin: string) {
   });
   await inject("POST", `/schedules/${schedule.id}/publish`, admin);
 
-  return { morning, evening, boss, ravi, sam, dept, scheduleId: schedule.id };
+  return { morning, evening, boss, ravi, sam, dept, site, scheduleId: schedule.id };
 }
 
-async function entryId(cookie: string, dept: string, userId: string): Promise<string> {
+async function entryId(
+  cookie: string,
+  dept: string,
+  siteId: string,
+  userId: string,
+): Promise<string> {
   const grid = (
-    await inject("GET", `/schedules?departmentId=${dept}&year=2026&month=8`, cookie)
+    await inject(
+      "GET",
+      `/schedules?departmentId=${dept}&locationId=${siteId}&year=2026&month=8`,
+      cookie,
+    )
   ).json();
   return grid.entries.find(
     (e: { userId: string; date: string }) => e.userId === userId && e.date === DAY,
@@ -157,10 +175,10 @@ async function entryId(cookie: string, dept: string, userId: string): Promise<st
 describe("shift swaps", () => {
   it("a report requests, the reporting manager approves, and the shifts trade", async () => {
     const admin = await superadmin();
-    const { morning, evening, boss, ravi, sam, dept, scheduleId } = await fixture(admin);
+    const { morning, evening, boss, ravi, sam, dept, scheduleId, site } = await fixture(admin);
 
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
-    const samEntry = await entryId(ravi.cookie, dept.id, sam.id);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
+    const samEntry = await entryId(ravi.cookie, dept.id, site.id, sam.id);
 
     const request = await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
       requesterEntryId: raviEntry,
@@ -193,7 +211,11 @@ describe("shift swaps", () => {
     expect(approved.json().status).toBe("approved");
 
     const grid = (
-      await inject("GET", `/schedules?departmentId=${dept.id}&year=2026&month=8`, admin)
+      await inject(
+        "GET",
+        `/schedules?departmentId=${dept.id}&locationId=${site.id}&year=2026&month=8`,
+        admin,
+      )
     ).json();
     const raviCell = grid.entries.find(
       (e: { userId: string; date: string }) => e.userId === ravi.id && e.date === DAY,
@@ -210,9 +232,9 @@ describe("shift swaps", () => {
 
   it("takes a request with no suggestion; the manager picks who and approves", async () => {
     const admin = await superadmin();
-    const { morning, evening, boss, ravi, sam, dept, scheduleId } = await fixture(admin);
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
-    const samEntry = await entryId(ravi.cookie, dept.id, sam.id);
+    const { morning, evening, boss, ravi, sam, dept, scheduleId, site } = await fixture(admin);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
+    const samEntry = await entryId(ravi.cookie, dept.id, site.id, sam.id);
 
     // Ravi asks to change their shift without naming anyone.
     const request = await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
@@ -223,7 +245,11 @@ describe("shift swaps", () => {
 
     // The pending change shows on the calendar grid.
     const grid = (
-      await inject("GET", `/schedules?departmentId=${dept.id}&year=2026&month=8`, admin)
+      await inject(
+        "GET",
+        `/schedules?departmentId=${dept.id}&locationId=${site.id}&year=2026&month=8`,
+        admin,
+      )
     ).json();
     expect(
       grid.pendingChanges.some(
@@ -243,7 +269,11 @@ describe("shift swaps", () => {
     expect(approved.statusCode).toBe(200);
 
     const after = (
-      await inject("GET", `/schedules?departmentId=${dept.id}&year=2026&month=8`, admin)
+      await inject(
+        "GET",
+        `/schedules?departmentId=${dept.id}&locationId=${site.id}&year=2026&month=8`,
+        admin,
+      )
     ).json();
     const raviCell = after.entries.find((e: { userId: string }) => e.userId === ravi.id);
     const samCell = after.entries.find((e: { userId: string }) => e.userId === sam.id);
@@ -254,8 +284,8 @@ describe("shift swaps", () => {
 
   it("refuses to approve with no counterpart chosen", async () => {
     const admin = await superadmin();
-    const { boss, ravi, dept, scheduleId } = await fixture(admin);
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
+    const { boss, ravi, dept, scheduleId, site } = await fixture(admin);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
     await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
       requesterEntryId: raviEntry,
     });
@@ -269,9 +299,9 @@ describe("shift swaps", () => {
 
   it("keeps a decided request in the approver's handled box", async () => {
     const admin = await superadmin();
-    const { boss, ravi, sam, dept, scheduleId } = await fixture(admin);
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
-    const samEntry = await entryId(ravi.cookie, dept.id, sam.id);
+    const { boss, ravi, sam, dept, scheduleId, site } = await fixture(admin);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
+    const samEntry = await entryId(ravi.cookie, dept.id, site.id, sam.id);
     await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
       requesterEntryId: raviEntry,
       counterpartEntryId: samEntry,
@@ -293,8 +323,8 @@ describe("shift swaps", () => {
 
   it("refuses a duplicate pending request and lets the requester withdraw", async () => {
     const admin = await superadmin();
-    const { ravi, dept, scheduleId } = await fixture(admin);
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
+    const { ravi, dept, scheduleId, site } = await fixture(admin);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
 
     const first = await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
       requesterEntryId: raviEntry,
@@ -324,8 +354,8 @@ describe("shift swaps", () => {
 
   it("approves with no swap, taking the requester off the shift", async () => {
     const admin = await superadmin();
-    const { boss, ravi, dept, scheduleId } = await fixture(admin);
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
+    const { boss, ravi, dept, scheduleId, site } = await fixture(admin);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
     await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
       requesterEntryId: raviEntry,
     });
@@ -338,7 +368,11 @@ describe("shift swaps", () => {
     expect(approved.statusCode).toBe(200);
 
     const grid = (
-      await inject("GET", `/schedules?departmentId=${dept.id}&year=2026&month=8`, admin)
+      await inject(
+        "GET",
+        `/schedules?departmentId=${dept.id}&locationId=${site.id}&year=2026&month=8`,
+        admin,
+      )
     ).json();
     // Ravi is taken off — the cell is removed entirely (empty/unassigned, a gap), not W/O.
     expect(
@@ -357,7 +391,7 @@ describe("shift swaps", () => {
 
   it("never offers the Head of Department as a swap candidate", async () => {
     const admin = await superadmin();
-    const { morning, boss, ravi, sam, dept, scheduleId } = await fixture(admin);
+    const { morning, boss, ravi, sam, dept, scheduleId, site } = await fixture(admin);
     // Make the boss the HOD and put them on a shift that day.
     await inject("PUT", `/departments/${dept.id}/members`, admin, {
       members: [
@@ -373,7 +407,7 @@ describe("shift swaps", () => {
       state: "working",
     });
 
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
     await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
       requesterEntryId: raviEntry,
     });
@@ -385,14 +419,14 @@ describe("shift swaps", () => {
 
   it("lets a person on a weekly off request a change and swap into a shift", async () => {
     const admin = await superadmin();
-    const { evening, boss, ravi, sam, dept, scheduleId } = await fixture(admin);
+    const { evening, boss, ravi, sam, dept, scheduleId, site } = await fixture(admin);
     // Put Ravi on a weekly off that day (overwriting the fixture's Morning).
     await inject("POST", `/schedules/${scheduleId}/assign-bulk`, admin, {
       userId: ravi.id,
       dates: [DAY],
       set: { shiftId: null, state: "off" },
     });
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
 
     // Ravi (on W/O) asks to change it and swap into Sam's shift.
     const req = await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
@@ -408,7 +442,11 @@ describe("shift swaps", () => {
     });
 
     const grid = (
-      await inject("GET", `/schedules?departmentId=${dept.id}&year=2026&month=8`, admin)
+      await inject(
+        "GET",
+        `/schedules?departmentId=${dept.id}&locationId=${site.id}&year=2026&month=8`,
+        admin,
+      )
     ).json();
     const raviCell = grid.entries.find((e: { userId: string }) => e.userId === ravi.id);
     const samCell = grid.entries.find((e: { userId: string }) => e.userId === sam.id);
@@ -421,9 +459,9 @@ describe("shift swaps", () => {
 
   it("logs an approved swap so the shift-change report shows it", async () => {
     const admin = await superadmin();
-    const { boss, ravi, sam, dept, scheduleId } = await fixture(admin);
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
-    const samEntry = await entryId(ravi.cookie, dept.id, sam.id);
+    const { boss, ravi, sam, dept, scheduleId, site } = await fixture(admin);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
+    const samEntry = await entryId(ravi.cookie, dept.id, site.id, sam.id);
     await inject("POST", `/schedules/${scheduleId}/swaps`, ravi.cookie, {
       requesterEntryId: raviEntry,
       counterpartEntryId: samEntry,
@@ -456,9 +494,9 @@ describe("shift swaps", () => {
 
   it("refuses to swap a shift you do not own", async () => {
     const admin = await superadmin();
-    const { ravi, sam, dept, scheduleId } = await fixture(admin);
-    const raviEntry = await entryId(ravi.cookie, dept.id, ravi.id);
-    const samEntry = await entryId(ravi.cookie, dept.id, sam.id);
+    const { ravi, sam, dept, scheduleId, site } = await fixture(admin);
+    const raviEntry = await entryId(ravi.cookie, dept.id, site.id, ravi.id);
+    const samEntry = await entryId(ravi.cookie, dept.id, site.id, sam.id);
 
     // Sam tries to offer Ravi's shift as if it were their own to give.
     const bad = await inject("POST", `/schedules/${scheduleId}/swaps`, sam.cookie, {

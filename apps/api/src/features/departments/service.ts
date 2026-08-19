@@ -85,6 +85,7 @@ function serializeMember(row: DepartmentMemberRow): DepartmentMember {
     employeeId: row.employeeId,
     avatarVersion: null,
     rank: toRank(row.rank),
+    isCentral: row.isCentral,
     reportsToId: row.reportsToId,
     reportsToName: row.reportsToName,
     locationIds: row.locationIds,
@@ -99,6 +100,7 @@ function serializeUserDepartment(row: UserDepartmentRow, path: string): UserDepa
     name: row.name,
     path,
     rank: toRank(row.rank),
+    isCentral: row.isCentral,
     reportsToId: row.reportsToId,
     reportsToName: row.reportsToName,
     locationIds: row.locationIds,
@@ -379,8 +381,11 @@ export async function setMembers(
     unique.map((m) => ({
       userId: m.userId,
       rank: m.rank,
+      // Central staff travel, so a site list is not what places them — the flag is.
+      // Keeping both would let the two disagree about where somebody works.
+      isCentral: m.isCentral,
       reportsToId: m.reportsToId,
-      locationIds: [...new Set(m.locationIds)],
+      locationIds: m.isCentral ? [] : [...new Set(m.locationIds)],
     })),
   );
 }

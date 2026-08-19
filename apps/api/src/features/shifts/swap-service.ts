@@ -84,6 +84,8 @@ function serialize(
     counterpartEntryId: row.counterpartEntryId,
     candidates,
     note: row.note,
+    crossSite: row.crossSite,
+    crossSiteReason: row.crossSiteReason,
     status: (["pending", "approved", "rejected", "cancelled"] as const).includes(
       row.status as never,
     )
@@ -97,9 +99,29 @@ function serialize(
   };
 }
 
-/** The colleagues a manager could swap a request's requester with, for the inbox. */
-async function candidatesFor(row: SwapRow): Promise<SwapRequest["candidates"]> {
-  return repo.candidatesFor(row.scheduleId, row.date, row.requesterUserId, row.departmentId);
+/**
+ * The colleagues a manager could swap a request's requester with.
+ *
+ * Their own rota first — those are the ordinary answer, and a rota is one site, so
+ * "same site" needs no filter of its own. Then the department's other sites, marked
+ * with where they are: an approver can see a cross-site trade is possible, and
+ * choosing one is a deliberate act the server still makes them confirm.
+ */
+async function candidatesFor(row: SwapRow, companyId: string): Promise<SwapRequest["candidates"]> {
+  const [sameSite, elsewhere] = await Promise.all([
+    repo.candidatesFor(row.scheduleId, row.date, row.requesterUserId, row.departmentId),
+    repo.crossSiteCandidatesFor(
+      row.scheduleId,
+      row.date,
+      row.requesterUserId,
+      row.departmentId,
+      companyId,
+    ),
+  ]);
+  return [
+    ...sameSite.map((c) => ({ ...c, otherSiteName: null })),
+    ...elsewhere.map(({ siteName, ...c }) => ({ ...c, otherSiteName: siteName })),
+  ];
 }
 
 export async function createSwap(
@@ -202,7 +224,9 @@ export async function listSwaps(
       ? await repo.allPending(companyId)
       : await repo.pendingForRequesters(companyId, await repo.directReportIds(ctx.userId));
     // The inbox is where a manager picks the swap, so it carries the candidate list.
-    return Promise.all(rows.map(async (r) => serialize(r, true, await candidatesFor(r))));
+    return Promise.all(
+      rows.map(async (r) => serialize(r, true, await candidatesFor(r, companyId))),
+    );
   }
 
   // "handled": the requests the caller has already decided — their approval record.
@@ -216,6 +240,59 @@ export async function listSwaps(
   return (await repo.mine(companyId, ctx.userId)).map((r) =>
     serialize(r, r.status === "pending" && (scheduler || reportSet.has(r.requesterUserId))),
   );
+}
+
+/**
+ * A counterpart on another site's rota.
+ *
+ * Refused unless the approver said so *in this request* and gave a reason. Two
+ * plants trading a shift is a real decision with consequences for both — somebody
+ * reading the rota next month needs to find out why, and "a manager clicked it" is
+ * not an answer. The permission to decide the swap at all is checked above; this is
+ * about the decision being on the record.
+ */
+async function crossSiteCounterpart(
+  row: SwapRow,
+  counterpartEntryId: string,
+  companyId: string,
+  decision: SwapDecision,
+): Promise<{
+  id: string;
+  date: string;
+  userId: string;
+  shiftId: string | null;
+  state: string;
+} | null> {
+  const theirs = await repo.entryWithSchedule(counterpartEntryId, companyId);
+  if (!theirs) return null;
+
+  if (!decision.allowCrossSite) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      "That colleague is on another site's rota. Confirm the cross-site swap to allow it.",
+    );
+  }
+  if (!decision.crossSiteReason || decision.crossSiteReason.trim().length < 3) {
+    throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "Say why this swap crosses two sites");
+  }
+  // Still the same department and month: the override loosens *where*, nothing else.
+  if (theirs.departmentId !== row.departmentId) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      "The counterpart must be in the same department",
+    );
+  }
+  // The central rota is not a site, and its people are not a plant's to trade with.
+  if (theirs.locationId === null) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      "Central staff are scheduled on their own rota and cannot be swapped with a site's",
+    );
+  }
+  return theirs;
 }
 
 export async function decideSwap(
@@ -283,9 +360,13 @@ export async function decideSwap(
           "Choose a colleague to swap with, or approve with no swap",
         );
       }
-      const b = await scheduleRepo.getEntry(counterpartEntryId, row.scheduleId);
+      // Same rota first — the ordinary case, and the reason same-site needs no rule.
+      const sameRota = await scheduleRepo.getEntry(counterpartEntryId, row.scheduleId);
+      const b =
+        sameRota ?? (await crossSiteCounterpart(row, counterpartEntryId, companyId, decision));
       if (!b)
         throw new AppError(409, ERROR_CODES.CONFLICT, "That colleague's shift has since changed");
+      const acrossSites = sameRota === null;
       if (b.userId === a.userId) {
         throw new AppError(
           400,
@@ -308,8 +389,15 @@ export async function decideSwap(
         shiftId: b.shiftId,
         state: b.state,
       });
-      // Any other pending request pointing at either traded shift is now stale.
+      // Any other pending request pointing at either traded shift is now stale. A
+      // cross-site trade has to clear the other rota too — the stale request lives
+      // under *its* schedule, not this one.
       await repo.cancelPendingTouching(row.scheduleId, [a.id, b.id], swapId);
+      if (acrossSites) {
+        const theirs = await repo.entryWithSchedule(b.id, companyId);
+        if (theirs) await repo.cancelPendingTouching(theirs.scheduleId, [b.id], swapId);
+        await repo.markCrossSite(swapId, decision.crossSiteReason!);
+      }
       await repo.setDecision(swapId, "approved", ctx.userId, { userId: b.userId, entryId: b.id });
       // Log the trade from each person's side, so the change reads both ways.
       await changeLog.recordChanges([

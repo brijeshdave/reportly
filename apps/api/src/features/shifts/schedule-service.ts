@@ -20,6 +20,8 @@ import {
   type Schedule,
   type ScheduleEntry,
   type ScheduleGrid,
+  type MyEntriesQuery,
+  type MyEntry,
   type ScheduleQuery,
 } from "@reportly/shared";
 
@@ -29,6 +31,7 @@ import { avatarVersions } from "@/features/avatars/repo.js";
 import * as changeLog from "@/features/shifts/change-log-repo.js";
 import { cellLabel } from "@/features/shifts/change-log-repo.js";
 import * as deptRepo from "@/features/departments/repo.js";
+import * as locationService from "@/features/locations/service.js";
 import { shiftsOverlap, coverageFor, type CoverageShift } from "@/features/shifts/coverage.js";
 import * as shiftRepo from "@/features/shifts/repo.js";
 import * as repo from "@/features/shifts/schedule-repo.js";
@@ -44,11 +47,17 @@ async function shiftNames(companyId: string): Promise<Map<string, string>> {
 const asEntryState = (value: string | null): EntryState | null =>
   value === "working" || value === "off" || value === "leave" || value === "holiday" ? value : null;
 
-function serializeSchedule(row: ScheduleRow, departmentName: string): Schedule {
+function serializeSchedule(
+  row: ScheduleRow,
+  departmentName: string,
+  locationName: string | null,
+): Schedule {
   return {
     id: row.id,
     departmentId: row.departmentId,
     departmentName,
+    locationId: row.locationId,
+    locationName,
     year: row.year,
     month: row.month,
     status: row.status === "published" ? "published" : "draft",
@@ -59,7 +68,7 @@ function serializeSchedule(row: ScheduleRow, departmentName: string): Schedule {
   };
 }
 
-function serializeEntry(row: EntryRow): ScheduleEntry {
+function serializeEntry(row: EntryRow, locationIds: string[] = []): ScheduleEntry {
   return {
     id: row.id,
     date: row.date,
@@ -68,7 +77,39 @@ function serializeEntry(row: EntryRow): ScheduleEntry {
     state: asEntryState(row.state) ?? "working",
     plannedShiftId: row.plannedShiftId,
     plannedState: asEntryState(row.plannedState),
+    locationIds,
   };
+}
+
+/**
+ * Who this rota is for.
+ *
+ * A site rota holds the people whose membership covers that site — and a membership
+ * covering *no* sites already means "all of them", so those people appear on every
+ * site's rota, which is what that has always meant elsewhere in the app.
+ *
+ * The central rota holds exactly the people flagged central, and they appear on no
+ * site rota at all: they are scheduled once, in one place, rather than turning up
+ * as a ghost row on three plants that cannot edit them.
+ */
+function rosterFor<T extends { userId: string; isCentral: boolean; locationIds: string[] }>(
+  members: T[],
+  locationId: string | null,
+  alreadyRostered: ReadonlySet<string> = new Set(),
+): T[] {
+  const belongs = (m: T): boolean =>
+    locationId === null
+      ? m.isCentral
+      : !m.isCentral && (m.locationIds.length === 0 || m.locationIds.includes(locationId));
+
+  // Anyone already holding a cell stays on the rota they are on, whatever the rule
+  // says about where they belong now. Two reasons, and the first is the important
+  // one: every rota that existed before sites did lands on the central rota, and a
+  // roster computed purely from the rule would empty it — a month of published
+  // shifts, still in the table, with nobody to show them against. The second is
+  // ordinary drift: somebody reassigned mid-month has not stopped having worked the
+  // first half of it.
+  return members.filter((m) => belongs(m) || alreadyRostered.has(m.userId));
 }
 
 /** A reader sees a department's schedule if they belong to it, or hold shifts:manage. */
@@ -78,6 +119,35 @@ async function assertCanRead(ctx: AuthContext, departmentId: string): Promise<vo
   if (!mine.some((d) => d.departmentId === departmentId)) {
     throw new AppError(403, ERROR_CODES.FORBIDDEN, "You are not in this department");
   }
+}
+
+/**
+ * Resolve the rota's site, and refuse one that is not this company's — a rota keyed
+ * by an id from somewhere else would be invisible to every list that filters by
+ * company. Null is not an error: it is the central rota.
+ */
+async function requireSite(
+  companyId: string,
+  ctx: AuthContext,
+  locationId: string | null,
+): Promise<{ id: string; name: string } | null> {
+  if (locationId === null) return null;
+  // The *scoped* list, deliberately: this is what makes rota access location-aware.
+  // A site the caller's groups do not reach is not theirs to roster, and answering
+  // 404 rather than 403 keeps it from confirming the site exists at all.
+  const sites = await locationService.listLocations(companyId, ctx);
+  const site = sites.find((s) => s.id === locationId);
+  if (!site) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Site not found");
+  return { id: site.id, name: site.name };
+}
+
+/** The sites this caller may tag a central person's day with. */
+async function companySites(
+  companyId: string,
+  ctx: AuthContext,
+): Promise<{ id: string; name: string }[]> {
+  const sites = await locationService.listLocations(companyId, ctx);
+  return sites.filter((s) => s.status === "active").map((s) => ({ id: s.id, name: s.name }));
 }
 
 async function requireDepartment(
@@ -96,15 +166,32 @@ export async function getGrid(
 ): Promise<ScheduleGrid> {
   const dept = await requireDepartment(companyId, query.departmentId);
   await assertCanRead(ctx, query.departmentId);
+  const site = await requireSite(companyId, ctx, query.locationId ?? null);
 
-  const [scheduleRow, members, allShifts] = await Promise.all([
-    repo.getScheduleByMonth(query.departmentId, query.year, query.month, companyId),
+  const [scheduleRow, allMembers, allShifts] = await Promise.all([
+    repo.getScheduleByMonth(
+      query.departmentId,
+      query.locationId ?? null,
+      query.year,
+      query.month,
+      companyId,
+    ),
     deptRepo.getMembers(query.departmentId),
     shiftRepo.listShifts(companyId),
   ]);
 
   const activeShifts = allShifts.filter((s) => s.status === "active");
   const entries = scheduleRow ? await repo.listEntries(scheduleRow.id) : [];
+  const members = rosterFor(
+    allMembers,
+    query.locationId ?? null,
+    new Set(entries.map((e) => e.userId)),
+  );
+  // Only the central rota tags a cell with sites; on a site rota it is the rota's own.
+  const entrySites =
+    scheduleRow && query.locationId === undefined
+      ? await repo.locationsByEntry(scheduleRow.id)
+      : new Map<string, string[]>();
   const pendingChanges = scheduleRow ? await swapRepo.pendingForSchedule(scheduleRow.id) : [];
   const days = scheduleDates(query.year, query.month);
   const memberIds = members.map((m) => m.userId);
@@ -125,9 +212,13 @@ export async function getGrid(
   return {
     departmentId: query.departmentId,
     departmentName: dept.name,
+    locationId: query.locationId ?? null,
+    locationName: site?.name ?? null,
+    // Offered for tagging a central person's day; a site rota needs no such choice.
+    locationOptions: query.locationId === undefined ? await companySites(companyId, ctx) : [],
     year: query.year,
     month: query.month,
-    schedule: scheduleRow ? serializeSchedule(scheduleRow, dept.name) : null,
+    schedule: scheduleRow ? serializeSchedule(scheduleRow, dept.name, site?.name ?? null) : null,
     days,
     shifts: activeShifts.map((s) => ({
       id: s.id,
@@ -148,10 +239,40 @@ export async function getGrid(
       avatarVersion: versions.get(m.userId) ?? null,
       isHod: m.rank === "hod",
     })),
-    entries: entries.map(serializeEntry),
+    entries: entries.map((e) => serializeEntry(e, entrySites.get(e.id) ?? [])),
     coverage,
     pendingChanges,
   };
+}
+
+/**
+ * The caller's own cells in a department for a month, wherever they are rostered.
+ * No permission beyond being in the department: these are their own shifts.
+ */
+export async function myEntries(
+  ctx: AuthContext,
+  companyId: string,
+  query: MyEntriesQuery,
+): Promise<MyEntry[]> {
+  await requireDepartment(companyId, query.departmentId);
+  await assertCanRead(ctx, query.departmentId);
+  const rows = await repo.myEntriesInDepartment(
+    companyId,
+    query.departmentId,
+    ctx.userId,
+    query.year,
+    query.month,
+  );
+  return rows.map((row) => ({
+    entryId: row.id,
+    scheduleId: row.scheduleId,
+    date: row.date,
+    shiftId: row.shiftId,
+    shiftName: row.shiftName,
+    state: asEntryState(row.state) ?? "working",
+    locationId: row.locationId,
+    locationName: row.locationName,
+  }));
 }
 
 export async function createSchedule(
@@ -160,15 +281,49 @@ export async function createSchedule(
   input: CreateSchedule,
 ): Promise<Schedule> {
   const dept = await requireDepartment(companyId, input.departmentId);
-  if (await repo.getScheduleByMonth(input.departmentId, input.year, input.month, companyId)) {
+  const locationId = input.locationId ?? null;
+
+  // A company with sites must say which rota this is. Left implicit, "no site" reads
+  // as the central rota — and a department's ordinary staff are not on it, so the
+  // month would open empty and look like a bug in the roster rather than a choice.
+  if (locationId === null && !input.central) {
+    const sites = await companySites(companyId, ctx);
+    if (sites.length > 0) {
+      throw new AppError(
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        "Choose a site for this rota, or start the central rota for travelling staff",
+      );
+    }
+  }
+
+  const site = await requireSite(companyId, ctx, locationId);
+  if (
+    await repo.getScheduleByMonth(
+      input.departmentId,
+      locationId,
+      input.year,
+      input.month,
+      companyId,
+    )
+  ) {
     throw new AppError(409, ERROR_CODES.CONFLICT, "A schedule for that month already exists");
   }
 
-  const created = await repo.insertSchedule(companyId, input.departmentId, input.year, input.month);
+  const created = await repo.insertSchedule(
+    companyId,
+    input.departmentId,
+    locationId,
+    input.year,
+    input.month,
+  );
 
   if (input.carryForwardFrom) {
+    // Carried forward from the *same* rota — a month at Plant A continues Plant A,
+    // and the central rota continues itself.
     const source = await repo.getScheduleByMonth(
       input.departmentId,
+      locationId,
       input.carryForwardFrom.year,
       input.carryForwardFrom.month,
       companyId,
@@ -191,7 +346,7 @@ export async function createSchedule(
     }
   }
 
-  return serializeSchedule(created, dept.name);
+  return serializeSchedule(created, dept.name, site?.name ?? null);
 }
 
 /** Fetch a schedule in the caller's company, or 404. */
@@ -247,8 +402,9 @@ export async function setLock(
     },
   ]);
   const dept = await deptRepo.getDepartment(schedule.departmentId, companyId);
+  const site = await requireSite(companyId, ctx, schedule.locationId);
   const fresh = await repo.getScheduleById(scheduleId, companyId);
-  return serializeSchedule(fresh!, dept?.name ?? "");
+  return serializeSchedule(fresh!, dept?.name ?? "", site?.name ?? null);
 }
 
 export async function assignEntry(
@@ -266,10 +422,41 @@ export async function assignEntry(
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "Date is outside this schedule's month");
   }
 
-  // The person must belong to the department.
+  // The person must belong to the department — and to *this* rota. A site rota holds
+  // the people who work that site; the central rota holds the ones who travel. Being
+  // in the department is no longer enough, or a central person could be rostered at a
+  // plant as well as centrally and nobody would know which was real.
   const members = await deptRepo.getMembers(schedule.departmentId);
   if (!members.some((mem) => mem.userId === input.userId)) {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "That person is not in this department");
+  }
+  // Central staff are rostered centrally, so a site's rota may not also claim them:
+  // that is the double-booking the separate rota exists to prevent. The other way
+  // round is left open on purpose — the central rota is also where every pre-site
+  // rota landed, and refusing edits there would strand them.
+  const person = members.find((mem) => mem.userId === input.userId);
+  if (schedule.locationId !== null && person?.isCentral) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      "That person is central — roster them on the department's central rota",
+    );
+  }
+
+  // Where they spent the day. Only the central rota carries this.
+  const dayLocationIds: string[] = input.locationIds ?? [];
+  if (dayLocationIds.length > 0) {
+    if (schedule.locationId !== null) {
+      throw new AppError(
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        "A site rota's cells are already at that site",
+      );
+    }
+    const allowed = new Set((await companySites(companyId, ctx)).map((site) => site.id));
+    if (dayLocationIds.some((id) => !allowed.has(id))) {
+      throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "Site not found");
+    }
   }
 
   // Working means a real, active shift; Off/Leave carry no shift.
@@ -331,7 +518,9 @@ export async function assignEntry(
       cellLabel(existing.shiftId ? (names?.get(existing.shiftId) ?? null) : null, existing.state),
       toLabel,
     );
-    return serializeEntry(updated!);
+    if (input.locationIds !== undefined)
+      await repo.setEntryLocations(input.entryId, dayLocationIds);
+    return serializeEntry(updated!, dayLocationIds);
   }
 
   const created = await repo.insertEntry({
@@ -345,15 +534,17 @@ export async function assignEntry(
     ...(schedule.status === "published" ? { plannedShiftId: null, plannedState: "off" } : {}),
   });
   await logEdit("—", toLabel);
-  return serializeEntry(created);
+  if (dayLocationIds.length > 0) await repo.setEntryLocations(created.id, dayLocationIds);
+  return serializeEntry(created, dayLocationIds);
 }
 
 export async function bulkAssign(
-  actorUserId: string,
+  ctx: AuthContext,
   companyId: string,
   scheduleId: string,
   input: BulkAssign,
 ): Promise<{ count: number }> {
+  const actorUserId = ctx.userId;
   const schedule = await requireSchedule(companyId, scheduleId);
   assertUnlocked(schedule);
 
@@ -393,7 +584,21 @@ export async function bulkAssign(
   const before = published
     ? await repo.entriesForUserDates(scheduleId, input.userId, input.dates)
     : [];
-  await repo.replaceDays(scheduleId, input.userId, input.dates, insert, published);
+  const bulkSites = input.locationIds ?? [];
+  if (bulkSites.length > 0) {
+    if (schedule.locationId !== null) {
+      throw new AppError(
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        "A site rota's cells are already at that site",
+      );
+    }
+    const allowed = new Set((await companySites(companyId, ctx)).map((site) => site.id));
+    if (bulkSites.some((id) => !allowed.has(id))) {
+      throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "Site not found");
+    }
+  }
+  await repo.replaceDays(scheduleId, input.userId, input.dates, insert, published, bulkSites);
 
   if (published) {
     const names = await shiftNames(companyId);
@@ -460,11 +665,16 @@ export async function deleteEntry(
 }
 
 export async function publishSchedule(
-  actorUserId: string,
+  ctx: AuthContext,
   companyId: string,
   scheduleId: string,
 ): Promise<Schedule> {
+  const actorUserId = ctx.userId;
   const schedule = await requireSchedule(companyId, scheduleId);
+  // Publishing a site's rota is managing that site: refuse one the caller's groups
+  // do not reach, before anything is frozen.
+  const site = await requireSite(companyId, ctx, schedule.locationId);
+  const siteLabel = site?.name ?? null;
   await repo.publish(scheduleId);
   await changeLog.recordChanges([
     {
@@ -485,12 +695,14 @@ export async function publishSchedule(
     companyId,
     actorUserId,
     departmentId: schedule.departmentId,
-    title: `The ${dept?.name ?? "department"} roster was published`,
+    title: siteLabel
+      ? `The ${dept?.name ?? "department"} roster for ${siteLabel} was published`
+      : `The ${dept?.name ?? "department"} roster was published`,
     body: "Your shifts for the period are now final.",
     link: "/schedule",
     entityKind: "schedule",
     entityId: scheduleId,
   });
   const fresh = await repo.getScheduleById(scheduleId, companyId);
-  return serializeSchedule(fresh!, dept?.name ?? "");
+  return serializeSchedule(fresh!, dept?.name ?? "", siteLabel);
 }

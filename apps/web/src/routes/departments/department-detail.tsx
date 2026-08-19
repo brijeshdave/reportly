@@ -187,6 +187,7 @@ function MembersTab({ departmentId, companyId }: { departmentId: string; company
         avatarVersion: member.avatarVersion ?? null,
         rank: member.rank,
         reportsToId: member.reportsToId,
+        isCentral: member.isCentral,
         locationIds: [...member.locationIds].sort(),
       });
     }
@@ -204,6 +205,7 @@ function MembersTab({ departmentId, companyId }: { departmentId: string; company
         [...current].map(([userId, m]) => ({
           userId,
           rank: m.rank,
+          isCentral: m.isCentral,
           reportsToId: m.reportsToId,
           locationIds: m.locationIds,
         })),
@@ -232,6 +234,7 @@ function MembersTab({ departmentId, companyId }: { departmentId: string; company
       email: user.email,
       designation: user.designation ?? null,
       avatarVersion: user.avatarVersion ?? null,
+      isCentral: false,
       rank: "member",
       reportsToId: null,
       locationIds: [],
@@ -385,16 +388,33 @@ function MemberRow({
       </div>
       <div className="flex w-40 flex-col gap-0.5 text-[11px]">
         <span className="text-muted-foreground">Sites</span>
-        {/* No sites picked means every site — so that is what the button says. */}
+        {/* No sites picked means every site — so that is what the button says. A
+            central person works at all of them by definition, so the picker goes
+            quiet rather than offering a choice that would not be honoured. */}
         <MultiSelect
           label={`Sites: ${membership.name}`}
           options={sites.map((site) => ({ value: site.id, label: site.name }))}
-          selected={membership.locationIds}
+          selected={membership.isCentral ? [] : membership.locationIds}
           onChange={(locationIds) => onEdit({ locationIds })}
-          emptyLabel="All sites"
-          disabled={!canAssign}
+          emptyLabel={membership.isCentral ? "Travels — central rota" : "All sites"}
+          disabled={!canAssign || membership.isCentral}
         />
       </div>
+
+      <label className="flex w-28 items-start gap-2 text-[11px]">
+        <input
+          type="checkbox"
+          checked={membership.isCentral}
+          onChange={(event) => onEdit({ isCentral: event.target.checked, locationIds: [] })}
+          disabled={!canAssign}
+          aria-label={`Central staff: ${membership.name}`}
+          className="mt-0.5 h-3.5 w-3.5 rounded border-border"
+        />
+        <span>
+          <span className="block text-muted-foreground">Central</span>
+          <span className="block text-[10px] text-muted-foreground">Travels between sites</span>
+        </span>
+      </label>
 
       {canAssign ? (
         <Button
@@ -473,6 +493,8 @@ interface Membership {
   designation: string | null;
   avatarVersion: number | null;
   rank: DepartmentRank;
+  /** Travelling staff — rostered on the department's central rota, not a site's. */
+  isCentral: boolean;
   reportsToId: string | null;
   locationIds: string[];
 }
@@ -483,6 +505,7 @@ function sameMembership(a: Map<string, Membership>, b: Map<string, Membership>):
     const right = b.get(userId);
     if (!right) return false;
     if (left.rank !== right.rank || left.reportsToId !== right.reportsToId) return false;
+    if (left.isCentral !== right.isCentral) return false;
     if (left.locationIds.length !== right.locationIds.length) return false;
     const l = [...left.locationIds].sort();
     const r = [...right.locationIds].sort();

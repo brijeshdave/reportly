@@ -32,6 +32,7 @@ import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/pri
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchDepartments, fetchUserDepartments } from "@/services/departments.js";
+import { fetchLocations } from "@/services/locations.js";
 import {
   createSchedule,
   fetchSchedule,
@@ -51,9 +52,15 @@ export function SchedulePage() {
     queryKey: ["users", "departments", session.user.id],
     queryFn: () => fetchUserDepartments(session.user.id),
   });
+  // Scoped by the API to the sites this person's groups reach, which is what makes
+  // the rota picker show only the plants they may actually roster.
+  const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
 
   const now = new Date();
   const [departmentId, setDepartmentId] = useState<string | null>(null);
+  // "" is the central rota — the travelling staff — and it is a real choice rather
+  // than the absence of one, so the picker names it.
+  const [locationId, setLocationId] = useState<string>("");
   const [touched, setTouched] = useState(false);
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -71,14 +78,30 @@ export function SchedulePage() {
     (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
   );
 
+  // Which rota every mutation is about. One place, because three buttons start a
+  // rota and a fourth would eventually forget.
+  const siteArg = locationId === "" ? { central: true } : { locationId };
+
+  const siteOptions = (sites.data ?? [])
+    .filter((site) => site.status === "active")
+    .map((site) => ({ value: site.id, label: site.name }));
+
   const grid = useQuery({
-    queryKey: ["schedule", effectiveDept, year, month],
-    queryFn: () => fetchSchedule({ departmentId: effectiveDept!, year, month }),
+    queryKey: ["schedule", effectiveDept, locationId, year, month],
+    queryFn: () =>
+      fetchSchedule({
+        departmentId: effectiveDept!,
+        ...(locationId === "" ? {} : { locationId }),
+        year,
+        month,
+      }),
     enabled: effectiveDept !== null,
   });
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["schedule", effectiveDept, year, month] });
+    queryClient.invalidateQueries({
+      queryKey: ["schedule", effectiveDept, locationId, year, month],
+    });
 
   const create = useMutation({
     mutationFn: (input: CreateSchedule) => createSchedule(input),
@@ -143,6 +166,17 @@ export function SchedulePage() {
                 }}
                 options={options}
                 placeholder="Choose a department…"
+              />
+            </div>
+            {/* A rota is a department *at a site*. The central rota is the one for
+                people who travel, so it is named rather than left as "no site". */}
+            <div className="w-56">
+              <SearchableSelect
+                ariaLabel="Site"
+                value={locationId}
+                onChange={setLocationId}
+                options={siteOptions}
+                placeholder="Central (travelling staff)"
               />
             </div>
             <div className="flex items-center gap-1 rounded-lg border border-border px-1">
@@ -210,7 +244,9 @@ export function SchedulePage() {
                 size="sm"
                 variant="secondary"
                 disabled={create.isPending}
-                onClick={() => create.mutate({ departmentId: effectiveDept, year, month })}
+                onClick={() =>
+                  create.mutate({ departmentId: effectiveDept, ...siteArg, year, month })
+                }
               >
                 Start blank
               </Button>
@@ -221,6 +257,7 @@ export function SchedulePage() {
                   const from = previousMonth(year, month);
                   create.mutate({
                     departmentId: effectiveDept,
+                    ...siteArg,
                     year,
                     month,
                     carryForwardFrom: from,
@@ -293,6 +330,7 @@ export function SchedulePage() {
                       const to = nextMonth(year, month);
                       create.mutate({
                         departmentId: effectiveDept,
+                        ...siteArg,
                         year: to.year,
                         month: to.month,
                         carryForwardFrom: { year, month },

@@ -337,6 +337,7 @@ for each person set three things:
 | **Rank**       | Head of Department, team leader, or member. A label — see the warning below. |
 | **Reports to** | Who is above them. **This is the hierarchy.**                                |
 | **Sites**      | Which locations their membership covers. Select none to mean _all_ of them.  |
+| **Central**    | They travel between sites — rostered on the department's central rota.       |
 
 So a typical shape is: the boss in Management reporting to nobody; the HOD of
 Engineering reporting **up to the boss** — a person in a _different_ department, which

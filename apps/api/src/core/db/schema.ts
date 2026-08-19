@@ -275,6 +275,15 @@ export const departmentUsers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     rank: text("rank").notNull().default("member"),
+    /**
+     * Travelling staff: a general shift, and a different plant on different days.
+     * They are rostered on the department's *central* rota rather than any site's.
+     *
+     * Explicit, never inferred from "covers no sites" — an empty site set already
+     * means *all* sites everywhere else, so inferring it would quietly reclassify
+     * anybody an administrator had not finished placing.
+     */
+    isCentral: boolean("is_central").notNull().default(false),
     // Set null, not cascade: losing a manager must orphan the people under them,
     // visibly, rather than delete them along with the edge.
     reportsToId: text("reports_to_id").references(() => users.id, { onDelete: "set null" }),
@@ -1231,6 +1240,13 @@ export const schedules = pgTable(
     departmentId: uuid("department_id")
       .notNull()
       .references(() => departments.id, { onDelete: "cascade" }),
+    /**
+     * The site this rota is for. **NULL is meaningful**: it is the *central* rota,
+     * for people who travel rather than belong to one site. The uniqueness below
+     * therefore treats NULLs as equal, or a department could hold any number of
+     * central rotas for one month.
+     */
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "cascade" }),
     year: integer("year").notNull(),
     month: integer("month").notNull(),
     status: text("status").notNull().default("draft"),
@@ -1240,7 +1256,12 @@ export const schedules = pgTable(
     locked: boolean("locked").notNull().default(false),
     ...timestamps,
   },
-  (t) => [unique("schedules_dept_month_unique").on(t.departmentId, t.year, t.month)],
+  (t) => [
+    unique("schedules_dept_site_month_unique")
+      .on(t.departmentId, t.locationId, t.year, t.month)
+      .nullsNotDistinct(),
+    index("schedules_location_idx").on(t.locationId),
+  ],
 );
 
 /**
@@ -1272,6 +1293,31 @@ export const scheduleEntries = pgTable(
   (t) => [
     index("schedule_entries_schedule_date_idx").on(t.scheduleId, t.date),
     index("schedule_entries_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * Where a central person was on a given day — "Plant A", or "Plant A + Plant B".
+ *
+ * An indication for whoever reads the rota, and nothing else: no hours, no halves,
+ * nothing the system computes with. Deliberately a set rather than a column on the
+ * cell, so a day covering two sites needs no second row and the grid keeps its one
+ * cell per person per day.
+ */
+export const scheduleEntryLocations = pgTable(
+  "schedule_entry_locations",
+  {
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => scheduleEntries.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.entryId, t.locationId], name: "schedule_entry_locations_pk" }),
+    index("schedule_entry_locations_location_idx").on(t.locationId),
   ],
 );
 
@@ -1314,6 +1360,13 @@ export const shiftSwapRequests = pgTable(
       onDelete: "set null",
     }),
     note: text("note"),
+    /**
+     * Set when an approver deliberately allowed a swap between two sites. Refused
+     * by default — the candidate list only offers the same rota — so this records
+     * a decision somebody made, with their reason, rather than a quiet exception.
+     */
+    crossSite: boolean("cross_site").notNull().default(false),
+    crossSiteReason: text("cross_site_reason"),
     status: text("status").notNull().default("pending"),
     approverUserId: text("approver_user_id").references(() => users.id, { onDelete: "set null" }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),

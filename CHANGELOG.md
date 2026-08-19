@@ -6,6 +6,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A rota belongs to a site, not just a department.** A department spans several
+  plants whose teams never share a building, but a schedule was one calendar for
+  all of them — and a colleague swap could be offered between two sites fifty
+  miles apart. Schedules are now per department **per site**: the roster is the
+  people that site's memberships cover, coverage warnings are per site, and swaps
+  stay within one rota unless an approver deliberately allows a cross-site trade
+  and says why.
+- **A central rota for travelling staff.** People who work a general shift and go
+  where they are needed are marked **Central** on the department's Members tab and
+  rostered on their own rota, managed by the Head of Department. Each day there
+  can name the site or sites it involved — an indication for whoever reads the
+  rota, with no hours or half-days recorded, because that is what was asked for
+  and nothing computes from it.
+- Rotas that predate sites keep working: each is attached to its department's site
+  where there is only one, and otherwise stays on the central rota, where the
+  people already rostered on it continue to appear.
+
 ### Fixed
 
 - **Department pickers said which department, never which company.** A name is

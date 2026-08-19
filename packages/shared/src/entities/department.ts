@@ -76,6 +76,11 @@ export const departmentMemberSchema = z.object({
   avatarVersion: z.number().nullable(),
   rank: departmentRankSchema,
   /**
+   * Travelling staff: a general shift, and a different plant on different days.
+   * They are rostered on the department's central rota rather than any site's.
+   */
+  isCentral: z.boolean(),
+  /**
    * The person this member reports to — the hierarchy, and the only thing report
    * visibility is computed from. Null means nobody is above them here.
    */
@@ -100,6 +105,7 @@ export const setDepartmentMembersSchema = z.object({
        */
       reportsToId: z.string().nullable().default(null),
       locationIds: z.array(uuidSchema).default([]),
+      isCentral: z.boolean().default(false),
     }),
   ),
 });
@@ -120,6 +126,7 @@ export const userDepartmentSchema = z.object({
   /** The full path from the root within that company, e.g. `Engineering › Backend`. */
   path: z.string(),
   rank: departmentRankSchema,
+  isCentral: z.boolean(),
   reportsToId: z.string().nullable(),
   reportsToName: z.string().nullable(),
   locationIds: z.array(uuidSchema),

@@ -20,6 +20,7 @@ import { X } from "lucide-react";
 import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { Avatar } from "@/components/avatar.js";
+import { MultiSelect } from "@/components/ui/multi-select.js";
 import { cn } from "@/lib/cn.js";
 import { SHIFT_COLOR_CLASSES, STATE_CHIP } from "@/routes/shifts/shift-colors.js";
 import { bulkAssign } from "@/services/shifts.js";
@@ -59,6 +60,31 @@ function cellView(
 }
 
 /** One assignment as a compact, even chip: a shift's code and colour, or W/O / L / PH. */
+/**
+ * The full site names for a cell's tooltip — the initials shown in the cell are
+ * unambiguous only to somebody who already knows the sites.
+ */
+function siteTitle(
+  cells: { locationIds: string[] }[],
+  options: { id: string; name: string }[],
+): string | undefined {
+  const ids = [...new Set(cells.flatMap((c) => c.locationIds))];
+  if (ids.length === 0) return undefined;
+  const names = ids.map((id) => options.find((o) => o.id === id)?.name ?? "Unknown site");
+  return names.length === 1 ? `At ${names[0]}` : `At ${names.join(" and ")}`;
+}
+
+/** A site's initials, for a cell too narrow to hold its name. */
+function siteInitials(options: { id: string; name: string }[], id: string): string {
+  const name = options.find((o) => o.id === id)?.name ?? "";
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase())
+    .join("");
+  return initials.slice(0, 3) || "?";
+}
+
 function Chip({
   shiftId,
   state,
@@ -187,6 +213,7 @@ export function ScheduleGridView({
           selection={selection}
           memberName={grid.members.find((m) => m.userId === selection.userId)?.name ?? ""}
           shifts={grid.shifts}
+          siteOptions={grid.locationOptions}
           onAddWeekday={addWeekday}
           onDone={() => setSelection(null)}
           onChanged={onChanged}
@@ -292,6 +319,7 @@ export function ScheduleGridView({
                         title={
                           pending ??
                           changeTitle ??
+                          siteTitle(cells, grid.locationOptions) ??
                           (editable && isGap ? "No shift assigned (gap)" : undefined)
                         }
                         className={cn(
@@ -353,12 +381,19 @@ export function ScheduleGridView({
                             {cells.map((entry) => {
                               const v = cellView(entry, view);
                               return (
-                                <Chip
-                                  key={entry.id}
-                                  shiftId={v.shiftId}
-                                  state={v.state}
-                                  shifts={grid.shifts}
-                                />
+                                <span key={entry.id} className="flex flex-col items-center">
+                                  <Chip shiftId={v.shiftId} state={v.state} shifts={grid.shifts} />
+                                  {/* Where a travelling person spent the day. Initials
+                                      only — the cell is 1.9rem wide — with the full
+                                      names on the cell's tooltip. */}
+                                  {entry.locationIds.length > 0 ? (
+                                    <span className="text-[8px] leading-none text-muted-foreground">
+                                      {entry.locationIds
+                                        .map((id) => siteInitials(grid.locationOptions, id))
+                                        .join("+")}
+                                    </span>
+                                  ) : null}
+                                </span>
                               );
                             })}
                           </span>
@@ -382,6 +417,7 @@ function SelectionToolbar({
   selection,
   memberName,
   shifts,
+  siteOptions,
   onAddWeekday,
   onDone,
   onChanged,
@@ -390,14 +426,24 @@ function SelectionToolbar({
   selection: Selection;
   memberName: string;
   shifts: Shift[];
+  /** The sites a day may be tagged with. Empty on a site rota, which needs no tag. */
+  siteOptions: { id: string; name: string }[];
   onAddWeekday: (match: "weekend" | number) => void;
   onDone: () => void;
   onChanged: () => void;
 }) {
   const queryClient = useQueryClient();
+  // Where the selected days were spent. Carried on the same apply as the shift, so
+  // "Tuesday and Wednesday, general shift, at Plant A and Plant B" is one action.
+  const [whereIds, setWhereIds] = useState<string[]>([]);
   const apply = useMutation({
     mutationFn: (set: { shiftId: string | null; state: EntryState } | null) =>
-      bulkAssign(scheduleId, { userId: selection.userId, dates: selection.dates, set }),
+      bulkAssign(scheduleId, {
+        userId: selection.userId,
+        dates: selection.dates,
+        set,
+        ...(siteOptions.length > 0 && whereIds.length > 0 ? { locationIds: whereIds } : {}),
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["schedule"] });
       onChanged();
@@ -446,6 +492,19 @@ function SelectionToolbar({
           </option>
         ))}
       </select>
+      {siteOptions.length > 0 ? (
+        <span className="flex items-center gap-1">
+          <span className="text-xs text-muted-foreground">Where</span>
+          <MultiSelect
+            label={`Sites for ${memberName}`}
+            options={siteOptions.map((site) => ({ value: site.id, label: site.name }))}
+            selected={whereIds}
+            onChange={setWhereIds}
+            emptyLabel="Not said"
+            disabled={busy}
+          />
+        </span>
+      ) : null}
       {(["off", "leave", "holiday"] as const).map((st) => (
         <Button key={st} disabled={busy} onClick={() => apply.mutate({ shiftId: null, state: st })}>
           {ENTRY_STATE_CODES[st]}

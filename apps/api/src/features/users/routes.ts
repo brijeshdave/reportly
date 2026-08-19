@@ -278,6 +278,8 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
               // assignment never flattens a reporting line by accident.
               reportsToId: z.guid().nullable().optional(),
               locationIds: z.array(z.guid()).optional(),
+              /** Travelling staff — rostered on the department's central rota. */
+              isCentral: z.boolean().optional(),
             }),
           ),
         }),

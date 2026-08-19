@@ -117,6 +117,43 @@ company; a form creating something company-scoped filters to the active company
 instead, because a department it cannot post to is not a choice — the API rejects
 it, and it used to sit in the dropdown looking exactly like the one that works.
 
+### Why is `schedules.location_id` nullable, and what does NULL mean?
+
+NULL is the **central rota** — the department's travelling staff — not "unknown"
+and not "all sites". That is why the uniqueness is
+`UNIQUE NULLS NOT DISTINCT (department_id, location_id, year, month)`: without
+`NULLS NOT DISTINCT`, Postgres treats every NULL as its own value and a department
+could hold any number of central rotas for one month.
+
+The same trap sits in the query layer. `eq(col, null)` is never true in SQL, so
+looking a rota up with a null site has to use `IS NULL` — get that wrong and the
+month reads as "no rota yet" and offers to start a second one.
+
+Two rules decide who is on a rota, and both are in `rosterFor`:
+
+- a site's rota holds the people whose membership covers that site, and a
+  membership covering _no_ sites means all of them (the meaning "no sites" already
+  has everywhere else);
+- **plus anyone already holding a cell on it**, whatever the rule says now. That
+  second clause is not politeness. Every rota built before sites existed landed on
+  the central rota in the migration, and a roster computed purely from the rule
+  would render those months empty — the cells still in the table, with no row to
+  show them against.
+
+Creating a rota therefore refuses to guess: if the company has any sites, the
+request must name one or pass `central: true`. "No site" would otherwise silently
+mean the central rota, and a department's ordinary staff are not on it — the month
+would open empty and read as a bug rather than a choice.
+
+### Why do central staff have a flag instead of "no sites"?
+
+Because "no sites" already means _all_ sites. Inferring travelling staff from an
+empty site list would reclassify everybody an administrator had not finished
+placing, and quietly move them off the rotas they are on.
+
+`department_users.is_central` is explicit, and the two are kept from disagreeing:
+setting the flag clears the site list, and the site picker goes quiet.
+
 ### How do I change the database?
 
 Edit `core/db/schema.ts` — one file, because drizzle-kit loads it outside the TS

@@ -27,7 +27,7 @@ features:
     details: MTBF, MTTR and availability rolled up through the asset tree, saved report views over the journal, and charts for the shape of the work — each one readable as a table.
     link: /user/insights
   - title: Work that recurs
-    details: Shifts with a per-department calendar and colleague swaps that route to the right approver. Routines — the weekly check, the monthly clean — with compliance tracking.
+    details: Shifts with a calendar per department and site, a central rota for staff who travel, and colleague swaps that route to the right approver. Routines — the weekly check, the monthly clean — with compliance tracking.
     link: /user/shifts
   - title: Access that is a group, not a checkbox
     details: Groups hold roles and the companies and locations those roles apply to. A new user has no access until you add them to one — an invitation grants an identity, not permission.

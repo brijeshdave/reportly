@@ -66,6 +66,11 @@ test("a colleague swap is requested and approved", async ({ page }) => {
   // --- the roster: both of them on the same day, then published ---
   await page.goto("/schedule");
   await pickFromCombo(page, "Department", `Packing ${tag}`);
+  // A rota is a department *at a site*, so the site is part of choosing which one.
+  // These two are placed at no site in particular, which means all of them, so they
+  // are on this one's roster.
+  await page.getByLabel("Site").click();
+  await page.getByRole("listbox").getByRole("option").first().click();
 
   // A month has no roster until somebody starts one — the page offers a blank or a
   // carry-forward rather than inventing one.

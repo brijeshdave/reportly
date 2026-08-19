@@ -197,6 +197,11 @@ function SwapRow({ swap, box }: { swap: SwapRequest; box: Box }) {
   // Nothing is pre-selected — the manager must actively choose who to swap with (or no
   // swap) before approving, so an approval is never an accidental default.
   const [choice, setChoice] = useState("");
+  // A cross-site trade is a real decision with consequences at two plants, so the
+  // approver says why and it is kept with the request.
+  const [crossSiteReason, setCrossSiteReason] = useState("");
+  const chosenCandidate = swap.candidates.find((c) => c.entryId === choice) ?? null;
+  const crossingSites = chosenCandidate?.otherSiteName != null;
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ["swaps"] });
@@ -211,7 +216,12 @@ function SwapRow({ swap, box }: { swap: SwapRequest; box: Box }) {
         decision === "approve"
           ? choice === NO_SWAP
             ? { noSwap: true }
-            : { counterpartEntryId: choice }
+            : {
+                counterpartEntryId: choice,
+                ...(crossingSites
+                  ? { allowCrossSite: true, crossSiteReason: crossSiteReason.trim() }
+                  : {}),
+              }
           : {},
       ),
     onSuccess: invalidate,
@@ -242,6 +252,7 @@ function SwapRow({ swap, box }: { swap: SwapRequest; box: Box }) {
                 : "Taken off the shift"
               : swap.status}
           {swap.note ? ` · “${swap.note}”` : ""}
+          {swap.crossSite ? ` · across sites: ${swap.crossSiteReason ?? ""}` : ""}
           {swap.decidedAt
             ? ` · ${swap.status} ${formatDateTime(swap.decidedAt)}${
                 box !== "handled" && swap.approverName ? ` by ${swap.approverName}` : ""
@@ -265,11 +276,23 @@ function SwapRow({ swap, box }: { swap: SwapRequest; box: Box }) {
             {swap.candidates.map((c) => (
               <option key={c.entryId} value={c.entryId}>
                 Swap with {c.name} ({c.shiftName ?? "—"})
+                {/* Named, because trading a shift with another plant is a different
+                    decision from trading it with the person at the next bench. */}
+                {c.otherSiteName ? ` · at ${c.otherSiteName}` : ""}
                 {c.entryId === swap.counterpartEntryId ? " · suggested" : ""}
               </option>
             ))}
             <option value={NO_SWAP}>No swap — take them off</option>
           </Select>
+          {crossingSites ? (
+            <Input
+              value={crossSiteReason}
+              onChange={(e) => setCrossSiteReason(e.target.value)}
+              placeholder={`Why swap across to ${chosenCandidate?.otherSiteName}?`}
+              aria-label="Reason for a cross-site swap"
+              className="h-8 w-64"
+            />
+          ) : null}
           <Button
             size="sm"
             variant="secondary"
@@ -280,7 +303,9 @@ function SwapRow({ swap, box }: { swap: SwapRequest; box: Box }) {
           </Button>
           <Button
             size="sm"
-            disabled={decide.isPending || !choice}
+            disabled={
+              decide.isPending || !choice || (crossingSites && crossSiteReason.trim().length < 3)
+            }
             onClick={() => decide.mutate("approve")}
           >
             Approve

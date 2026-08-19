@@ -486,6 +486,7 @@ export async function assignGroups(id: string, groupIds: string[]): Promise<void
 const keep = (m: DepartmentMemberRow) => ({
   userId: m.userId,
   rank: m.rank,
+  isCentral: m.isCentral,
   reportsToId: m.reportsToId,
   locationIds: m.locationIds,
 });
@@ -506,6 +507,7 @@ export async function assignDepartments(
     rank: string;
     reportsToId?: string | null;
     locationIds?: string[];
+    isCentral?: boolean;
   }[],
 ): Promise<void> {
   await requireUser(id);
@@ -528,6 +530,7 @@ export async function assignDepartments(
           {
             userId: id,
             rank: entry.rank,
+            isCentral: entry.isCentral ?? existing?.isCentral ?? false,
             reportsToId:
               entry.reportsToId !== undefined ? entry.reportsToId : (existing?.reportsToId ?? null),
             locationIds: entry.locationIds ?? existing?.locationIds ?? [],
