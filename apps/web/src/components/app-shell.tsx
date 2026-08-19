@@ -41,9 +41,9 @@ import { signOut } from "@/services/session.js";
 function BrandMark() {
   return (
     <Link to="/" className="flex items-center gap-2.5 px-2 py-1">
-      <span className="brand-gradient flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold text-primary-foreground">
-        R
-      </span>
+      {/* The mark itself rather than an "R": the app had a logo all along and wore
+          a letter instead. Empty alt — the wordmark beside it already names it. */}
+      <img src="/icon-app.svg" alt="" width={36} height={36} className="h-9 w-9 rounded-xl" />
       <span className="text-base font-semibold tracking-tight">Reportly</span>
     </Link>
   );

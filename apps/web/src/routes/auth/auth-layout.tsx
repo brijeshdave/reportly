@@ -21,9 +21,9 @@ export function AuthLayout({
     <main className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="brand-gradient mb-4 flex h-14 w-14 items-center justify-center rounded-2xl text-xl font-bold text-primary-foreground">
-            R
-          </span>
+          {/* The sign-in page is the first thing anybody sees of Reportly, so it
+              shows the mark rather than a letter standing in for it. */}
+          <img src="/icon-app.svg" alt="" width={56} height={56} className="mb-4 h-14 w-14" />
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           {description ? (
             <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>

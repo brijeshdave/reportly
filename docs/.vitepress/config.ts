@@ -47,6 +47,12 @@ export default defineConfig({
   cleanUrls: true,
 
   head: [
+    // The site is served from `/reportly/` on GitHub Pages, so these must carry
+    // the base or the browser asks the domain root for them and gets a 404 —
+    // which is exactly how the documentation ended up with no icon in the tab.
+    ["link", { rel: "icon", type: "image/svg+xml", href: `${BASE}icon.svg` }],
+    ["link", { rel: "alternate icon", href: `${BASE}favicon.ico` }],
+    ["link", { rel: "apple-touch-icon", href: `${BASE}icon-512.png` }],
     ["meta", { name: "theme-color", content: "#6366f1" }],
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:title", content: "Reportly" }],
@@ -60,6 +66,7 @@ export default defineConfig({
   ],
 
   themeConfig: {
+    logo: { src: `${BASE}icon.svg`, alt: "" },
     siteTitle: "Reportly",
 
     nav: [

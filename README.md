@@ -1,3 +1,5 @@
+<img src="apps/web/public/icon-app.svg" alt="" width="72" height="72" align="left" />
+
 # Reportly
 
 [![CI](https://github.com/brijeshdave/reportly/actions/workflows/ci.yml/badge.svg)](https://github.com/brijeshdave/reportly/actions/workflows/ci.yml)

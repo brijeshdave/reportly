@@ -7,8 +7,9 @@
   </defs>
   <g transform="translate(32,32) scale(0.4375)">
     <rect width="512" height="512" rx="116" fill="url(#rgl)"/>
-    <rect x="161" y="118" width="190" height="276" rx="30" fill="none" stroke="#ffffff" stroke-width="26"/>
-    <polyline points="88,270 186,270 222,206 266,326 302,240 330,270 424,270" fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="96" y="88" width="320" height="336" rx="36" fill="none" stroke="#ffffff" stroke-width="28"/>
+    <line x1="168" y1="88" x2="168" y2="424" stroke="#ffffff" stroke-width="28"/>
+    <path d="M296 88 h64 v212 l-32 -30 -32 30 z" fill="#ffffff"/>
   </g>
   <text x="300" y="197" font-family="Inter, 'Segoe UI', -apple-system, sans-serif" font-size="150" font-weight="600" letter-spacing="-3" fill="#1e1b3a">Reportly</text>
 </svg>
