@@ -8,14 +8,23 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Alert, Input, Spinner } from "@/components/ui/form.js";
-import { Button, EmptyState } from "@/components/ui/primitives.js";
+import { Badge, Button, EmptyState } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
 import { Inbox } from "lucide-react";
 
 export interface PickerOption {
   id: string;
   label: string;
+  /**
+   * A second line under the name. Use `meta` instead where the fact is short —
+   * a permission count or an email is a suffix, not a paragraph, and a hundred
+   * rows each two lines tall is a list nobody can scan.
+   */
   description?: string;
+  /** Rendered inline after the name, muted: "Journal editor (12)". */
+  meta?: string;
+  /** A short chip after the name — "System" / "Custom". */
+  badge?: string;
   /** Prevents ticking or unticking; used for rows the API would refuse. */
   locked?: boolean;
 }
@@ -76,8 +85,45 @@ export function AssignmentPicker({
     return <EmptyState icon={Inbox} title="Nothing to assign" description={emptyMessage} />;
   }
 
-  const visible = options.filter((option) =>
+  const matches = options.filter((option) =>
     option.label.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  // What is already assigned goes first, under its own heading. With fifty roles to
+  // choose from, "what does this group have?" is the question being asked far more
+  // often than "what else is there?", and the answer used to be scattered down a
+  // list in alphabetical order.
+  const chosen = matches.filter((option) => selected.has(option.id));
+  const rest = matches.filter((option) => !selected.has(option.id));
+
+  const row = (option: PickerOption) => (
+    <li key={option.id}>
+      <label
+        className={cn(
+          "flex cursor-pointer items-center gap-3 rounded-xl border border-border px-3 py-2 hover:bg-muted/50",
+          option.locked && "cursor-not-allowed opacity-60",
+        )}
+      >
+        <input
+          type="checkbox"
+          checked={selected.has(option.id)}
+          disabled={disabled || option.locked || busy}
+          onChange={() => toggle(option.id)}
+        />
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span className="truncate text-sm font-medium">{option.label}</span>
+          {option.meta ? (
+            <span className="text-xs text-muted-foreground">{option.meta}</span>
+          ) : null}
+          {option.badge ? (
+            <Badge tone={option.badge === "System" ? "neutral" : "brand"}>{option.badge}</Badge>
+          ) : null}
+          {option.description ? (
+            <span className="block w-full text-xs text-muted-foreground">{option.description}</span>
+          ) : null}
+        </span>
+      </label>
+    </li>
   );
 
   return (
@@ -85,39 +131,39 @@ export function AssignmentPicker({
       {error ? <Alert tone="error">{error}</Alert> : null}
       {saved && !dirty ? <Alert tone="success">Changes saved.</Alert> : null}
 
-      <Input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search"
-        aria-label="Search options"
-      />
+      <div className="flex items-center justify-between gap-3">
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search"
+          aria-label="Search options"
+        />
+        <span className="shrink-0 text-xs text-muted-foreground" role="status">
+          {selected.size} of {options.length} selected
+        </span>
+      </div>
 
-      <ul className="flex max-h-96 flex-col gap-1 overflow-y-auto">
-        {visible.map((option) => (
-          <li key={option.id}>
-            <label
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-xl border border-border p-3 hover:bg-muted/50",
-                option.locked && "cursor-not-allowed opacity-60",
-              )}
-            >
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={selected.has(option.id)}
-                disabled={disabled || option.locked || busy}
-                onChange={() => toggle(option.id)}
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-medium">{option.label}</span>
-                {option.description ? (
-                  <span className="block text-xs text-muted-foreground">{option.description}</span>
-                ) : null}
-              </span>
-            </label>
-          </li>
-        ))}
-      </ul>
+      <div className="flex max-h-96 flex-col gap-3 overflow-y-auto">
+        {chosen.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Selected ({chosen.length})
+            </h3>
+            <ul className="flex flex-col gap-1">{chosen.map(row)}</ul>
+          </div>
+        ) : null}
+
+        {rest.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {chosen.length > 0 ? (
+              <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Available
+              </h3>
+            ) : null}
+            <ul className="flex flex-col gap-1">{rest.map(row)}</ul>
+          </div>
+        ) : null}
+      </div>
 
       <div className="flex items-center justify-between gap-3">
         {footer ?? <span className="text-xs text-muted-foreground">{selected.size} selected</span>}

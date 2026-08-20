@@ -17,7 +17,11 @@ import { useState, type ReactNode } from "react";
 
 import { FilterSidebar, type FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { PaginationBar } from "@/components/data-table/pagination-bar.js";
-import { TableToolbar } from "@/components/data-table/table-toolbar.js";
+import {
+  TableToolbar,
+  type QuickSearch,
+  type QuickToggle,
+} from "@/components/data-table/table-toolbar.js";
 import { Button, EmptyState } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
 import { errorMessage } from "@/lib/error-message.js";
@@ -77,6 +81,13 @@ export interface DataTableProps<T extends RowData> extends ListResource<T> {
   initialColumnVisibility?: ColumnVisibilityState;
   /** Opens a detail view for a row. When set, rows become clickable. */
   onRowClick?: (row: T) => void;
+  /**
+   * A search box in the toolbar for the one field people filter by constantly.
+   * The Filters panel still has it; this saves opening the panel to type a name.
+   */
+  quickSearch?: QuickSearch;
+  /** Mutually exclusive values as buttons — "All / System / Custom". */
+  quickToggle?: QuickToggle;
 }
 
 export function DataTable<T extends RowData>({
@@ -87,6 +98,8 @@ export function DataTable<T extends RowData>({
   renderCard,
   initialColumnVisibility,
   onRowClick,
+  quickSearch,
+  quickToggle,
   ...list
 }: DataTableProps<T>) {
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(
@@ -147,8 +160,11 @@ export function DataTable<T extends RowData>({
           table={table}
           filterDefs={filterDefs}
           state={list.state}
+          onFilterChange={list.onFilterChange}
           onFilterRemove={list.onFilterRemove}
           onFiltersOpen={() => setFiltersOpen(true)}
+          quickSearch={quickSearch}
+          quickToggle={quickToggle}
           density={activeDensity}
           onDensityChange={setDensity}
           // A direct functional update, so toggling several columns in a row each

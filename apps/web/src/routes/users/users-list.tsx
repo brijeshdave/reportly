@@ -146,6 +146,15 @@ export function UsersListPage() {
         {...list}
         columns={columns}
         filterDefs={filterDefs}
+        quickSearch={{ field: "name", placeholder: "Search people" }}
+        quickToggle={{
+          field: "status",
+          label: "Active or retired",
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Retired" },
+          ],
+        }}
         initialColumnVisibility={{ designation: false, mobile: false }}
         emptyTitle="No users yet"
         emptyDescription="Invite someone, or create them outright."

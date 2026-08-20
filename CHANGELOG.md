@@ -36,6 +36,18 @@ viewer`, …), so a shift lead can hold the rota reports without the cartridge
 
 ### Added
 
+- **A group's effective permissions**, as a tab: the union of its roles, grouped the
+  way the role editor groups them, with the role each permission came from on hover.
+  Reading four roles side by side to work out whether somebody could delete a device
+  was not an answer anybody should have to assemble.
+- **Search and a System/Custom toggle in the toolbar** of the Roles, Groups,
+  Designations and Users lists — the two filters people reach for constantly, out
+  from behind the Filters panel.
+- **The role picker shows what is already assigned first**, under a "Selected (n)"
+  heading, with the count beside the search box, each role's permission count in
+  brackets after its name, and a System / Custom badge. Fifty two-line rows in
+  alphabetical order was not a list anybody could scan.
+
 - **`history:read` — a record's own change history, without the audit trail.** The
   History tab was gated on `audit:view`, which is admin-only on purpose: audit rows
   carry before/after snapshots of other people's data. That left somebody working a

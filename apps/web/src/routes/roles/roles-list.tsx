@@ -179,6 +179,15 @@ export function RolesListPage() {
         {...list}
         columns={columns}
         filterDefs={filterDefs}
+        quickSearch={{ field: "name", placeholder: "Search roles" }}
+        quickToggle={{
+          field: "isSystem",
+          label: "Shipped or your own",
+          options: [
+            { value: true, label: "System" },
+            { value: false, label: "Custom" },
+          ],
+        }}
         emptyTitle="No roles"
         emptyDescription="Create one, or clone a system role to start from its permissions."
         renderCard={(role) => (

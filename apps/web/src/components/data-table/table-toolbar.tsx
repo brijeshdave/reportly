@@ -2,17 +2,18 @@
 // The controls above a table: active filter chips, column visibility, density,
 // and export. Each is optional — a table with no filterable columns shows no
 // filter button rather than an inert one.
-import type { TableDensity } from "@reportly/shared";
+import type { Filter, TableDensity } from "@reportly/shared";
 import type { RowData, Table } from "@tanstack/react-table";
 
 import type { tableFeaturesUsed } from "@/components/data-table/data-table.js";
-import { Columns3, Download, Filter as FilterIcon, Rows3, X } from "lucide-react";
+import { Columns3, Download, Filter as FilterIcon, Rows3, Search, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
+import { Input } from "@/components/ui/form.js";
 import { Badge, Button } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
-import type { ListState } from "@/lib/list-query.js";
+import { filterFor, type ListState } from "@/lib/list-query.js";
 import type { ExportFormat } from "@/services/list.js";
 
 /**
@@ -110,12 +111,122 @@ function MenuItem({
   );
 }
 
+/** A name box in the toolbar, for the filter every list of things by name wants. */
+export interface QuickSearch {
+  field: string;
+  placeholder: string;
+}
+
+/** Two or three mutually exclusive values, as buttons: All / System / Custom. */
+export interface QuickToggle {
+  field: string;
+  label: string;
+  options: { value: string | boolean; label: string }[];
+}
+
+function QuickSearchBox({
+  search,
+  state,
+  onFilterChange,
+  onFilterRemove,
+}: {
+  search: QuickSearch;
+  state: ListState;
+  onFilterChange: (filter: Filter) => void;
+  onFilterRemove: (field: string) => void;
+}) {
+  const applied = String(filterFor(state, search.field)?.value ?? "");
+  const [text, setText] = useState(applied);
+
+  // Follow the list when something else changes it — clearing a chip, say — but
+  // never while the box is being typed into.
+  useEffect(() => setText(applied), [applied]);
+
+  // Debounced, because a request per keystroke is what the filter sidebar was
+  // rebuilt to stop doing. 300ms is about a typing pause.
+  useEffect(() => {
+    if (text === applied) return;
+    const timer = window.setTimeout(() => {
+      if (text.trim() === "") onFilterRemove(search.field);
+      else onFilterChange({ field: search.field, op: "contains", value: text.trim() });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [text, applied, search.field, onFilterChange, onFilterRemove]);
+
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        placeholder={search.placeholder}
+        aria-label={search.placeholder}
+        className="h-9 w-56 pl-8"
+      />
+    </div>
+  );
+}
+
+function QuickToggleControl({
+  toggle,
+  state,
+  onFilterChange,
+  onFilterRemove,
+}: {
+  toggle: QuickToggle;
+  state: ListState;
+  onFilterChange: (filter: Filter) => void;
+  onFilterRemove: (field: string) => void;
+}) {
+  const current = filterFor(state, toggle.field);
+
+  return (
+    <div
+      role="group"
+      aria-label={toggle.label}
+      className="flex items-center rounded-xl border border-border p-0.5"
+    >
+      <button
+        type="button"
+        aria-pressed={current === undefined}
+        onClick={() => onFilterRemove(toggle.field)}
+        className={cn(
+          "rounded-lg px-2.5 py-1 text-xs",
+          current === undefined ? "bg-muted font-medium text-foreground" : "text-muted-foreground",
+        )}
+      >
+        All
+      </button>
+      {toggle.options.map((option) => {
+        const active = current !== undefined && current.value === option.value;
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onFilterChange({ field: toggle.field, op: "eq", value: option.value })}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs",
+              active ? "bg-muted font-medium text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function TableToolbar<T extends RowData>({
   table,
   filterDefs,
   state,
+  onFilterChange,
   onFilterRemove,
   onFiltersOpen,
+  quickSearch,
+  quickToggle,
   density,
   onDensityChange,
   onToggleColumn,
@@ -125,8 +236,11 @@ export function TableToolbar<T extends RowData>({
   table: Table<typeof tableFeaturesUsed, T>;
   filterDefs: FilterDef[];
   state: ListState;
+  onFilterChange: (filter: Filter) => void;
   onFilterRemove: (field: string) => void;
   onFiltersOpen: () => void;
+  quickSearch?: QuickSearch;
+  quickToggle?: QuickToggle;
   density: TableDensity;
   onDensityChange: (density: TableDensity) => void;
   onToggleColumn: (id: string) => void;
@@ -138,6 +252,29 @@ export function TableToolbar<T extends RowData>({
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* The two filters people reach for constantly, in the toolbar rather than
+            behind the Filters panel: searching by name, and "the ones we made" vs
+            "the ones that came with it". Everything else stays in the sidebar. */}
+        {quickSearch ? (
+          <QuickSearchBox
+            search={quickSearch}
+            state={state}
+            onFilterChange={onFilterChange}
+            onFilterRemove={onFilterRemove}
+          />
+        ) : null}
+
+        {quickToggle ? (
+          <QuickToggleControl
+            toggle={quickToggle}
+            state={state}
+            onFilterChange={onFilterChange}
+            onFilterRemove={onFilterRemove}
+          />
+        ) : null}
+
+        <span className="flex-1" />
+
         {filterDefs.length > 0 ? (
           <Button variant="secondary" size="sm" onClick={onFiltersOpen}>
             <FilterIcon className="h-4 w-4" />

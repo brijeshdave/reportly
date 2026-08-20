@@ -125,6 +125,15 @@ export function GroupsListPage() {
         {...list}
         columns={columns}
         filterDefs={filterDefs}
+        quickSearch={{ field: "name", placeholder: "Search groups" }}
+        quickToggle={{
+          field: "isSystem",
+          label: "Shipped or your own",
+          options: [
+            { value: true, label: "System" },
+            { value: false, label: "Custom" },
+          ],
+        }}
         emptyTitle="No groups yet"
         emptyDescription="Create a group, or clone a system group to start from its roles."
         renderCard={(group) => (

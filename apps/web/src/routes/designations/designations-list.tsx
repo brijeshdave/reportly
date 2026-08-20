@@ -100,6 +100,15 @@ export function DesignationsListPage() {
         {...list}
         columns={columns}
         filterDefs={filterDefs}
+        quickSearch={{ field: "name", placeholder: "Search job titles" }}
+        quickToggle={{
+          field: "status",
+          label: "Active or retired",
+          options: [
+            { value: "active", label: "Active" },
+            { value: "inactive", label: "Retired" },
+          ],
+        }}
         emptyTitle="No designations yet"
         emptyDescription="Create the job titles your people can be given."
         renderCard={(designation) => (

@@ -536,6 +536,26 @@ Editing a custom role changes what every group holding it may do, retroactively 
 the editor names those groups before you save. Deleting a role is refused while any
 group still holds it.
 
+### See what a group actually grants
+
+**Groups → _the group_ → Effective permissions.** A group with four roles answers
+"what may these people do?" four times over, with overlaps. This tab is the union —
+every permission the group grants, arranged the way the role editor arranges them,
+and it is what the server checks when somebody in the group makes a request. Hover a
+permission to see which role brought it.
+
+On the **Roles** tab, what the group already holds sits at the top under
+**Selected**, with the count beside the search box, and each role shows its
+permission count and whether it is a **System** role or one of yours.
+
+### Find a role, a group or a person quickly
+
+The Roles, Groups, Designations and Users lists each carry a **search box** and a
+two-way **toggle** in the toolbar — System / Custom on roles and groups, Active /
+Retired on job titles and people. They are the filters that get used constantly, so
+they sit in the open rather than behind **Filters**, which still holds everything
+else.
+
 ### Copy a system group
 
 The seeded groups are marked **System**. Their roles and scope are fixed, because

@@ -12,6 +12,7 @@ import { AssignmentPicker, type PickerOption } from "@/components/assignment-pic
 import { Can, usePermission } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { HistoryTab } from "@/components/history-tab.js";
+import { EffectivePermissionsTab } from "@/routes/groups/effective-permissions-tab.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
@@ -35,6 +36,7 @@ import {
 const TABS = [
   { id: "members", label: "Members" },
   { id: "roles", label: "Roles" },
+  { id: "permissions", label: "Effective permissions" },
   { id: "history", label: "History" },
 ];
 
@@ -107,6 +109,9 @@ export function GroupDetailPage({ groupId, tab }: { groupId: string; tab: string
         </TabPanel>
         <TabPanel id="roles" active={activeTab}>
           <RolesTab group={group.data} assignments={assignments.data} />
+        </TabPanel>
+        <TabPanel id="permissions" active={activeTab}>
+          <EffectivePermissionsTab roleIds={assignments.data.roles} />
         </TabPanel>
         <TabPanel id="history" active={activeTab}>
           <HistoryTab entityType="groups" id={groupId} />
@@ -198,7 +203,7 @@ function MembersTab({ group, assignments }: TabProps) {
   const options: PickerOption[] = (users.data ?? []).map((user) => ({
     id: user.id,
     label: user.name,
-    description: user.email + (user.status === "inactive" ? " · inactive" : ""),
+    meta: user.email + (user.status === "inactive" ? " · inactive" : ""),
   }));
 
   return (
@@ -229,7 +234,11 @@ function RolesTab({ group, assignments }: TabProps) {
   const options: PickerOption[] = (roles.data ?? []).map((role) => ({
     id: role.id,
     label: role.name,
-    description: `${role.permissions.length} permissions`,
+    // The count reads as part of the name rather than a line under it — fifty
+    // two-line rows is a list nobody scans. The badge says which roles cannot be
+    // edited, before somebody picks one and finds out.
+    meta: `(${role.permissions.length})`,
+    badge: role.isSystem ? "System" : "Custom",
   }));
 
   return (

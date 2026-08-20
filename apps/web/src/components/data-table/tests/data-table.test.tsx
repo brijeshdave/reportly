@@ -3,7 +3,7 @@
 // asks the server. These tests hand it one page of rows and assert it reports the
 // intent upward rather than reordering what it was given.
 import type { PaginatedResult } from "@reportly/shared";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -78,6 +78,36 @@ function renderTable(
     ...overrides,
   };
   return render(<DataTable {...list} columns={columns} filterDefs={filterDefs} />);
+}
+
+/** The same table with the toolbar's quick controls turned on. */
+function renderWithQuickControls(state: ListState = initialListState) {
+  const list: ListResource<Row> = {
+    state,
+    result: result(),
+    isLoading: false,
+    isFetching: false,
+    error: undefined,
+    pageSize: 20,
+    density: "comfortable",
+    ...handlers,
+  };
+  return render(
+    <DataTable
+      {...list}
+      columns={columns}
+      filterDefs={filterDefs}
+      quickSearch={{ field: "name", placeholder: "Search people" }}
+      quickToggle={{
+        field: "status",
+        label: "Active or retired",
+        options: [
+          { value: "active", label: "Active" },
+          { value: "inactive", label: "Retired" },
+        ],
+      }}
+    />,
+  );
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -330,5 +360,52 @@ describe("column visibility", () => {
     expect(screen.queryByRole("columnheader", { name: /Email/ })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /Name/ })).toBeInTheDocument();
     expect(handlers.refetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("the toolbar's quick controls", () => {
+  it("filters by name from the toolbar, once typing stops", async () => {
+    // Debounced on purpose: a request per keystroke is the thing the filter panel
+    // was rebuilt to stop doing. Real timers here — the debounce is 300ms, and fake
+    // ones have to be threaded through user-event to avoid deadlocking it.
+    const user = userEvent.setup({ delay: null });
+    renderWithQuickControls();
+
+    await user.type(screen.getByLabelText("Search people"), "zoe");
+    expect(handlers.onFilterChange).not.toHaveBeenCalled();
+
+    await waitFor(() =>
+      expect(handlers.onFilterChange).toHaveBeenCalledWith({
+        field: "name",
+        op: "contains",
+        value: "zoe",
+      }),
+    );
+    // Once, not once per letter.
+    expect(handlers.onFilterChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets and clears the toggle without opening the filter panel", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderWithQuickControls();
+
+    await user.click(screen.getByRole("button", { name: "Active" }));
+    expect(handlers.onFilterChange).toHaveBeenCalledWith({
+      field: "status",
+      op: "eq",
+      value: "active",
+    });
+
+    await user.click(screen.getByRole("button", { name: "All" }));
+    expect(handlers.onFilterRemove).toHaveBeenCalledWith("status");
+  });
+
+  it("shows which value is in force", () => {
+    renderWithQuickControls({
+      ...initialListState,
+      filters: [{ field: "status", op: "eq", value: "inactive" }],
+    });
+    expect(screen.getByRole("button", { name: "Retired" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "false");
   });
 });

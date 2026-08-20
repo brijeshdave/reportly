@@ -118,4 +118,39 @@ describe("AssignmentPicker", () => {
     await user.click(screen.getByRole("checkbox", { name: /Grace Hopper/ }));
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
+
+  it("puts what is already assigned at the top, and counts it", async () => {
+    // With fifty roles to choose from, "what does this group have?" is the question
+    // being asked — and the answer used to be scattered down an alphabetical list.
+    const user = userEvent.setup({ delay: null });
+    renderPicker(["2"]);
+
+    expect(screen.getByRole("heading", { name: "Selected (1)" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 3 selected");
+
+    const [firstRow] = screen.getAllByRole("checkbox");
+    expect(firstRow).toBeChecked();
+
+    // Ticking another moves it up with the rest.
+    await user.click(screen.getByRole("checkbox", { name: /Ada Lovelace/ }));
+    expect(screen.getByRole("heading", { name: "Selected (2)" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("2 of 3 selected");
+  });
+
+  it("shows a badge and an inline count without a second line", () => {
+    render(
+      <AssignmentPicker
+        options={[
+          { id: "r1", label: "Journal editor", meta: "(12)", badge: "System" },
+          { id: "r2", label: "Night shift only", meta: "(3)", badge: "Custom" },
+        ]}
+        selectedIds={[]}
+        onSave={onSave}
+      />,
+    );
+    expect(screen.getByRole("checkbox", { name: /Journal editor/ })).toBeInTheDocument();
+    expect(screen.getByText("(12)")).toBeInTheDocument();
+    expect(screen.getByText("System")).toBeInTheDocument();
+    expect(screen.getByText("Custom")).toBeInTheDocument();
+  });
 });
