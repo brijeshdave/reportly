@@ -18,7 +18,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 
 import { Avatar } from "@/components/avatar.js";
 import { ErrorBoundary } from "@/components/error-boundary.js";
@@ -360,9 +360,22 @@ function UserMenu() {
   );
 }
 
-function CompanySwitcher() {
+export function CompanySwitcher() {
   const { data: session } = useSuspenseQuery(sessionQuery);
   const queryClient = useQueryClient();
+
+  // "All companies" resolves to *no* company, and a person's permissions are
+  // resolved per company — so for anybody but a superadmin that state grants
+  // nothing: an empty sidebar and a 403 from every call, which reads exactly like
+  // their access has been taken away. It is only meaningful for a superadmin, who
+  // holds everything regardless, so nobody else is offered it and anybody who
+  // lands there is moved to their own company.
+  const needsCompany = !session.isSuperadmin && !session.companyId && session.companies.length > 0;
+  useEffect(() => {
+    if (!needsCompany) return;
+    setActiveCompanyId(session.companies[0]!.id);
+    void queryClient.invalidateQueries();
+  }, [needsCompany, session.companies, queryClient]);
 
   if (session.companies.length === 0) return null;
 
@@ -378,7 +391,8 @@ function CompanySwitcher() {
         }}
         className="h-9 rounded-xl border border-border bg-card px-3 text-sm"
       >
-        <option value="">All companies</option>
+        {/* Superadmins only — see above. */}
+        {session.isSuperadmin ? <option value="">All companies</option> : null}
         {session.companies.map((company) => (
           <option key={company.id} value={company.id}>
             {company.name}

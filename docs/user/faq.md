@@ -155,6 +155,22 @@ a leaf.
 If a machine is missing entirely, it is either retired or at a site you do not
 have access to. Assets are scoped by location.
 
+### A user says the app is empty — no menu, nothing works
+
+Check which company is selected in the top bar. Permissions are resolved **per
+company**, so "All companies" means no company, and no company means no
+permissions: an empty sidebar and a refusal from every screen. It looks exactly
+like their access has been taken away.
+
+Ordinary users are no longer offered that option and are put into their own
+company automatically, so this should not happen — but an older browser tab may
+still be sitting in that state. A reload fixes it.
+
+If the sidebar is still empty afterwards, they genuinely hold no permissions in
+that company: open **Users → _the person_ → Effective access** to see what they
+resolve to, and check their group carries a role. The dashboard also shows a
+**Permissions** count for whoever is signed in, which is the quickest check of all.
+
 ### The department list shows the same name twice
 
 You are in a department of that name at more than one company. Names are unique

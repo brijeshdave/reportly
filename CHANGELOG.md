@@ -102,6 +102,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **"All companies" left ordinary users with an empty app.** Permissions are
+  resolved per company, so that state grants none at all — an empty sidebar and a
+  refusal from every screen, indistinguishable from having had access revoked. It
+  only ever made sense for a superadmin, who holds everything regardless, so
+  nobody else is offered it and anybody landing there is put into their own
+  company.
 - **`cli backup:database` hung for ever when a backup failed.** Notifying opens a
   queue connection and the command closed only its database pools, so the one path
   a nightly cron most needs to finish — the failing one — never exited.
