@@ -7,6 +7,7 @@
 // its reminder cron and six notification channels still pointed at real people.
 // There is no "restore now, tidy up after" mode on purpose.
 import { readFile } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 
 import { scrubForDevelopment, DEV_PASSWORD } from "@/features/backups/dev-scrub.js";
 import {
@@ -87,13 +88,32 @@ async function restoreInto(databaseUrl: string, dump: Buffer, label: string): Pr
   }
 }
 
+/**
+ * Read a dump named the way a person typed it.
+ *
+ * `pnpm --filter` runs the command inside `apps/api`, so a relative path typed at
+ * the repository root resolves somewhere nobody meant and the command answers
+ * with a bare ENOENT. pnpm leaves the real invocation directory in INIT_CWD;
+ * relative paths are resolved against it, and a missing file says which path was
+ * actually tried.
+ */
+async function readDump(file: string): Promise<Buffer> {
+  const from = process.env.INIT_CWD ?? process.cwd();
+  const path = isAbsolute(file) ? file : resolve(from, file);
+  try {
+    return await readFile(path);
+  } catch {
+    throw new Error(`No dump at ${path} — check the path, or give an absolute one.`);
+  }
+}
+
 export async function restoreDev(options: RestoreDevOptions): Promise<void> {
   assertSafeTarget();
   if (options.confirm !== CONFIRMATION) {
     throw new Error(`Type --confirm "${CONFIRMATION}" to proceed. Nothing has been changed.`);
   }
 
-  const dump = await readFile(options.file);
+  const dump = await readDump(options.file);
   // Not a hand-rolled mask: `:[^:@]*@` stops at the first `@`, so a password
   // containing one is only half hidden — which is the bug this whole change is about.
   console.log(`\nRestoring ${options.file} into ${redactSecrets(env.DATABASE_URL)}`);
@@ -104,7 +124,7 @@ export async function restoreDev(options: RestoreDevOptions): Promise<void> {
 
   if (options.logsFile) {
     console.log(`Restoring logs from ${options.logsFile}`);
-    await restoreInto(env.LOG_DATABASE_URL, await readFile(options.logsFile), "Log database");
+    await restoreInto(env.LOG_DATABASE_URL, await readDump(options.logsFile), "Log database");
   }
 
   console.log(`
