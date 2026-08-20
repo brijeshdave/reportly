@@ -6,6 +6,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A task could be completed with the work never logged, and no way back.**
+  "Complete & log work" marked the task done and _then_ opened the journal form;
+  anybody who closed that form left a task done, with no record of the work, out
+  of the appraisal loop and impossible to log after the fact. Filing the entry is
+  now what completes the task — walk away from the form and the task is simply
+  still open. A task already closed with nothing against it (including ones closed
+  by the old flow) says so and offers **Log the work now**.
+
 ### Added
 
 - **Save confirmations, configurable per person.** A brief message in the corner

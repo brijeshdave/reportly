@@ -32,6 +32,25 @@ export async function trackChanges(
   before: Snapshot,
   after: Snapshot,
 ): Promise<number> {
+  return recordChanges(entityType, entityId, before, after, ctx.userId, (err) =>
+    request.log.warn({ err, entityType, entityId }, "Failed to record entity history"),
+  );
+}
+
+/**
+ * The same diff, for a service that changes something other than the entity its
+ * own route is about — filing a journal entry closes the task it logs, and that
+ * change belongs in the *task's* history. No request to log through, so the
+ * caller says what to do with a failure.
+ */
+export async function recordChanges(
+  entityType: TrackedEntity,
+  entityId: string,
+  before: Snapshot,
+  after: Snapshot,
+  actorId: string,
+  onError: (err: unknown) => void,
+): Promise<number> {
   try {
     const fields = changedFields(before, after);
     if (fields.length === 0) return 0;
@@ -43,12 +62,12 @@ export async function trackChanges(
         field,
         oldValue: (before?.[field] ?? null) as unknown,
         newValue: (after?.[field] ?? null) as unknown,
-        actorId: ctx.userId,
+        actorId,
       })),
     );
     return fields.length;
   } catch (err) {
-    request.log.warn({ err, entityType, entityId }, "Failed to record entity history");
+    onError(err);
     return 0;
   }
 }

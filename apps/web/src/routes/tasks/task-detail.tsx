@@ -1,7 +1,8 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // A task in full, and the hand-off that makes tasks worth having: **Complete & log
-// work** marks it done and opens a report pre-filled from it, so the work lands in
-// the appraisal loop instead of quietly ending at a tick-box.
+// work** opens a report pre-filled from it, and filing that report is what completes
+// the task — so the work lands in the appraisal loop instead of quietly ending at a
+// tick-box, and an abandoned form leaves the task open rather than done-with-nothing.
 //
 // The state controls and the edit controls are split, because the permissions are:
 // the person the task was given to moves it along; the person who gave it out edits
@@ -79,11 +80,12 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
   const manages = isAssigner || canDelete;
   const closed = t.state === "done" || t.state === "cancelled";
 
-  /** Mark it done, then go log the work. The report editor fetches the prefill. */
-  const completeAndReport = async () => {
-    await setState.mutateAsync("done");
-    await navigate({ to: "/journal/new", search: { taskId } });
-  };
+  /**
+   * Go log the work. Filing the entry is what completes the task — the button no
+   * longer marks it done on the way out, because anybody who closed the half-filled
+   * form left a task marked done with no record of the work and no way to add one.
+   */
+  const logWork = () => void navigate({ to: "/journal/new", search: { taskId } });
 
   return (
     <>
@@ -145,11 +147,26 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
             {setState.error ? <ErrorAlert error={setState.error} /> : null}
 
             {closed ? (
-              <p className="text-sm text-muted-foreground">
-                {t.state === "done"
-                  ? `Completed${t.completedAt ? ` on ${formatDate(t.completedAt)}` : ""}.`
-                  : "This task was cancelled."}
-              </p>
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-muted-foreground">
+                  {t.state === "done"
+                    ? `Completed${t.completedAt ? ` on ${formatDate(t.completedAt)}` : ""}.`
+                    : "This task was cancelled."}
+                </p>
+                {/* A task closed without a record of the work is not a dead end:
+                    anybody who may still log it is offered the way back. */}
+                {t.state === "done" && t.reports.length === 0 && (isAssignee || manages) ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Nothing was logged against it, so the work is not in the appraisal loop.
+                    </p>
+                    <Button size="sm" onClick={logWork}>
+                      <FileText className="h-4 w-4" />
+                      Log the work now
+                    </Button>
+                  </>
+                ) : null}
+              </div>
             ) : isAssignee || manages ? (
               <div className="flex flex-col gap-2">
                 {t.state === "open" ? (
@@ -164,13 +181,9 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
                 ) : null}
 
                 {/* The whole point of the feature: finishing the job and recording
-                    it are one action, so the work reaches the appraisal loop. */}
+                    it are one action — the task closes when the entry is filed. */}
                 {isAssignee ? (
-                  <Button
-                    size="sm"
-                    onClick={() => void completeAndReport()}
-                    disabled={setState.isPending}
-                  >
+                  <Button size="sm" onClick={logWork} disabled={setState.isPending}>
                     <CheckCircle2 className="h-4 w-4" />
                     Complete &amp; log work
                   </Button>
@@ -201,7 +214,9 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
             </div>
             {t.reports.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No report filed against this task yet.
+                {t.state === "done"
+                  ? "Completed with nothing logged against it."
+                  : "No report filed against this task yet."}
               </p>
             ) : (
               <ul className="flex flex-col gap-2">

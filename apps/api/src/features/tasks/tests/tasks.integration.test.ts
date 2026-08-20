@@ -249,10 +249,53 @@ describe("tasks", () => {
     expect(report.json().taskId).toBe(task.id);
     expect(report.json().taskTitle).toBe("Replace the drive belt on Line 3");
 
-    // The task now shows the record of the work done against it.
+    // The task now shows the record of the work done against it — and filing that
+    // record is what completed it. Marking it done first, then hoping the form gets
+    // filled in, is how a task ended up complete with nothing logged against it.
     const after = await inject("GET", `/tasks/${task.id}`, operator.cookie);
     expect(after.json().reports).toHaveLength(1);
     expect(after.json().reports[0].id).toBe(report.json().id);
+    expect(after.json().state).toBe("done");
+    expect(after.json().completedAt).not.toBeNull();
+  });
+
+  it("leaves the task open when no entry is filed, and a later entry still closes it", async () => {
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Grease the conveyor bearings",
+        assigneeId: operator.id,
+      })
+    ).json();
+
+    // Opening the form and walking away changes nothing: the task is still open,
+    // which is the whole point — it used to be done, with no record and no way back.
+    await inject("GET", `/tasks/${task.id}/prefill`, operator.cookie);
+    expect((await inject("GET", `/tasks/${task.id}`, operator.cookie)).json().state).toBe("open");
+
+    // Filing it later closes it just the same.
+    await inject("POST", "/journal", operator.cookie, {
+      kind: "work",
+      title: "Greased the conveyor bearings",
+      workSummary: "Done on the night shift.",
+      state: "submitted",
+      taskId: task.id,
+    });
+    const closed = (await inject("GET", `/tasks/${task.id}`, operator.cookie)).json();
+    expect(closed.state).toBe("done");
+
+    // A second entry against the same task leaves the completion date alone.
+    await inject("POST", "/journal", operator.cookie, {
+      kind: "work",
+      title: "Checked the bearings again",
+      workSummary: "Still fine.",
+      state: "submitted",
+      taskId: task.id,
+    });
+    const again = (await inject("GET", `/tasks/${task.id}`, operator.cookie)).json();
+    expect(again.completedAt).toBe(closed.completedAt);
   });
 
   it("refuses to log work against somebody else's task", async () => {

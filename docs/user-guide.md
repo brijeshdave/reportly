@@ -87,8 +87,13 @@ been scored, **re-open** it to add or remove a file. See
 **Tasks** shows what you have been asked to do, and what you have asked of others. You
 may assign work to yourself or to anyone below you in the reporting line.
 
-**Complete & log work** marks the task done and opens an entry pre-filled from it, so
-finishing the job and recording it are one action.
+**Complete & log work** opens an entry pre-filled from the task — and **filing that
+entry is what completes the task**, so finishing the job and recording it really are
+one action. Close the form without saving and the task is simply still open, waiting
+for you; nothing is marked done with no record behind it.
+
+If a task is already closed with nothing logged against it, its page says so and
+offers **Log the work now**. A completed task is never a dead end.
 
 ### Seeing whether your work has been scored
 

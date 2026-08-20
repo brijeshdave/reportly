@@ -43,7 +43,9 @@ import { AppError } from "@/core/errors.js";
 import { notify } from "@/core/queue/notifications.js";
 import { getSystemSetting } from "@/core/settings/service.js";
 import { removeAttachmentsFor } from "@/features/attachments/cleanup.js";
-import { getTask as getTaskRow } from "@/features/tasks/repo.js";
+import { recordChanges } from "@/core/history.js";
+import { logger } from "@/core/logger.js";
+import { getTask as getTaskRow, updateTaskRow } from "@/features/tasks/repo.js";
 import {
   clearAwards,
   clearScores,
@@ -1002,7 +1004,35 @@ export async function createReport(
   // them — they are simply a participant with an equal share until somebody says
   // otherwise.
   await addAuthorAsParticipant(id, ctx.userId);
+  // Filing the entry is what completes the task — not the button that opened this
+  // form. The two used to be separate steps, and anybody who walked away from the
+  // half-filled form left a task marked done with no record of the work and no way
+  // to add one. Now the task closes when there is something to close it with.
+  if (fields.taskId) await completeLoggedTask(fields.taskId, id, ctx);
   return serialize(await requireReport(id, ctx), await targetsFor(id), await tagsFor("report", id));
+}
+
+/**
+ * Close the task this entry logs, if it is still open. Idempotent by nature: a task
+ * already done (or cancelled) is left exactly as it is, so a second entry against
+ * the same task does not move a completion date somebody may be relying on.
+ */
+async function completeLoggedTask(
+  taskId: string,
+  reportId: string,
+  ctx: AuthContext,
+): Promise<void> {
+  const task = await getTaskRow(taskId);
+  if (!task || task.state === "done" || task.state === "cancelled") return;
+  await updateTaskRow(taskId, { state: "done", completedAt: new Date() });
+  await recordChanges(
+    "tasks",
+    taskId,
+    { state: task.state },
+    { state: "done", completedBy: reportId },
+    ctx.userId,
+    (err) => logger.warn({ err, taskId }, "Failed to record the task completion in its history"),
+  );
 }
 
 /**
