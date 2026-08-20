@@ -43,7 +43,7 @@ describe("visibleNavGroups", () => {
     expect(without.map((g) => g.label)).not.toContain("Reports");
 
     const withReports = visibleNavGroups({
-      permissions: [PERMISSIONS.REPORTS_VIEW],
+      permissions: [PERMISSIONS.REPORTS_VIEW_JOURNAL],
       isSuperadmin: false,
     });
     expect(withReports.map((g) => g.label)).toContain("Reports");

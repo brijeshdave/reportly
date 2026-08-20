@@ -246,6 +246,25 @@ device, downtime, shift coverage, routine compliance. Pick a range and a groupin
 then print or export to a spreadsheet. Filters include a person, so "what did this
 team member do, and when" is one report rather than a search.
 
+**Each report is granted on its own.** There is one permission per report —
+`reports:view:downtime`, `reports:view:part_register`, and so on — so a shift lead
+can be given the rota reports without the cartridge figures, and somebody looking
+after printers need not see the leaderboard. A report nobody has been granted does
+not appear in the picker, and a saved view built on it is not listed either.
+
+Two things follow:
+
+|                                           |                                                                                                                                                                                                                                  |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Viewing includes taking a copy**        | Whoever may read a report on screen may also print it and export it to Excel. Somebody who can see every row can photograph it; a separate export permission per report would be a much longer list to maintain for very little. |
+| **A new report starts granted to nobody** | When a new report ships, no role holds it until somebody grants it. That is deliberate — the alternative is an upgrade quietly handing every existing role a report nobody chose to share.                                       |
+
+**What a report shows you** is narrowed the same way the journal is: your own work
+and your downline's, in the company you are in, at the sites your access covers.
+Two people can open the same report on the same day and see different rows, and
+that is the point — the figures are about the part of the organisation you are
+responsible for.
+
 ### Keep the team's routines
 
 **Team routines** is where recurring duties are defined, assigned and tracked.

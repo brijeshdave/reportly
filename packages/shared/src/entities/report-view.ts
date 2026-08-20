@@ -14,6 +14,8 @@
 // which rows they may read.
 import { z } from "zod";
 
+import type { Permission } from "@/auth/permissions.js";
+
 import { nameSchema, timestampsSchema, uuidSchema } from "@/entities/common.js";
 import { reportKindSchema } from "@/entities/report.js";
 
@@ -172,6 +174,38 @@ export const REPORT_SOURCES = [
   "part_workload",
 ] as const;
 export type ReportSource = (typeof REPORT_SOURCES)[number];
+
+/**
+ * The permission that opens each report.
+ *
+ * Exhaustive by type: adding a source without a key stops the build here, which is
+ * the point — the next report will be written by somebody who has not read this
+ * file, and an unguarded report is one that quietly shows itself to everybody.
+ */
+export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
+  journal: "reports:view:journal",
+  downtime: "reports:view:downtime",
+  reliability: "reports:view:reliability",
+  leaderboard: "reports:view:leaderboard",
+  shift_roster: "reports:view:shift_roster",
+  shift_changes: "reports:view:shift_changes",
+  shift_coverage: "reports:view:shift_coverage",
+  shift_attendance: "reports:view:shift_attendance",
+  routine_log: "reports:view:routine_log",
+  routine_compliance: "reports:view:routine_compliance",
+  part_register: "reports:view:part_register",
+  part_services: "reports:view:part_services",
+  part_consumption: "reports:view:part_consumption",
+  part_health: "reports:view:part_health",
+  printer_health: "reports:view:printer_health",
+  part_failures: "reports:view:part_failures",
+  part_workload: "reports:view:part_workload",
+};
+
+/** Every per-report key, for seeding a role that may read all of them. */
+export const ALL_REPORT_VIEW_PERMISSIONS: readonly Permission[] = REPORT_SOURCES.map(
+  (source) => REPORT_VIEW_PERMISSION[source],
+);
 export const reportSourceSchema = z.enum(REPORT_SOURCES);
 
 export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {

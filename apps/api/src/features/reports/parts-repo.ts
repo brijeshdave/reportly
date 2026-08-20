@@ -5,9 +5,11 @@
 // must stay removable, which the isolation guard enforces by refusing any import
 // of it from outside — so reports reads the tables through `core/db` exactly as
 // it does the journal's, and depends on the module not at all.
+import type { AuthContext } from "@reportly/shared";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
+import { withLocationsNullable } from "@/core/db/scoped.js";
 import {
   consumables,
   deviceTypes,
@@ -35,31 +37,35 @@ export interface RegisterRow {
 }
 
 /** Every cartridge, with where it is now. The register, as a report. */
-export async function registerRows(companyId: string): Promise<RegisterRow[]> {
-  return db
-    .select({
-      id: parts.id,
-      identifier: parts.identifier,
-      modelName: partModels.name,
-      status: parts.status,
-      cycleCount: parts.cycleCount,
-      cycleLimit: partModels.cycleLimit,
-      ratedPageYield: partModels.ratedPageYield,
-      locationName: locations.name,
-      // The open placement's device, if it is in one. A left join on "no removal
-      // yet" rather than a second query per row.
-      deviceName: sql<string | null>`(
+export async function registerRows(ctx: AuthContext, companyId: string): Promise<RegisterRow[]> {
+  return (
+    db
+      .select({
+        id: parts.id,
+        identifier: parts.identifier,
+        modelName: partModels.name,
+        status: parts.status,
+        cycleCount: parts.cycleCount,
+        cycleLimit: partModels.cycleLimit,
+        ratedPageYield: partModels.ratedPageYield,
+        locationName: locations.name,
+        // The open placement's device, if it is in one. A left join on "no removal
+        // yet" rather than a second query per row.
+        deviceName: sql<string | null>`(
         SELECT d.name FROM part_placements pl
         JOIN devices d ON d.id = pl.device_id
         WHERE pl.part_id = ${parts.id} AND pl.removed_at IS NULL
         ORDER BY pl.installed_at DESC LIMIT 1
       )`,
-    })
-    .from(parts)
-    .innerJoin(partModels, eq(partModels.id, parts.partModelId))
-    .leftJoin(locations, eq(locations.id, parts.locationId))
-    .where(eq(parts.companyId, companyId))
-    .orderBy(parts.identifier);
+      })
+      .from(parts)
+      .innerJoin(partModels, eq(partModels.id, parts.partModelId))
+      .leftJoin(locations, eq(locations.id, parts.locationId))
+      // A part not yet placed anywhere is visible to everybody — it is unplaced, not
+      // secret — which is why this is the nullable helper.
+      .where(and(eq(parts.companyId, companyId), withLocationsNullable(ctx, parts.locationId)))
+      .orderBy(parts.identifier)
+  );
 }
 
 export interface ServiceRow {
@@ -75,6 +81,7 @@ export interface ServiceRow {
 
 /** One row per refill or repair in the window. */
 export async function serviceRows(
+  ctx: AuthContext,
   companyId: string,
   from: Date,
   to: Date,
@@ -98,6 +105,9 @@ export async function serviceRows(
     .where(
       and(
         eq(serviceEvents.companyId, companyId),
+        // The part's site, not the event's: a service is performed on a cartridge,
+        // and the cartridge is the thing that lives somewhere.
+        withLocationsNullable(ctx, parts.locationId),
         gte(serviceEvents.performedAt, from),
         lt(serviceEvents.performedAt, to),
         personIds?.length ? inArray(serviceEvents.performedBy, personIds) : undefined,
@@ -138,6 +148,7 @@ export async function consumptionsForServices(
  * has never known what is in the cupboard — see the module's own docs.
  */
 export async function consumptionTotals(
+  ctx: AuthContext,
   companyId: string,
   from: Date,
   to: Date,
@@ -152,10 +163,14 @@ export async function consumptionTotals(
     })
     .from(serviceConsumptions)
     .innerJoin(serviceEvents, eq(serviceEvents.id, serviceConsumptions.serviceEventId))
+    .innerJoin(parts, eq(parts.id, serviceEvents.partId))
     .innerJoin(consumables, eq(consumables.id, serviceConsumptions.consumableId))
     .where(
       and(
         eq(serviceEvents.companyId, companyId),
+        // Joined to the part purely to reach its site: totals must count only what
+        // was used on cartridges the reader may see.
+        withLocationsNullable(ctx, parts.locationId),
         gte(serviceEvents.performedAt, from),
         lt(serviceEvents.performedAt, to),
         personIds?.length ? inArray(serviceEvents.performedBy, personIds) : undefined,
@@ -195,7 +210,12 @@ export interface FailureRow {
  * "the latest row before a timestamp" is exactly what a join cannot express
  * without a window function and a wrapper.
  */
-export async function failureRows(companyId: string, from: Date, to: Date): Promise<FailureRow[]> {
+export async function failureRows(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<FailureRow[]> {
   return db
     .select({
       placementId: partPlacements.id,
@@ -247,6 +267,8 @@ export async function failureRows(companyId: string, from: Date, to: Date): Prom
     .where(
       and(
         eq(partPlacements.companyId, companyId),
+        // The device the part sat in is the thing at a site.
+        withLocationsNullable(ctx, devices.locationId),
         eq(partPlacements.outcome, "faulty"),
         sql`${partPlacements.removedAt} IS NOT NULL`,
         gte(partPlacements.removedAt, from),
@@ -277,7 +299,12 @@ export interface TourRow {
  * Returned unaggregated so the page counts are derived by the one shared
  * `pagesFor`, rather than a second implementation of that arithmetic in SQL.
  */
-export async function finishedTours(companyId: string, from: Date, to: Date): Promise<TourRow[]> {
+export async function finishedTours(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<TourRow[]> {
   return db
     .select({
       partId: parts.id,
@@ -300,6 +327,7 @@ export async function finishedTours(companyId: string, from: Date, to: Date): Pr
     .where(
       and(
         eq(partPlacements.companyId, companyId),
+        withLocationsNullable(ctx, devices.locationId),
         sql`${partPlacements.removedAt} IS NOT NULL`,
         gte(partPlacements.removedAt, from),
         lt(partPlacements.removedAt, to),

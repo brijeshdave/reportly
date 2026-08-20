@@ -8,6 +8,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A permission per report.** `reports:view` granted every report at once —
+  including every report added afterwards. Each of the seventeen now has its own
+  key (`reports:view:downtime`, `reports:view:part_register`, …), so a shift lead
+  can hold the rota reports without the cartridge figures. Viewing includes
+  printing and exporting: whoever may read the rows may take a copy. There is no
+  umbrella key, so a new report starts granted to nobody — and adding one will not
+  compile until it has a key of its own. **Upgrading takes nothing away:** the
+  migration gives every role that could read reports yesterday all seventeen keys,
+  then retires the two old ones. Nothing outside the permission tables is touched.
 - **`cli restore:dev` — work on a copy of production without endangering anybody.**
   Loads a backup into a development database and makes it safe in the same run:
   every local password becomes the development one, two-factor and sessions go,
@@ -45,6 +54,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **Reports showed one site's figures to another.** Of seventeen report sources
+  only the journal and downtime narrowed their rows to the reader's sites;
+  reliability rolled up every root asset in the company — and an asset tree can
+  cross sites, so a subtree total mixed plants — while the seven cartridge reports
+  read every part. Every report now applies the rule the journal already used:
+  **(the reader plus their downline) AND company AND location**, and naming an
+  asset id outside your sites answers "not found" rather than its figures. A
+  static guard fails the build if a report reads location-bearing rows without
+  consulting the caller.
 - **`ALLOW_INSECURE_HTTP=false` turned insecure HTTP on.** The three boolean
   environment flags were coerced with `Boolean(value)`, and every non-empty string
   is truthy — so writing the safe value explicitly produced the dangerous one,

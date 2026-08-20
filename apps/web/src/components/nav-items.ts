@@ -1,7 +1,13 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // The navigation model. Each item declares the permission that reveals it, so the
 // sidebar, the route guards, and `<Can>` all agree on who sees what.
-import { PERMISSIONS, type AuthContext, type Permission, can } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  type AuthContext,
+  type Permission,
+  can,
+  ALL_REPORT_VIEW_PERMISSIONS,
+} from "@reportly/shared";
 import {
   ArrowLeftRight,
   ChartColumn,
@@ -103,7 +109,10 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Reports",
         to: "/reports",
         icon: FileBarChart,
-        permission: PERMISSIONS.REPORTS_VIEW,
+        // Each report carries its own key, so the section shows when the person
+        // may read *any* of them — a rota lead with only the shift reports still
+        // needs the door.
+        anyPermission: [...ALL_REPORT_VIEW_PERMISSIONS],
       },
       // The celebratory face of the points ledger — the same data the reports
       // draw on, arranged as a podium. Its own permission, so it can be shown or

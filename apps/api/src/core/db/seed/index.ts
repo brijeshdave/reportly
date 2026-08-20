@@ -14,6 +14,7 @@ import {
   defaultFor,
   ssoProviderConfigSchema,
   suggestUsername as usernameFromEmail,
+  ALL_REPORT_VIEW_PERMISSIONS,
 } from "@reportly/shared";
 import { and, eq, notInArray } from "drizzle-orm";
 
@@ -68,8 +69,7 @@ export function permissionsFor(role: "Superadmin" | "Admin" | "Manager" | "Membe
       // A manager runs and exports the reports they show upward, and builds their own
       // saved views — cloning a shipped one and tailoring it, or sharing one with
       // their team. All three, so "clone and reuse" is theirs, not only an admin's.
-      PERMISSIONS.REPORTS_VIEW,
-      PERMISSIONS.REPORTS_EXPORT,
+      ...ALL_REPORT_VIEW_PERMISSIONS,
       PERMISSIONS.REPORTS_MANAGE,
       // A manager sees the standings for their line (company-wide, since they also
       // hold analytics:view). `:view` sits outside the regex above, like the rest.
@@ -323,8 +323,7 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
   {
     name: "Reports & analytics admin",
     permissions: [
-      PERMISSIONS.REPORTS_VIEW,
-      PERMISSIONS.REPORTS_EXPORT,
+      ...ALL_REPORT_VIEW_PERMISSIONS,
       PERMISSIONS.REPORTS_MANAGE,
       PERMISSIONS.ANALYTICS_VIEW,
       PERMISSIONS.INSIGHTS_VIEW,
@@ -341,8 +340,7 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
     // reliability analytics, which are a management figure rather than a report.
     name: "Reports & analytics editor",
     permissions: [
-      PERMISSIONS.REPORTS_VIEW,
-      PERMISSIONS.REPORTS_EXPORT,
+      ...ALL_REPORT_VIEW_PERMISSIONS,
       PERMISSIONS.REPORTS_MANAGE,
       PERMISSIONS.INSIGHTS_VIEW,
       PERMISSIONS.LEADERBOARD_VIEW,
@@ -353,8 +351,7 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
   {
     name: "Reports & analytics viewer",
     permissions: [
-      PERMISSIONS.REPORTS_VIEW,
-      PERMISSIONS.REPORTS_EXPORT,
+      ...ALL_REPORT_VIEW_PERMISSIONS,
       PERMISSIONS.INSIGHTS_VIEW,
       PERMISSIONS.LEADERBOARD_VIEW,
       PERMISSIONS.DEPARTMENTS_READ,
@@ -401,8 +398,7 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.DEPARTMENTS_READ,
       // Run the scheduling reports (roster, changes, coverage, attendance) — they
       // live in the Reports area, so a scheduler needs reports:view to open them.
-      PERMISSIONS.REPORTS_VIEW,
-      PERMISSIONS.REPORTS_EXPORT,
+      ...ALL_REPORT_VIEW_PERMISSIONS,
     ],
   },
   {
@@ -414,7 +410,7 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.SHIFTS_READ,
       PERMISSIONS.SHIFTS_APPROVE,
       PERMISSIONS.DEPARTMENTS_READ,
-      PERMISSIONS.REPORTS_VIEW,
+      ...ALL_REPORT_VIEW_PERMISSIONS,
     ],
   },
   {
@@ -430,8 +426,7 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.ROUTINES_READ,
       PERMISSIONS.ROUTINES_MANAGE,
       PERMISSIONS.ROUTINES_LOG,
-      PERMISSIONS.REPORTS_VIEW,
-      PERMISSIONS.REPORTS_EXPORT,
+      ...ALL_REPORT_VIEW_PERMISSIONS,
     ],
   },
   {

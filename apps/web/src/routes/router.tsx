@@ -4,7 +4,7 @@
 // UI hides what it can; the API is still the enforcement point.
 import { lazy } from "react";
 
-import { PERMISSIONS, type Permission, can } from "@reportly/shared";
+import { PERMISSIONS, type Permission, can, ALL_REPORT_VIEW_PERMISSIONS } from "@reportly/shared";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
@@ -238,6 +238,16 @@ const forbiddenRoute = createRoute({
  * A `beforeLoad` that sends the caller to /403 rather than a blank screen when
  * they lack `permission` — matching what the API would answer anyway.
  */
+/** A route open to anybody holding at least one of these — see `requirePermission`. */
+export function requireAnyPermission(permissions: readonly Permission[]) {
+  return async ({ context }: { context: RouterContext }): Promise<void> => {
+    const session = await loadSession(context.queryClient);
+    if (!session) throw redirect({ to: "/login" });
+    const who = { permissions: session.permissions, isSuperadmin: session.isSuperadmin };
+    if (!permissions.some((permission) => can(who, permission))) throw redirect({ to: "/403" });
+  };
+}
+
 export function requirePermission(permission: Permission) {
   return async ({ context }: { context: RouterContext }): Promise<void> => {
     const session = await loadSession(context.queryClient);
@@ -515,7 +525,7 @@ const reportsRoute = createRoute({
 const reportsListRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/reports",
-  beforeLoad: requirePermission(PERMISSIONS.REPORTS_VIEW),
+  beforeLoad: requireAnyPermission(ALL_REPORT_VIEW_PERMISSIONS),
   component: lazyRouteComponent(
     () => import("@/routes/reports/reports-list.js"),
     "ReportsListPage",
@@ -548,7 +558,7 @@ const myPointsRoute = createRoute({
 const reportViewRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/reports/$viewId",
-  beforeLoad: requirePermission(PERMISSIONS.REPORTS_VIEW),
+  beforeLoad: requireAnyPermission(ALL_REPORT_VIEW_PERMISSIONS),
   component: function ReportView() {
     const { viewId } = reportViewRoute.useParams();
     return <ReportWorkspace mode="view" viewId={viewId} />;

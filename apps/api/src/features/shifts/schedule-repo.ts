@@ -3,7 +3,10 @@
 // the shift-catalogue repo; the two share the `shifts` table but nothing else.
 import { and, asc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
+import type { AuthContext } from "@reportly/shared";
+
 import { db } from "@/core/db/index.js";
+import { withLocationsNullable } from "@/core/db/scoped.js";
 import {
   locations,
   scheduleEntries,
@@ -165,6 +168,7 @@ export interface WindowEntryRow {
  * touches; joined to the person and (for working cells) the shift.
  */
 export async function entriesInWindow(
+  ctx: AuthContext,
   companyId: string,
   departmentId: string,
   fromDate: string,
@@ -189,6 +193,11 @@ export async function entriesInWindow(
       and(
         eq(schedules.companyId, companyId),
         eq(schedules.departmentId, departmentId),
+        // A department has a rota per site now, so a window across "the
+        // department" would otherwise read every plant's roster. The central
+        // rota's NULL site stays visible to everyone — travelling staff are not
+        // somebody else's secret.
+        withLocationsNullable(ctx, schedules.locationId),
         gte(scheduleEntries.date, fromDate),
         lt(scheduleEntries.date, toDate),
       ),

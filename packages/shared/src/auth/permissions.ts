@@ -169,8 +169,35 @@ export const PERMISSIONS = {
   //   export  — download (Excel/HTML) and print an A4 copy
   //   manage  — create/clone/edit/delete custom saved views, and set who each
   //             one is shared with (private / whole company / specific groups)
-  REPORTS_VIEW: "reports:view",
-  REPORTS_EXPORT: "reports:export",
+  //
+  // **One key per report** (`reports:view:<source>`), not one key for "reports".
+  // A single `reports:view` meant that granting somebody the downtime figures also
+  // handed them the leaderboard and the cartridge register — and, worse, silently
+  // handed them every report added later. There is deliberately no umbrella key:
+  // a new report starts granted to nobody, which is an administrator's decision
+  // rather than an accident.
+  //
+  // Viewing includes taking a copy — the Excel export and the printable page.
+  // Somebody who can read every row on screen can photograph it, and a matrix with
+  // a separate export key per report is one nobody maintains. If a rule ever
+  // requires export to be separable, it becomes its own key then, on evidence.
+  REPORTS_VIEW_JOURNAL: "reports:view:journal",
+  REPORTS_VIEW_DOWNTIME: "reports:view:downtime",
+  REPORTS_VIEW_RELIABILITY: "reports:view:reliability",
+  REPORTS_VIEW_LEADERBOARD: "reports:view:leaderboard",
+  REPORTS_VIEW_SHIFT_ROSTER: "reports:view:shift_roster",
+  REPORTS_VIEW_SHIFT_CHANGES: "reports:view:shift_changes",
+  REPORTS_VIEW_SHIFT_COVERAGE: "reports:view:shift_coverage",
+  REPORTS_VIEW_SHIFT_ATTENDANCE: "reports:view:shift_attendance",
+  REPORTS_VIEW_ROUTINE_LOG: "reports:view:routine_log",
+  REPORTS_VIEW_ROUTINE_COMPLIANCE: "reports:view:routine_compliance",
+  REPORTS_VIEW_PART_REGISTER: "reports:view:part_register",
+  REPORTS_VIEW_PART_SERVICES: "reports:view:part_services",
+  REPORTS_VIEW_PART_CONSUMPTION: "reports:view:part_consumption",
+  REPORTS_VIEW_PART_HEALTH: "reports:view:part_health",
+  REPORTS_VIEW_PRINTER_HEALTH: "reports:view:printer_health",
+  REPORTS_VIEW_PART_FAILURES: "reports:view:part_failures",
+  REPORTS_VIEW_PART_WORKLOAD: "reports:view:part_workload",
   REPORTS_MANAGE: "reports:manage",
 
   // The dedicated leaderboard page — the podium ranking of people by points earned.

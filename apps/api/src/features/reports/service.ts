@@ -56,6 +56,8 @@ import {
   pagesFor,
   yieldPercent,
   type PartStatus,
+  REPORT_VIEW_PERMISSION,
+  type ReportSource,
 } from "@reportly/shared";
 import type { AssetReliability } from "@reportly/shared";
 
@@ -101,12 +103,44 @@ interface SourceResult {
  * the journal, downtime entries, or the reliability roll-up — and every one is
  * gathered under the caller's own scope, so a report never widens what they may see.
  */
+/**
+ * The permission for *this* report, checked once the definition is known.
+ *
+ * It cannot be a route guard: which report is being run arrives in the body, and a
+ * saved view names its own source. So the route authenticates and this decides —
+ * the same place the definition is resolved, so the two can never disagree about
+ * which report is being answered.
+ */
+/**
+ * The report a saved view runs. Stored inside its definition json, so it is read
+ * defensively: a view written before a source existed, or by hand, must not throw
+ * its way through a list.
+ */
+function sourceOfView(view: { definition: unknown }): string | null {
+  const def = view.definition as { source?: unknown } | null;
+  return typeof def?.source === "string" ? def.source : null;
+}
+
+/** Whether the caller holds this report's key. The soft form, for filtering lists. */
+export function mayReadSource(ctx: AuthContext, source: string | null): boolean {
+  if (source === null) return false;
+  const key = REPORT_VIEW_PERMISSION[source as ReportSource];
+  return key !== undefined && can(ctx, key);
+}
+
+export function assertMayRead(ctx: AuthContext, source: ReportSource): void {
+  if (!mayReadSource(ctx, source)) {
+    throw new AppError(403, ERROR_CODES.FORBIDDEN, "Insufficient permissions");
+  }
+}
+
 export async function runReport(
   ctx: AuthContext,
   run: RunReport,
   tzOffsetMinutes: number,
 ): Promise<ReportResult> {
   const { definition, view } = await resolveDefinition(ctx, run);
+  assertMayRead(ctx, definition.source);
   // A custom range is capped by source — a month for the detail sources, a year for
   // reliability. The named presets are never capped.
   const { from, to } = resolveRange(
@@ -256,8 +290,8 @@ async function runReliability(
   if (!ctx.companyId) {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "Pick a company first (X-Company-Id)");
   }
-  if (definition.monthly) return runReliabilityMonthly(ctx.companyId, definition, from, to, tz);
-  if (definition.byDevice) return runReliabilityByDevice(ctx.companyId, definition, from, to);
+  if (definition.monthly) return runReliabilityMonthly(ctx, definition, from, to, tz);
+  if (definition.byDevice) return runReliabilityByDevice(ctx, definition, from, to);
 
   const window = { from: from.toISOString(), to: to.toISOString() };
 
@@ -265,15 +299,15 @@ async function runReliability(
   let assetName: string | null = null;
   if (definition.assetId) {
     // One asset: itself (its whole subtree) plus each child broken out.
-    const report = await assetReliability(definition.assetId, ctx.companyId, window);
+    const report = await assetReliability(ctx, definition.assetId, ctx.companyId, window);
     assetName = report.total.assetName;
     items = [report.total, ...report.children];
   } else {
     // Whole company: one row per root asset (each its own subtree total).
-    const roots = await repo.rootAssets(ctx.companyId);
+    const roots = await repo.rootAssets(ctx, ctx.companyId);
     items = [];
     for (const root of roots) {
-      const report = await assetReliability(root.id, ctx.companyId, window);
+      const report = await assetReliability(ctx, root.id, ctx.companyId, window);
       items.push(report.total);
     }
   }
@@ -301,7 +335,7 @@ async function runReliability(
  * something.
  */
 async function runReliabilityMonthly(
-  companyId: string,
+  ctx: AuthContext,
   definition: ReportDefinition,
   from: Date,
   to: Date,
@@ -313,9 +347,9 @@ async function runReliabilityMonthly(
   // is always overwritten.
   let assetName: string | null;
   if (assetId) {
-    assetName = await repo.assetNameOf(assetId, companyId);
+    assetName = await repo.assetNameOf(assetId, ctx.companyId!);
   } else {
-    const [firstRoot] = await repo.rootAssets(companyId);
+    const [firstRoot] = await repo.rootAssets(ctx, ctx.companyId!);
     assetId = firstRoot?.id ?? null;
     assetName = firstRoot?.name ?? null;
   }
@@ -323,7 +357,7 @@ async function runReliabilityMonthly(
   const rows: ReportRow[] = [];
   if (assetId) {
     for (const bucket of monthBuckets(from, to, tz)) {
-      const report = await assetReliability(assetId, companyId, {
+      const report = await assetReliability(ctx, assetId, ctx.companyId!, {
         from: bucket.from.toISOString(),
         to: bucket.to.toISOString(),
       });
@@ -352,21 +386,21 @@ async function runReliabilityMonthly(
  * building blocks so a device's figures here match what the asset roll-up folds in.
  */
 async function runReliabilityByDevice(
-  companyId: string,
+  ctx: AuthContext,
   definition: ReportDefinition,
   from: Date,
   to: Date,
 ): Promise<SourceResult> {
   const window = resolveWindow({ from: from.toISOString(), to: to.toISOString() });
   const assetName = definition.assetId
-    ? await repo.assetNameOf(definition.assetId, companyId)
+    ? await repo.assetNameOf(definition.assetId, ctx.companyId!)
     : null;
-  const devices = await repo.devicesForReliability(companyId, definition.assetId ?? null);
+  const devices = await repo.devicesForReliability(ctx.companyId!, definition.assetId ?? null);
 
   const rows: ReportRow[] = [];
   for (const device of devices) {
     const facts = await downtimeFacts(
-      companyId,
+      ctx.companyId!,
       { assetIds: [], deviceIds: [device.id] },
       from,
       to,
@@ -573,7 +607,7 @@ async function runShiftRoster(
   to: Date,
 ): Promise<SourceResult> {
   const { companyId, departmentId, departmentName } = await shiftReportScope(ctx, definition);
-  const entries = await entriesInWindow(companyId, departmentId, dayOf(from), dayOf(to));
+  const entries = await entriesInWindow(ctx, companyId, departmentId, dayOf(from), dayOf(to));
   const rows: ReportRow[] = entries
     .filter((e) => e.state === "working" && e.shiftId)
     .map((e, i) => ({
@@ -607,7 +641,7 @@ async function runShiftCoverage(
   to: Date,
 ): Promise<SourceResult> {
   const { companyId, departmentId, departmentName } = await shiftReportScope(ctx, definition);
-  const entries = await entriesInWindow(companyId, departmentId, dayOf(from), dayOf(to));
+  const entries = await entriesInWindow(ctx, companyId, departmentId, dayOf(from), dayOf(to));
   const activeShifts = (await listShifts(companyId)).filter((s) => s.status === "active");
 
   // date -> shiftId -> count of working assignments; and the days actually scheduled.
@@ -656,7 +690,7 @@ async function runShiftAttendance(
   to: Date,
 ): Promise<SourceResult> {
   const { companyId, departmentId, departmentName } = await shiftReportScope(ctx, definition);
-  const entries = await entriesInWindow(companyId, departmentId, dayOf(from), dayOf(to));
+  const entries = await entriesInWindow(ctx, companyId, departmentId, dayOf(from), dayOf(to));
 
   type Tally = {
     name: string;
@@ -865,18 +899,19 @@ async function runCartridges(
     );
   }
 
-  if (source === "part_register") return runPartRegister(ctx.companyId);
-  if (source === "part_services") return runPartServices(ctx.companyId, from, to, people);
-  if (source === "part_consumption") return runPartConsumption(ctx.companyId, from, to, people);
-  if (source === "printer_health") return runPrinterHealth(ctx.companyId, from, to);
-  if (source === "part_failures") return runPartFailures(ctx.companyId, from, to, people);
-  if (source === "part_workload") return runPartWorkload(ctx.companyId, from, to, people);
-  return runPartHealth(ctx.companyId, from, to);
+  if (source === "part_register") return runPartRegister(ctx, ctx.companyId);
+  if (source === "part_services") return runPartServices(ctx, ctx.companyId, from, to, people);
+  if (source === "part_consumption")
+    return runPartConsumption(ctx, ctx.companyId, from, to, people);
+  if (source === "printer_health") return runPrinterHealth(ctx, ctx.companyId, from, to);
+  if (source === "part_failures") return runPartFailures(ctx, ctx.companyId, from, to, people);
+  if (source === "part_workload") return runPartWorkload(ctx, ctx.companyId, from, to, people);
+  return runPartHealth(ctx, ctx.companyId, from, to);
 }
 
 /** Every cartridge and where it stands. No window: a register is a now, not a span. */
-async function runPartRegister(companyId: string): Promise<SourceResult> {
-  const parts = await partsRepo.registerRows(companyId);
+async function runPartRegister(ctx: AuthContext, companyId: string): Promise<SourceResult> {
+  const parts = await partsRepo.registerRows(ctx, companyId);
   const rows: ReportRow[] = parts.map((part) => ({
     id: part.id,
     reportId: null,
@@ -896,12 +931,13 @@ async function runPartRegister(companyId: string): Promise<SourceResult> {
 
 /** What was refilled or repaired, by whom, and what it paid. */
 async function runPartServices(
+  ctx: AuthContext,
   companyId: string,
   from: Date,
   to: Date,
   people?: string[],
 ): Promise<SourceResult> {
-  const services = await partsRepo.serviceRows(companyId, from, to, people);
+  const services = await partsRepo.serviceRows(ctx, companyId, from, to, people);
   const used = await partsRepo.consumptionsForServices(services.map((service) => service.id));
 
   const rows: ReportRow[] = services.map((service) => ({
@@ -926,12 +962,13 @@ async function runPartServices(
 
 /** How much of each consumable went. A usage total, never a stock level. */
 async function runPartConsumption(
+  ctx: AuthContext,
   companyId: string,
   from: Date,
   to: Date,
   people?: string[],
 ): Promise<SourceResult> {
-  const totals = await partsRepo.consumptionTotals(companyId, from, to, people);
+  const totals = await partsRepo.consumptionTotals(ctx, companyId, from, to, people);
   const rows: ReportRow[] = totals.map((total, index) => ({
     id: String(index),
     reportId: null,
@@ -957,8 +994,13 @@ function tourStats(tours: partsRepo.TourRow[]) {
  * reader to sort it. A cartridge is called out when it fails more often than it
  * works, or yields under half what its model is rated for.
  */
-async function runPartHealth(companyId: string, from: Date, to: Date): Promise<SourceResult> {
-  const tours = await partsRepo.finishedTours(companyId, from, to);
+async function runPartHealth(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<SourceResult> {
+  const tours = await partsRepo.finishedTours(ctx, companyId, from, to);
   const byPart = new Map<string, partsRepo.TourRow[]>();
   for (const tour of tours) {
     byPart.set(tour.partId, [...(byPart.get(tour.partId) ?? []), tour]);
@@ -1005,8 +1047,13 @@ async function runPartHealth(companyId: string, from: Date, to: Date): Promise<S
  * cartridges failing in one printer is a printer problem, and only this grouping
  * shows the difference.
  */
-async function runPrinterHealth(companyId: string, from: Date, to: Date): Promise<SourceResult> {
-  const tours = await partsRepo.finishedTours(companyId, from, to);
+async function runPrinterHealth(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<SourceResult> {
+  const tours = await partsRepo.finishedTours(ctx, companyId, from, to);
   const byDevice = new Map<string, partsRepo.TourRow[]>();
   for (const tour of tours) {
     byDevice.set(tour.deviceId, [...(byDevice.get(tour.deviceId) ?? []), tour]);
@@ -1056,12 +1103,13 @@ async function runPrinterHealth(companyId: string, from: Date, to: Date): Promis
  * it and the one who took it out.
  */
 async function runPartFailures(
+  ctx: AuthContext,
   companyId: string,
   from: Date,
   to: Date,
   people?: string[],
 ): Promise<SourceResult> {
-  const all = await partsRepo.failureRows(companyId, from, to);
+  const all = await partsRepo.failureRows(ctx, companyId, from, to);
   // Narrowed on WHOSE service preceded the failure, which is the question the
   // picker is asking on this report — not who happened to take it out.
   const failures = people?.length
@@ -1111,14 +1159,15 @@ async function runPartFailures(
  * of with what happened.
  */
 async function runPartWorkload(
+  ctx: AuthContext,
   companyId: string,
   from: Date,
   to: Date,
   people?: string[],
 ): Promise<SourceResult> {
   const [services, failures] = await Promise.all([
-    partsRepo.serviceRows(companyId, from, to, people),
-    partsRepo.failureRows(companyId, from, to),
+    partsRepo.serviceRows(ctx, companyId, from, to, people),
+    partsRepo.failureRows(ctx, companyId, from, to),
   ]);
   const used = await partsRepo.consumptionsForServices(services.map((service) => service.id));
   const cameBack = new Set(
@@ -1524,15 +1573,22 @@ export async function listViews(ctx: AuthContext): Promise<ReportView[]> {
     repo.listViewRows(ctx.companyId),
     repo.groupIdsForUser(ctx.userId),
   ]);
-  return rows.filter((r) => maySeeView(r, ctx, callerGroupIds)).map(serializeView);
+  // Sharing decides which views exist for you; the per-report permission decides
+  // which you may actually run. Listing one you cannot open is an invitation to a
+  // 403 — so a view whose report is closed to you is not listed at all.
+  return rows
+    .filter((r) => maySeeView(r, ctx, callerGroupIds) && mayReadSource(ctx, sourceOfView(r)))
+    .map(serializeView);
 }
 
 export async function getView(ctx: AuthContext, id: string): Promise<ReportView> {
   const row = await repo.getViewRow(id);
   if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Report not found");
   const callerGroupIds = await repo.groupIdsForUser(ctx.userId);
-  if (!maySeeView(row, ctx, callerGroupIds)) {
-    // 404, not 403 — a view the caller may not see should not be enumerable.
+  if (!maySeeView(row, ctx, callerGroupIds) || !mayReadSource(ctx, sourceOfView(row))) {
+    // 404, not 403 — a view the caller may not see should not be enumerable, and
+    // that holds whether it is sharing or the report's own permission that closed
+    // it. Answering 403 would confirm the view exists.
     throw new AppError(404, ERROR_CODES.NOT_FOUND, "Report not found");
   }
   return serializeView(row);

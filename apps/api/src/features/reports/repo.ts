@@ -12,6 +12,9 @@
 import { type AnyColumn, type SQL, and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
+import type { AuthContext } from "@reportly/shared";
+
+import { withLocationsNullable } from "@/core/db/scoped.js";
 import {
   assets,
   departments,
@@ -246,13 +249,20 @@ export async function assetNameOf(
 }
 
 /** Active root assets (no parent) — the rows of a company-wide reliability report. */
-export async function rootAssets(companyId: string): Promise<{ id: string; name: string }[]> {
+export async function rootAssets(
+  ctx: AuthContext,
+  companyId: string,
+): Promise<{ id: string; name: string }[]> {
   return db
     .select({ id: assets.id, name: assets.name })
     .from(assets)
     .where(
       and(
         eq(assets.companyId, companyId),
+        // An unplaced asset is visible to everybody; one at a site is visible to
+        // the people who can reach that site. Reliability is rolled up from these
+        // roots, so an unscoped list here is another plant's figures on the page.
+        withLocationsNullable(ctx, assets.locationId),
         sql`${assets.parentId} IS NULL`,
         eq(assets.status, "active"),
       ),

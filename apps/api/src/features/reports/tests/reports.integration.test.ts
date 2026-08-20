@@ -137,6 +137,27 @@ async function fixture(admin: string) {
   return { plantA, plantB, memberGroup, managerGroup, lead, operator, dept };
 }
 
+/**
+ * A person who may open exactly the reports named — the shape of the whole change.
+ * Built as a custom role because the seeded ones are immutable, which is also how
+ * an administrator would do it: a role per job, holding only what that job needs.
+ */
+async function personWhoMayRead(
+  admin: string,
+  username: string,
+  keys: string[],
+): Promise<{ id: string; cookie: string }> {
+  const role = (
+    await inject("POST", "/roles", admin, {
+      name: `Only ${username}`,
+      permissions: ["journal:read", ...keys],
+    })
+  ).json();
+  const group = (await inject("POST", "/groups", admin, { name: `Group ${username}` })).json();
+  await inject("PUT", `/groups/${group.id}/roles`, admin, { ids: [role.id] });
+  return makeUser(admin, `Reader ${username}`, username, group.id);
+}
+
 // A fixed report date inside the WIDE window below, so the tests are deterministic
 // whatever the wall clock says. `reportDate` is the field a report filters on.
 const FIXED_DATE = "2026-05-15T08:00:00.000Z";
@@ -166,6 +187,92 @@ const WIDE = {
 };
 
 describe("reports", () => {
+  // The audit that prompted these: of seventeen report sources, only the journal
+  // and downtime narrowed their rows to the reader's sites. Reliability rolled up
+  // every root asset in the company, and the cartridge reports every part — so a
+  // reader confined to one plant could read another plant's figures.
+  it("opens the reports a person was granted, and only those", async () => {
+    const admin = await superadmin();
+    const reader = await personWhoMayRead(admin, "onlyjournal", ["reports:view:journal"]);
+
+    const allowed = await inject("POST", "/reports/run", reader.cookie, {
+      definition: { source: "journal", ...WIDE },
+    });
+    expect(allowed.statusCode).toBe(200);
+
+    // One key per report is the whole point: holding the journal report says
+    // nothing about the downtime figures or the cartridge register.
+    for (const source of ["downtime", "part_register", "leaderboard"]) {
+      const refused = await inject("POST", "/reports/run", reader.cookie, {
+        definition: { source, ...WIDE },
+      });
+      expect({ source, status: refused.statusCode }).toEqual({ source, status: 403 });
+    }
+  });
+
+  it("refuses the export of a report it would refuse to show", async () => {
+    const admin = await superadmin();
+    const reader = await personWhoMayRead(admin, "noexport", ["reports:view:journal"]);
+
+    // Viewing includes exporting, so the export route cannot be a way round the
+    // view permission — it runs the same report and answers the same way.
+    const xlsx = await inject("POST", "/reports/export.xlsx", reader.cookie, {
+      definition: { source: "downtime", ...WIDE },
+    });
+    expect(xlsx.statusCode).toBe(403);
+
+    const own = await inject("POST", "/reports/export.xlsx", reader.cookie, {
+      definition: { source: "journal", ...WIDE },
+    });
+    expect(own.statusCode).toBe(200);
+  });
+
+  it("hides a saved view whose report the reader may not open", async () => {
+    const admin = await superadmin();
+    const reader = await personWhoMayRead(admin, "viewlist", ["reports:view:journal"]);
+
+    const sources = (await inject("GET", "/report-views", reader.cookie))
+      .json()
+      .map((v: { definition: { source: string } }) => v.definition.source);
+
+    // Listing a report you cannot run is an invitation to a 403.
+    expect(sources).toContain("journal");
+    expect(sources).not.toContain("downtime");
+  });
+
+  it("keeps the reliability report inside the reader's sites", async () => {
+    const admin = await superadmin();
+    const { plantA, plantB, lead } = await fixture(admin);
+
+    await inject("POST", "/assets", admin, { name: "Line A", locationId: plantA.id });
+    await inject("POST", "/assets", admin, { name: "Line B", locationId: plantB.id });
+
+    const run = await inject("POST", "/reports/run", lead.cookie, {
+      definition: { source: "reliability", ...WIDE },
+    });
+    expect(run.statusCode).toBe(200);
+
+    const names = JSON.stringify(run.json().groups);
+    expect(names).toContain("Line A");
+    // The lead is narrowed to Plant A; Line B is another plant's machine.
+    expect(names).not.toContain("Line B");
+  });
+
+  it("refuses to report on an asset outside the reader's sites", async () => {
+    const admin = await superadmin();
+    const { plantB, lead } = await fixture(admin);
+    const lineB = (
+      await inject("POST", "/assets", admin, { name: "Line B", locationId: plantB.id })
+    ).json();
+
+    // Naming the id directly is the door a filtered list leaves open: the answer
+    // must be "not found", not that asset's figures.
+    const run = await inject("POST", "/reports/run", lead.cookie, {
+      definition: { source: "reliability", assetId: lineB.id, ...WIDE },
+    });
+    expect(run.statusCode).toBe(404);
+  });
+
   it("scopes rows to the caller's reporting line and location, both at once", async () => {
     const admin = await superadmin();
     const { plantA, plantB, lead, operator } = await fixture(admin);

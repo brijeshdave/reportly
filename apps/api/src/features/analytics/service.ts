@@ -20,6 +20,7 @@ import {
 } from "@/features/analytics/repo.js";
 import { scopeUnderAsset } from "@/features/journal/targets-repo.js";
 import * as insightsRepo from "@/features/analytics/insights-repo.js";
+import type { AuthContext } from "@reportly/shared";
 
 const DAY_MS = 86_400_000;
 const MINUTES_PER_HOUR = 60;
@@ -115,12 +116,13 @@ const round = (n: number): number => Math.round(n * 100) / 100;
  * one people would believe is whichever they opened last.
  */
 export async function assetReliability(
+  ctx: AuthContext,
   assetId: string,
   companyId: string,
   query: { from?: string; to?: string },
 ): Promise<AssetReliabilityReport> {
   const window = resolveWindow(query);
-  const asset = await getAsset(assetId, companyId);
+  const asset = await getAsset(ctx, assetId, companyId);
   if (!asset) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Asset not found");
 
   const from = new Date(window.from);
@@ -129,7 +131,7 @@ export async function assetReliability(
   const scope = await scopeUnderAsset(assetId, companyId);
   const total = reliabilityFrom(asset, await downtimeFacts(companyId, scope, from, to), window);
 
-  const children = await childAssets(assetId, companyId);
+  const children = await childAssets(ctx, assetId, companyId);
   const childRows = await Promise.all(
     children.map(async (child) => {
       const childScope = await scopeUnderAsset(child.id, companyId);

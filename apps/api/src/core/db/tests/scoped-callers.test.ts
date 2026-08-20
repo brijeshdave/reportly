@@ -38,6 +38,22 @@ const LOCATION_SCOPED_REPOS = [
 ];
 
 /**
+ * Repos that reach location-bearing rows and take the **caller** rather than a
+ * prepared condition, because the column to scope differs per query — a part's
+ * own site here, the device it sits in there, the rota's site somewhere else.
+ *
+ * Added after an audit found that only two of the seventeen reports narrowed
+ * their rows to the reader's sites: a user restricted to one plant could open
+ * Reliability or the cartridge register and read another plant's figures.
+ */
+const CALLER_SCOPED_REPOS = [
+  "reports/parts-repo.ts",
+  "reports/repo.ts",
+  "analytics/repo.ts",
+  "shifts/schedule-repo.ts",
+];
+
+/**
  * Services that must resolve a scope and hand it down. The repo takes the
  * condition as a required argument, so the service is where the decision is made.
  */
@@ -59,6 +75,16 @@ describe("location scoping is actually wired up", () => {
       `${file} handles location-bearing rows but never calls a scoping helper. ` +
         `This is the exact shape of SF-004: a scope that is computed, shipped to ` +
         `the client, and consulted by nothing.`,
+    ).toBe(true);
+  });
+
+  it.each(CALLER_SCOPED_REPOS)("%s scopes its reads to the caller's sites", (file) => {
+    const source = read(file);
+    expect(
+      source.includes("withLocationsNullable(ctx") || source.includes("withLocations(ctx"),
+      `${file} reads rows that belong to a site but never narrows them to the ` +
+        `caller's. A report that shows one plant's figures to another plant is a ` +
+        `disclosure, not an inconvenience.`,
     ).toBe(true);
   });
 

@@ -5,7 +5,10 @@
 // file writes.
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 
+import type { AuthContext } from "@reportly/shared";
+
 import { db } from "@/core/db/index.js";
+import { withLocationsNullable } from "@/core/db/scoped.js";
 import {
   assets,
   categories,
@@ -126,23 +129,41 @@ export async function downtimeFacts(
 
 /** The direct children of an asset — each of which is rolled up in its own right. */
 export async function childAssets(
+  ctx: AuthContext,
   assetId: string,
   companyId: string,
 ): Promise<{ id: string; name: string }[]> {
   return db
     .select({ id: assets.id, name: assets.name })
     .from(assets)
-    .where(and(eq(assets.parentId, assetId), eq(assets.companyId, companyId)));
+    .where(
+      and(
+        eq(assets.parentId, assetId),
+        eq(assets.companyId, companyId),
+        // A tree can cross sites — a plant's line under a company-wide root — so
+        // the breakdown a reader sees stops where their sites do.
+        withLocationsNullable(ctx, assets.locationId),
+      ),
+    );
 }
 
 export async function getAsset(
+  ctx: AuthContext,
   assetId: string,
   companyId: string,
 ): Promise<{ id: string; name: string } | null> {
   const [row] = await db
     .select({ id: assets.id, name: assets.name })
     .from(assets)
-    .where(and(eq(assets.id, assetId), eq(assets.companyId, companyId)));
+    .where(
+      and(
+        eq(assets.id, assetId),
+        eq(assets.companyId, companyId),
+        // Naming an asset id you cannot reach must answer "not found", not its
+        // figures: this is the door a report opens when somebody types an id.
+        withLocationsNullable(ctx, assets.locationId),
+      ),
+    );
   return row ?? null;
 }
 

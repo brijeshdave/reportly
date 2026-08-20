@@ -93,6 +93,46 @@ spec at `/api/v1/docs`. Hand-maintained API docs rot; generated ones cannot.
 One gotcha: a route parameter that should 404 rather than 400 must be
 `z.string()` and checked in the handler, or the schema rejects it first.
 
+### Why does every report have its own permission?
+
+Because one `reports:view` meant that granting the downtime figures also granted
+the leaderboard and the cartridge register — and, worse, granted every report
+added later, without anybody deciding to. `REPORT_VIEW_PERMISSION` maps each
+source to its key, and there is deliberately **no umbrella key**: a new report
+starts granted to nobody.
+
+Three consequences worth knowing before changing it:
+
+- **The check cannot be a route guard.** Which report is being run arrives in the
+  request body, and a saved view names its own source, so the permission is
+  checked in `assertMayRead` right where the definition is resolved. A guard on
+  the route could only ever check one fixed key.
+- **Viewing includes exporting.** The export routes run the same report through
+  the same function, so they answer the same way. There is no separate export key
+  by choice — someone who can read every row on screen can photograph it.
+- **Adding a report to `REPORT_SOURCES` will not compile** until it has a key:
+  `Record<ReportSource, Permission>` is exhaustive. That is stronger than a test,
+  because it fails before the tests run. `report-permissions.test.ts` covers the
+  rest — that the key is in the catalogue, that no key outlives its report, and
+  that every runner takes the caller so it _can_ narrow its rows.
+
+### Why do reports narrow rows by site and reporting line?
+
+An audit in 2026-08 found that of seventeen report sources, only two narrowed
+their rows to the reader's sites. Reliability rolled up every root asset in the
+company — and an asset tree can cross sites, so a subtree total quietly mixed
+plants. The seven cartridge reports read every part. A user confined to one plant
+could read another's figures.
+
+The rule is the journal's, reused rather than reinvented: **(the reader plus their
+downline) AND company AND location**, with location narrowing and never widening.
+Reports about places (assets, parts) drop the reporting-line half — a machine
+reports to nobody.
+
+`scoped-callers.test.ts` now has a second list for repos that take the _caller_
+rather than a prepared condition, because the column to scope differs per query: a
+part's own site here, the device it sits in there, the rota's site somewhere else.
+
 ### Can I work on a copy of production?
 
 Yes, through `cli restore:dev` — never by restoring a dump and getting on with it.

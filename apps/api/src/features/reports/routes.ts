@@ -44,16 +44,13 @@ function fileName(name: string | null, ext: string): string {
 export async function reportsRoutes(fastify: FastifyInstance): Promise<void> {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
 
-  const canView = [
-    app.authenticate,
-    app.companyContext,
-    app.requirePermission(PERMISSIONS.REPORTS_VIEW),
-  ];
-  const canExport = [
-    app.authenticate,
-    app.companyContext,
-    app.requirePermission(PERMISSIONS.REPORTS_EXPORT),
-  ];
+  // Which report is being asked for arrives in the **body** — a source, or a saved
+  // view that names one — so there is no fixed permission a route guard could
+  // check. These admit an authenticated caller; the service checks the key for the
+  // report it just resolved (`assertMayRead`), which is the only place that can
+  // know it. Viewing includes exporting and printing, so both use the same list.
+  const canView = [app.authenticate, app.companyContext];
+  const canExport = canView;
   const canManage = [
     app.authenticate,
     app.companyContext,

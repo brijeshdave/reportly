@@ -8,11 +8,30 @@
 //
 // Anything not mapped falls into "Other" rather than disappearing: a permission added
 // later must show up somewhere, even before someone files it under a heading.
-import { ALL_PERMISSIONS, type Permission } from "@reportly/shared";
+import {
+  ALL_PERMISSIONS,
+  REPORT_SOURCE_LABELS,
+  type Permission,
+  type ReportSource,
+} from "@reportly/shared";
 
 export const resourceOf = (permission: Permission): string =>
   permission.split(":")[0] ?? permission;
-export const actionOf = (permission: Permission): string => permission.split(":")[1] ?? permission;
+/**
+ * What to write on the checkbox.
+ *
+ * Usually the action — `users:read` is "read". The report keys are three-part
+ * (`reports:view:downtime`), and taking the middle would label seventeen boxes
+ * "view", which is a matrix an administrator cannot use. For those the report is
+ * the distinguishing thing, so the report's own name goes on the box.
+ */
+export const actionOf = (permission: Permission): string => {
+  const source = permission.startsWith("reports:view:")
+    ? permission.slice("reports:view:".length)
+    : null;
+  if (source) return REPORT_SOURCE_LABELS[source as ReportSource] ?? source;
+  return permission.split(":")[1] ?? permission;
+};
 
 /** Groups in sidebar order; each lists the permission resources it owns. */
 const GROUP_DEFS: { id: string; label: string; resources: string[] }[] = [

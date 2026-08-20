@@ -31,6 +31,8 @@ import {
   type ReportViewAccess,
   formatDate,
   formatDurationMinutes,
+  can,
+  REPORT_VIEW_PERMISSION,
 } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -86,9 +88,21 @@ const EMPTY_DEFINITION: ReportDefinition = {
   filters: {},
 };
 
+/** The report keys this person holds — asked per source as the screen needs it. */
+function useReportPermissions() {
+  const { data: session } = useSuspenseQuery(sessionQuery);
+  const who = { permissions: session.permissions, isSuperadmin: session.isSuperadmin };
+  return {
+    mayRead: (source: ReportSource) => can(who, REPORT_VIEW_PERMISSION[source]),
+    sources: REPORT_SOURCES.filter((source) => can(who, REPORT_VIEW_PERMISSION[source])),
+  };
+}
+
 export function ReportWorkspace({ mode, viewId }: { mode: WorkspaceMode; viewId?: string }) {
   const canManage = usePermission(PERMISSIONS.REPORTS_MANAGE);
-  const canExport = usePermission(PERMISSIONS.REPORTS_EXPORT);
+  // Reading a report includes taking a copy of it, so exporting follows whichever
+  // report is on screen rather than carrying a key of its own.
+  const permissions = useReportPermissions();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -185,7 +199,7 @@ export function ReportWorkspace({ mode, viewId }: { mode: WorkspaceMode; viewId?
               <Printer className="mr-1.5 h-4 w-4" />
               Print / PDF
             </Button>
-            {canExport ? (
+            {permissions.mayRead(definition.source) ? (
               <>
                 <Button
                   variant="secondary"
@@ -291,6 +305,7 @@ function ControlsPanel({
   definition: ReportDefinition;
   setDefinition: (d: ReportDefinition) => void;
 }) {
+  const permissions = useReportPermissions();
   const patch = (p: Partial<ReportDefinition>) => setDefinition({ ...definition, ...p });
   // The id filters are any-of arrays; the multi-select edits them directly.
   const setFilter = (key: keyof ReportDefinition["filters"], values: string[]) =>
@@ -363,10 +378,13 @@ function ControlsPanel({
             });
           }}
         >
-          {/* The cartridge sources are hidden where the company does not use the
-              module — the same rule the sidebar follows. Offering a report whose
-              every run 404s is worse than not offering it. */}
-          {REPORT_SOURCES.filter((s) => partsEnabled || !isPartSource(s)).map((s) => (
+          {/* Two filters, same argument. The cartridge sources are hidden where the
+              company does not use the module, and every source is hidden from
+              somebody who has not been granted it: offering a report whose every
+              run answers 404 — or now 403 — is worse than not offering it. */}
+          {REPORT_SOURCES.filter(
+            (s) => (partsEnabled || !isPartSource(s)) && permissions.mayRead(s),
+          ).map((s) => (
             <option key={s} value={s}>
               {REPORT_SOURCE_LABELS[s]}
             </option>

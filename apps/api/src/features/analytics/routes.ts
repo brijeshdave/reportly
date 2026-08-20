@@ -87,6 +87,7 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) =>
       analytics.assetReliability(
+        request.ctx!,
         request.params.id,
         activeCompany(request.ctx!.companyId),
         request.query,

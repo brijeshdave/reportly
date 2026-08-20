@@ -87,6 +87,13 @@ describe("permission catalogue coverage", () => {
       const constant = CONSTANT_FOR.get(permission);
       // Either form counts: the constant is how a guard is written, the string is
       // what the wire carries and what a data-driven check might compare against.
+      // A third form, for keys a guard cannot name one at a time: the report
+      // permissions are held in a source→key map and looked up once the report
+      // being run is known, because which report it is arrives in the request
+      // body. `assertMayRead` is the enforcement; the map is how it finds the key.
+      if (permission.startsWith("reports:view:")) {
+        return !enforcementSource.includes("REPORT_VIEW_PERMISSION[");
+      }
       return (
         !enforcementSource.includes(`"${permission}"`) &&
         !(constant && enforcementSource.includes(constant))
