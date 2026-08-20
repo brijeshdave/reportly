@@ -7,9 +7,18 @@ import { describe, expect, it } from "vitest";
 import { AREA_ROLES, permissionsFor } from "@/core/db/seed/index.js";
 
 describe("permissionsFor", () => {
-  it("Superadmin and Admin get every permission", () => {
+  it("Superadmin gets every permission; Admin gets everything but the irreversible", () => {
     expect(permissionsFor("Superadmin")).toHaveLength(ALL_PERMISSIONS.length);
-    expect(permissionsFor("Admin")).toHaveLength(ALL_PERMISSIONS.length);
+
+    // An administrator runs the system day to day. Deleting a record takes its
+    // history with it, restoring replaces the database, and debug mode raises log
+    // volume for every company — none of them is day-to-day administration.
+    const admin = permissionsFor("Admin");
+    expect(admin.filter((p) => p.endsWith(":delete"))).toEqual([]);
+    expect(admin).not.toContain("backups:manage");
+    expect(admin).not.toContain("debug:toggle");
+    expect(admin).toContain("users:update");
+    expect(admin).toContain("settings:manage");
   });
 
   it("Manager can read/create/update but not delete, and can appraise reports", () => {
@@ -58,9 +67,11 @@ describe("AREA_ROLES", () => {
   it("grants only what its own area needs", () => {
     const byName = new Map(AREA_ROLES.map((r) => [r.name, r.permissions]));
 
-    // An assets admin runs the register — and nothing outside it.
+    // An assets admin runs the register — and nothing outside it. Deleting from it
+    // is the superadmin tier's, which is the whole point of the re-cut.
     const assets = byName.get("Assets & devices admin")!;
-    expect(assets).toContain("assets:delete");
+    expect(assets).not.toContain("assets:delete");
+    expect(byName.get("Assets & devices superadmin")!).toContain("assets:delete");
     expect(assets).toContain("devices:create");
     expect(assets).not.toContain("users:read");
     expect(assets).not.toContain("settings:manage");
@@ -68,10 +79,30 @@ describe("AREA_ROLES", () => {
     // A viewer reads and no more.
     expect(byName.get("Assets & devices viewer")!.every((p) => p.endsWith(":read"))).toBe(true);
 
-    // A reports role has to be able to read the journal a report is built from.
-    expect(byName.get("Reports & analytics viewer")!).toContain("journal:read");
-    expect(byName.get("Reports & analytics viewer")!).not.toContain("reports:manage");
-    expect(byName.get("Reports & analytics admin")!).toContain("reports:manage");
+    // A reports role has to be able to read the journal a report is built from —
+    // and reports and analytics are separate roles now, so neither carries the other.
+    expect(byName.get("Reports viewer")!).toContain("journal:read");
+    expect(byName.get("Reports viewer")!).not.toContain("reports:manage");
+    expect(byName.get("Reports viewer")!).not.toContain("analytics:view");
+    expect(byName.get("Reports admin")!).toContain("reports:manage");
+    expect(byName.get("Analytics viewer")!).toContain("analytics:view");
+    expect(byName.get("Analytics viewer")!).not.toContain("reports:manage");
+
+    // A report family is exactly its own family: the shift lead's roster reports
+    // carry no cartridge figures.
+    const shiftReports = byName.get("Shift reports viewer")!;
+    expect(shiftReports).toContain("reports:view:shift_roster");
+    expect(shiftReports).not.toContain("reports:view:part_register");
+
+    // Tasks and downtime are different jobs; neither role grants the other's work.
+    expect(byName.get("Tasks admin")!).not.toContain("downtime:write");
+    expect(byName.get("Downtime recorder")!).not.toContain("tasks:create");
+    // The tier that was asked for: works on what they are given, hands out nothing.
+    expect(byName.get("Tasks editor")!).toContain("tasks:update");
+    expect(byName.get("Tasks editor")!).not.toContain("tasks:create");
+
+    // Seeing your own standing does not carry the right to enumerate the org.
+    expect(byName.get("Points & leaderboard viewer")!).not.toContain("departments:read");
   });
 
   it("keeps the destructive and bulk verbs to the admin tier", () => {

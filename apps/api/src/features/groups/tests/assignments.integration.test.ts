@@ -61,7 +61,7 @@ describe("group assignments", () => {
   it("round-trips exactly what was assigned", async () => {
     const cookie = await superadmin();
     const group = (await inject("POST", "/groups", cookie, { name: "Support" })).json();
-    const role = (await inject("GET", "/roles", cookie)).json().data[0];
+    const role = (await inject("GET", "/roles?pageSize=100", cookie)).json().data[0];
 
     await inject("PUT", `/groups/${group.id}/roles`, cookie, { ids: [role.id] });
 
@@ -73,7 +73,7 @@ describe("group assignments", () => {
   it("reflects a replaced set rather than accumulating", async () => {
     const cookie = await superadmin();
     const group = (await inject("POST", "/groups", cookie, { name: "Support" })).json();
-    const roles = (await inject("GET", "/roles", cookie)).json().data;
+    const roles = (await inject("GET", "/roles?pageSize=100", cookie)).json().data;
 
     await inject("PUT", `/groups/${group.id}/roles`, cookie, { ids: [roles[0].id, roles[1].id] });
     await inject("PUT", `/groups/${group.id}/roles`, cookie, { ids: [roles[1].id] });

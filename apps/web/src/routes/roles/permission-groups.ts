@@ -38,9 +38,17 @@ const GROUP_DEFS: { id: string; label: string; resources: string[] }[] = [
   {
     id: "work",
     label: "Work",
-    resources: ["journal", "tasks", "downtime", "comments", "attachments", "analytics"],
+    resources: ["journal", "tasks", "downtime", "comments", "attachments"],
   },
-  { id: "reports", label: "Reports", resources: ["reports", "leaderboard"] },
+  {
+    // Analytics used to sit in Work, beside the journal and tasks. It is not work —
+    // it is a way of looking at work that has already happened, which is the same
+    // thing the reports and the leaderboard are. Somebody deciding who may see the
+    // company's figures should find all of them in one place.
+    id: "reports",
+    label: "Reports & insights",
+    resources: ["reports", "leaderboard", "analytics", "insights"],
+  },
   { id: "scheduling", label: "Scheduling", resources: ["shifts"] },
   { id: "routines", label: "Routines", resources: ["routines"] },
   { id: "assets", label: "Assets", resources: ["assets", "devices"] },

@@ -15,6 +15,9 @@ import {
   ssoProviderConfigSchema,
   suggestUsername as usernameFromEmail,
   ALL_REPORT_VIEW_PERMISSIONS,
+  REPORT_SOURCES,
+  REPORT_VIEW_PERMISSION,
+  type ReportSource,
 } from "@reportly/shared";
 import { and, eq, notInArray } from "drizzle-orm";
 
@@ -46,11 +49,38 @@ const DEMO_DEPT_BACKEND = "22222222-2222-2222-2222-222222222222";
 const DEMO_DEPT_SALES = "22222222-2222-2222-2222-222222222223";
 const SUPERADMIN_GROUP = "Superadmin";
 
-// System roles and the permissions they grant. Superadmin/Admin get everything;
-// Manager may read/create/update; Member is read-only. (The Superadmin *group*
-// additionally bypasses company scoping — that is a group property, not a role.)
+/**
+ * Deleting is a superadmin's act, not an administrator's — the rule the tiers below
+ * and the area roles further down both follow. An edit leaves a history; a deletion
+ * takes the history with it.
+ */
+const canDelete = (permission: Permission): boolean => permission.endsWith(":delete");
+
+/**
+ * Two more that an "everything but delete" administrator does not get: restoring over
+ * the database, and raising log volume across every company. Neither is day-to-day
+ * administration, and both are hard to undo.
+ */
+const NEVER_BELOW_SUPERADMIN: readonly Permission[] = [
+  PERMISSIONS.BACKUPS_MANAGE,
+  PERMISSIONS.DEBUG_TOGGLE,
+];
+
+// System roles and the permissions they grant, as a ladder over the whole system:
+// Superadmin gets everything; Admin gets everything except deleting and the two
+// switches that are destructive by nature; Manager may read/create/update; Member is
+// read-only. (The Superadmin *group* additionally bypasses company scoping — that is
+// a group property, not a role.)
 export function permissionsFor(role: "Superadmin" | "Admin" | "Manager" | "Member"): Permission[] {
-  if (role === "Superadmin" || role === "Admin") return [...ALL_PERMISSIONS];
+  if (role === "Superadmin") return [...ALL_PERMISSIONS];
+  // Everything but deletion. An administrator runs the system day to day; removing a
+  // record — and the history that goes with it — is a superadmin's decision, as are
+  // restoring over the database and turning up logging across every company.
+  if (role === "Admin") {
+    return ALL_PERMISSIONS.filter(
+      (p) => !canDelete(p) && !(NEVER_BELOW_SUPERADMIN as readonly string[]).includes(p),
+    );
+  }
   if (role === "Manager") {
     // The regex covers read/create/update; a manager also appraises their downline
     // (:appraise), records downtime and attaches files (:write) — none of which the
@@ -163,14 +193,54 @@ const SYSTEM_ROLES = ["Superadmin", "Admin", "Manager", "Member"] as const;
  * database), and cloneable when an organisation wants a variant.
  */
 /**
- * Area roles that have exactly one tier, and why.
+ * A viewer role per family of reports, built from `REPORT_SOURCES`.
  *
- * Most areas come as admin/editor/viewer. These do not, because a middle tier
- * would be a job nobody has: points are earned rather than edited, a chart is a
- * way of looking at work that already happened, `backups:manage` is one
- * permission covering take/schedule/restore, a queue is either watched or
- * worked, and cartridges are done at a bench or administered — there is no
- * middle person who edits the model catalogue but never touches a part.
+ * Seventeen reports is too many to hand out one at a time and too varied to hand
+ * out at once: the shift lead who needs the roster reports has no business in the
+ * cartridge consumption figures. The families are the ones the reports already fall
+ * into by name, and a report added later lands in its family without anybody editing
+ * this list — which is the point, since the next report will be written by somebody
+ * who has not read this file.
+ *
+ * `journal:read` rides along because a report that reads the journal runs empty
+ * without it.
+ */
+const REPORT_FAMILIES: { name: string; matches: (source: ReportSource) => boolean }[] = [
+  { name: "Journal reports viewer", matches: (s) => s === "journal" },
+  {
+    name: "Reliability reports viewer",
+    matches: (s) => s === "downtime" || s === "reliability",
+  },
+  { name: "Shift reports viewer", matches: (s) => s.startsWith("shift_") },
+  { name: "Routine reports viewer", matches: (s) => s.startsWith("routine_") },
+  {
+    name: "Cartridge reports viewer",
+    matches: (s) => s.startsWith("part_") || s === "printer_health",
+  },
+  { name: "Leaderboard reports viewer", matches: (s) => s === "leaderboard" },
+];
+
+const REPORT_FAMILY_ROLES: { name: string; permissions: Permission[] }[] = REPORT_FAMILIES.map(
+  (family) => ({
+    name: family.name,
+    permissions: [
+      ...REPORT_SOURCES.filter(family.matches).map((source) => REPORT_VIEW_PERMISSION[source]),
+      PERMISSIONS.JOURNAL_READ,
+    ],
+  }),
+);
+
+/**
+ * Area roles that do **not** come as a full ladder, and why.
+ *
+ * Most areas ship viewer / editor / admin, plus a superadmin wherever the area has
+ * something to delete. These do not, because the missing tiers would be jobs nobody
+ * has: points are earned rather than edited, a chart is a way of looking at work that
+ * already happened, `backups:manage` is one permission covering take/schedule/restore,
+ * a queue is either watched or worked, cartridges are done at a bench or administered,
+ * and downtime is either read or recorded — there is no middle person in any of them.
+ * A report family is a viewer by definition: there is nothing to edit about a shipped
+ * report, and building saved views on top of them is what `Reports admin` is for.
  *
  * Exported because the role-shape tests assert against it. It used to be copied
  * into two test files, which meant adding a single-tier role failed two tests
@@ -180,10 +250,16 @@ export const SINGLE_TIER_ROLES = [
   "Points & leaderboard viewer",
   "Backup operator",
   "Insights viewer",
+  "Analytics viewer",
   "Queue viewer",
   "Queue operator",
   "Cartridge technician",
   "Cartridge admin",
+  "Downtime viewer",
+  "Downtime recorder",
+  "Reports viewer",
+  "Reports admin",
+  ...REPORT_FAMILIES.map((family) => family.name),
 ] as const;
 
 export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
@@ -319,71 +395,82 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
     permissions: [PERMISSIONS.JOURNAL_READ, PERMISSIONS.ATTACHMENTS_READ],
   },
 
-  /* ---------------------------------------------------- reports & analytics --- */
+  /* ---------------------------------------------------------------- reports --- */
+  // Reports and analytics used to be one role. They are different things: the
+  // reports library is a set of tables somebody runs and exports, the analytics and
+  // insights charts are a management view of how the work is going. Granting one
+  // should not grant the other.
   {
-    name: "Reports & analytics admin",
+    // Builds and shares saved views on top of the reports themselves.
+    name: "Reports admin",
     permissions: [
       ...ALL_REPORT_VIEW_PERMISSIONS,
       PERMISSIONS.REPORTS_MANAGE,
-      PERMISSIONS.ANALYTICS_VIEW,
-      PERMISSIONS.INSIGHTS_VIEW,
-      // The Reports area includes the leaderboard; its department picker needs the
-      // department list.
-      PERMISSIONS.LEADERBOARD_VIEW,
-      PERMISSIONS.DEPARTMENTS_READ,
-      // A report reads the journal; without this it would run empty.
       PERMISSIONS.JOURNAL_READ,
     ],
   },
   {
-    // Builds and shares saved views (reports:manage) but does not get the
-    // reliability analytics, which are a management figure rather than a report.
-    name: "Reports & analytics editor",
-    permissions: [
-      ...ALL_REPORT_VIEW_PERMISSIONS,
-      PERMISSIONS.REPORTS_MANAGE,
-      PERMISSIONS.INSIGHTS_VIEW,
-      PERMISSIONS.LEADERBOARD_VIEW,
-      PERMISSIONS.DEPARTMENTS_READ,
-      PERMISSIONS.JOURNAL_READ,
-    ],
-  },
-  {
-    name: "Reports & analytics viewer",
-    permissions: [
-      ...ALL_REPORT_VIEW_PERMISSIONS,
-      PERMISSIONS.INSIGHTS_VIEW,
-      PERMISSIONS.LEADERBOARD_VIEW,
-      PERMISSIONS.DEPARTMENTS_READ,
-      PERMISSIONS.JOURNAL_READ,
-    ],
+    // Runs and exports every shipped report — viewing includes taking a copy.
+    name: "Reports viewer",
+    permissions: [...ALL_REPORT_VIEW_PERMISSIONS, PERMISSIONS.JOURNAL_READ],
   },
 
-  /* -------------------------------------------------------- tasks & downtime --- */
+  /* -------------------------------------------------- reports, by subject --- */
+  // Now that every report has its own key, a role per family: a shift lead gets the
+  // rota reports without the cartridge figures, and a maintenance planner the
+  // reliability ones without anybody's leaderboard standing. Generated from
+  // REPORT_SOURCES rather than typed out, so a report added later joins its family
+  // by name instead of by somebody remembering.
+  ...REPORT_FAMILY_ROLES,
+
+  /* -------------------------------------------------------------- analytics --- */
   {
-    name: "Tasks & downtime admin",
+    // Read-only by nature, like the leaderboard: a chart is a way of looking at work
+    // that already happened. This is the reliability and downtime analytics, which
+    // is a management figure rather than a report anybody files.
+    name: "Analytics viewer",
+    permissions: [PERMISSIONS.ANALYTICS_VIEW, PERMISSIONS.JOURNAL_READ],
+  },
+
+  /* ------------------------------------------------------------------ tasks --- */
+  // Tasks and downtime used to be one role, and they are not one job: handing work
+  // out is a supervisor's act, recording an outage is whoever was standing at the
+  // line when it stopped. Somebody who logs downtime should not thereby be able to
+  // assign work to other people.
+  {
+    // The person who *does* the work. `tasks:update` is narrowed by the server to a
+    // task they hold — see `assertMayUpdateTask` — so this tier moves their own work
+    // along and gives work to nobody. The tier that was asked for and did not exist:
+    // "cannot create tasks, but does work on the tasks assigned to them".
+    name: "Tasks editor",
+    permissions: [PERMISSIONS.TASKS_READ, PERMISSIONS.TASKS_UPDATE],
+  },
+  {
+    // Hands work out, and may update anybody's task.
+    name: "Tasks admin",
     permissions: [
       PERMISSIONS.TASKS_READ,
       PERMISSIONS.TASKS_CREATE,
       PERMISSIONS.TASKS_UPDATE,
       PERMISSIONS.TASKS_DELETE,
-      PERMISSIONS.DOWNTIME_READ,
-      PERMISSIONS.DOWNTIME_WRITE,
     ],
   },
   {
-    name: "Tasks & downtime editor",
-    permissions: [
-      PERMISSIONS.TASKS_READ,
-      PERMISSIONS.TASKS_CREATE,
-      PERMISSIONS.TASKS_UPDATE,
-      PERMISSIONS.DOWNTIME_READ,
-      PERMISSIONS.DOWNTIME_WRITE,
-    ],
+    name: "Tasks viewer",
+    permissions: [PERMISSIONS.TASKS_READ],
+  },
+
+  /* --------------------------------------------------------------- downtime --- */
+  {
+    // Two roles rather than a ladder: `downtime:write` is the whole job, and there
+    // is no third thing to administer. Recording an outage is not editing a record
+    // somebody else owns, so no delete key exists to hold back.
+    name: "Downtime recorder",
+    permissions: [PERMISSIONS.DOWNTIME_READ, PERMISSIONS.DOWNTIME_WRITE],
   },
   {
-    name: "Tasks & downtime viewer",
-    permissions: [PERMISSIONS.TASKS_READ, PERMISSIONS.DOWNTIME_READ],
+    name: "Downtime viewer",
+    permissions: [PERMISSIONS.DOWNTIME_READ],
   },
 
   /* ----------------------------------------------------------------- shifts --- */
@@ -530,14 +617,15 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
   /* ------------------------------------------------ single-tier by nature --- */
   {
     // Points are earned, never granted, so there is no editor tier to have. The
-    // board is scoped to the viewer's own reporting line; departments:read powers
-    // its picker.
+    // board is scoped to the viewer's own reporting line.
+    //
+    // Deliberately WITHOUT departments:read. It was held for one reason — the
+    // board's department picker read the whole department list — and that is a
+    // picker's need, not a role's: seeing the leaderboard should not carry the
+    // right to enumerate the organisation. The picker reads /me/departments
+    // instead, which answers for the caller alone.
     name: "Points & leaderboard viewer",
-    permissions: [
-      PERMISSIONS.LEADERBOARD_VIEW,
-      PERMISSIONS.POINTS_READ,
-      PERMISSIONS.DEPARTMENTS_READ,
-    ],
+    permissions: [PERMISSIONS.LEADERBOARD_VIEW, PERMISSIONS.POINTS_READ],
   },
   {
     // Read-only by nature, like the leaderboard: a chart is a way of looking at
@@ -624,6 +712,36 @@ function def(
 for (const role of AREA_ROLES) {
   if (/(editor|admin)$/.test(role.name)) role.permissions.push(PERMISSIONS.HISTORY_READ);
 }
+
+/**
+ * **Deleting is a superadmin's act, not an administrator's.**
+ *
+ * An admin tier used to carry its area's `:delete` keys, so the role somebody is
+ * given to run the day — add a device, fix a typo, place a person — was also the
+ * role that could remove the record entirely. Those are different decisions with
+ * different consequences: an edit is visible in the history, a deletion takes the
+ * history with it.
+ *
+ * So every admin tier loses `:delete`, and every area that *has* a `:delete` key
+ * gains a **superadmin** tier which is its admin plus exactly those keys. Derived
+ * rather than typed out, because the two lists drifting apart is precisely the bug
+ * this is meant to prevent — and an area whose deletions are added later gets its
+ * superadmin tier the moment they are.
+ */
+const SUPERADMIN_TIERS = AREA_ROLES.filter(
+  (role) => role.name.endsWith(" admin") && role.permissions.some(canDelete),
+).map((role) => ({
+  name: role.name.replace(/ admin$/, " superadmin"),
+  permissions: [...role.permissions],
+}));
+
+for (const role of AREA_ROLES) {
+  if (role.name.endsWith(" admin")) {
+    role.permissions = role.permissions.filter((permission) => !canDelete(permission));
+  }
+}
+
+AREA_ROLES.push(...SUPERADMIN_TIERS);
 
 const SYSTEM_REPORT_VIEWS: { name: string; description: string; definition: ReportDefinition }[] = [
   {

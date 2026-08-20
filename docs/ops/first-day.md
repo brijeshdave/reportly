@@ -85,12 +85,32 @@ A group holds three things: **roles**, the **companies** they apply to, and the
 | IT staff          | Member  | Your company, their site | Engineers, the service desk |
 
 Member is read-plus-file: enough to record work and see their own. Manager adds
-creating and updating, plus the reliability figures. Admin is everything short of
-superadmin.
+creating and updating, plus the reliability figures. **Admin is everything except
+deleting** — and except restoring a backup or turning on debug logging. Superadmin
+is everything.
+
+That last distinction is deliberate. An edit leaves a history behind; a deletion
+takes the history with it, so removing records is a superadmin's decision rather
+than part of running the system day to day.
 
 Need something narrower — "keeps the device register current but deletes
-nothing"? Clone a system role and remove what it should not have. There are area
-roles for each of the ten areas, with an admin, an editor and a viewer apiece.
+nothing"? That one is now a role you are given rather than one you build: each area
+ships a **viewer**, an **editor** and an **admin**, plus a **superadmin** wherever
+the area has something to delete. Failing that, clone a system role and remove what
+it should not have.
+
+Two of them are worth knowing about by name:
+
+| Role                  | Who it is for                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tasks editor**      | Works the tasks they are given — moves their own along, and hands work to nobody. It cannot create a task, and the server refuses it any change to somebody else's. |
+| **Downtime recorder** | Records outages. Nothing to do with handing work out; the two used to be one role and are not one job.                                                              |
+
+Reports come apart the same way: **Reports viewer** runs and exports every shipped
+report, **Reports admin** also builds and shares saved views, **Analytics viewer**
+is the reliability and downtime figures — and there is a viewer per family of
+reports (`Shift reports viewer`, `Cartridge reports viewer`, …) for handing over the
+rota reports without the cartridge figures.
 
 ## 5. The reporting line
 

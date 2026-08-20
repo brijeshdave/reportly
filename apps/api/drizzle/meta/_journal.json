@@ -36,6 +36,13 @@
       "when": 1786359600000,
       "tag": "0004_history_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786446000000,
+      "tag": "0005_role_recut",
+      "breakpoints": true
     }
   ]
 }

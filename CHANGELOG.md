@@ -6,6 +6,34 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Deleting is a superadmin's act, not an administrator's.** Every `* admin` system
+  role has lost its `:delete` keys, and each area that can delete gained a
+  `* superadmin` tier that holds them. The broad **Admin** role likewise: everything
+  except deleting, restoring a backup, and turning on debug logging. An edit leaves a
+  history behind; a deletion takes the history with it.
+  **This is the one change in this release that takes something away.** Upgrading does
+  _not_ promote anyone: grant `<area> superadmin` to the groups that should still be
+  able to delete. Nothing else about their access changes.
+- **Tasks and downtime are separate roles.** Handing work out and recording an outage
+  are different jobs; `Tasks & downtime *` covered both. Groups holding the old role
+  come out holding both halves, so no access is lost. New with the split: **Tasks
+  editor** — reads and updates, creates nothing — the tier for somebody who works the
+  tasks they are given and hands work to nobody. The server already refused them
+  anybody else's task; there was simply no role that used it.
+- **Reports and analytics are separate roles**, and there is now a viewer per family
+  of reports (`Shift reports viewer`, `Cartridge reports viewer`, `Reliability reports
+viewer`, …), so a shift lead can hold the rota reports without the cartridge
+  figures. `Analytics viewer` is the reliability and downtime charts on their own.
+- **`analytics` moved out of the Work permission group** into **Reports & insights**,
+  beside reports, the leaderboard and insights — it is a way of looking at work, not
+  work.
+- **Points & leaderboard viewer no longer carries `departments:read`.** It held it so
+  the board's department picker could list departments; seeing your own standing
+  should not carry the right to enumerate the organisation. The picker reads
+  `/me/departments` instead.
+
 ### Added
 
 - **`history:read` — a record's own change history, without the audit trail.** The

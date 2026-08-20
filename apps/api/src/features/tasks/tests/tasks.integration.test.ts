@@ -96,7 +96,7 @@ async function makeUser(
 
 async function makeGroup(admin: string, name: string, roleName: string): Promise<string> {
   const group = (await inject("POST", "/groups", admin, { name })).json();
-  const roles = (await inject("GET", "/roles", admin)).json().data;
+  const roles = (await inject("GET", "/roles?pageSize=100", admin)).json().data;
   const role = roles.find((r: { name: string }) => r.name === roleName);
   await inject("PUT", `/groups/${group.id}/roles`, admin, { ids: [role.id] });
   return group.id as string;
@@ -370,5 +370,76 @@ describe("tasks", () => {
     const still = await inject("GET", `/journal/${report.id}`, operator.cookie);
     expect(still.statusCode).toBe(200);
     expect(still.json().taskId).toBeNull();
+  });
+
+  it("the Tasks editor tier works its own tasks and hands work to nobody", async () => {
+    // The tier that was asked for and did not exist: tasks:read + tasks:update, no
+    // tasks:create. What makes it safe is not the missing key but the row rule —
+    // update is refused on anybody else's task, so "editor" cannot quietly become
+    // "edits everything".
+    const admin = await superadmin();
+    const { lead, operator, dept } = await buildChain(admin);
+    const worker = await makeUser(
+      admin,
+      "Kiran Worker",
+      "kiran",
+      await makeGroup(admin, "Task workers", "Tasks editor"),
+    );
+    // Under the lead, or there would be nobody who may hand them a task.
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: lead.id, rank: "lead" },
+        { userId: operator.id, rank: "member", reportsToId: lead.id },
+        { userId: worker.id, rank: "member", reportsToId: lead.id },
+      ],
+    });
+
+    const mine = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Check the guard interlock",
+        assigneeId: worker.id,
+      })
+    ).json();
+    const somebodyElses = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Grease the bearings",
+        assigneeId: operator.id,
+      })
+    ).json();
+
+    // Their own task moves along.
+    expect(
+      (await inject("PATCH", `/tasks/${mine.id}`, worker.cookie, { state: "in_progress" }))
+        .statusCode,
+    ).toBe(200);
+
+    // But they cannot retitle it, reassign it, or touch anybody else's.
+    expect(
+      (await inject("PATCH", `/tasks/${mine.id}`, worker.cookie, { title: "Something else" }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await inject("PATCH", `/tasks/${mine.id}`, worker.cookie, { assigneeId: operator.id }))
+        .statusCode,
+    ).toBe(403);
+    // 404, not 403: a task outside their line is not theirs to know about, so the
+    // API declines to confirm it exists.
+    expect(
+      (
+        await inject("PATCH", `/tasks/${somebodyElses.id}`, worker.cookie, {
+          state: "done",
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    // And they cannot hand work out at all.
+    expect(
+      (
+        await inject("POST", "/tasks", worker.cookie, {
+          title: "Do this for me",
+          assigneeId: operator.id,
+        })
+      ).statusCode,
+    ).toBe(403);
   });
 });

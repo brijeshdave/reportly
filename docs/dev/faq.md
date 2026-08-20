@@ -116,6 +116,37 @@ Three consequences worth knowing before changing it:
   rest — that the key is in the catalogue, that no key outlives its report, and
   that every runner takes the caller so it _can_ narrow its rows.
 
+### Why can an admin role not delete anything?
+
+Because deleting is not administration. An edit leaves the change history behind,
+which is how anybody afterwards works out what happened; a deletion takes the
+history with it. Those are different consequences, so they are different tiers:
+every area ships a `* admin` that runs it day to day, and — wherever the area has a
+`:delete` key — a `* superadmin` that holds exactly those keys and nothing else.
+The broad `Admin` role follows the same rule, plus `backups:manage` (restoring
+replaces the database) and `debug:toggle` (log volume, everywhere).
+
+Two things to know before changing it:
+
+- **The superadmin tiers are derived, not typed.** `SUPERADMIN_TIERS` in the seed
+  copies each `* admin` that holds a `:delete`, then the admins are stripped. An
+  area whose deletions are added later gets its superadmin tier the moment they
+  are — and the two lists cannot drift apart, because there is only one list.
+- **Upgrading does not promote anybody.** Migration `0005_role_recut` removes the
+  keys and leaves the decision to whoever runs the server. A migration that quietly
+  handed the deletion right to every group that used to have it would have made the
+  change meaningless.
+
+### Why is a role's tier not always viewer/editor/admin?
+
+Because a tier nobody would ever be given is worse than a missing one. Most areas
+ship the full ladder; the exceptions are declared in `SINGLE_TIER_ROLES` beside the
+roles themselves, each with its reason — points are earned rather than edited,
+`backups:manage` is one permission covering take/schedule/restore, downtime is
+either read or recorded, and a shipped report is a viewer by definition. The
+role-shape test reads that list, so adding a deliberate exception is one line in one
+place rather than a test edit.
+
 ### Why do reports narrow rows by site and reporting line?
 
 An audit in 2026-08 found that of seventeen report sources, only two narrowed

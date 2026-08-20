@@ -50,7 +50,7 @@ function inject(method: string, url: string, cookie: string, payload?: unknown) 
 }
 
 const systemRole = async (cookie: string, name: string) =>
-  (await inject("GET", "/roles", cookie))
+  (await inject("GET", "/roles?pageSize=100", cookie))
     .json()
     .data.find((role: { name: string }) => role.name === name);
 

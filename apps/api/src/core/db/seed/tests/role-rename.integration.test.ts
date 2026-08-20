@@ -1,5 +1,6 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
-// The three-tier restructure renamed nine system roles and merged three others.
+// The tier restructure renamed nine system roles and merged three others, and the
+// 2026-08 re-cut split the combined ones apart and moved deletion up a tier.
 // The danger in that is entirely about `group_roles`: it references a role by id,
 // so replacing a role — new row in, old row out — would leave every group that
 // held it pointing at nothing, and strip an organisation of access during an
@@ -8,13 +9,19 @@
 // So these tests are about the property that matters: a group that held a role
 // before the migration still holds one after it, and still has the permissions it
 // was given. Migration 0064 renames in place for exactly this reason.
+import { PERMISSIONS } from "@reportly/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/core/db/index.js";
 import { appPool, logPool } from "@/core/db/pool.js";
 import { groupRoles, groups, permissions, rolePermissions, roles } from "@/core/db/schema.js";
-import { AREA_ROLES, SINGLE_TIER_ROLES, seedDatabase } from "@/core/db/seed/index.js";
+import {
+  AREA_ROLES,
+  SINGLE_TIER_ROLES,
+  permissionsFor,
+  seedDatabase,
+} from "@/core/db/seed/index.js";
 import { redis } from "@/core/redis.js";
 import { resetDb } from "../../../../../test/reset-db.js";
 
@@ -78,7 +85,7 @@ describe("three-tier area roles", () => {
     expect(held).toHaveLength(1);
   });
 
-  it("gives every area three tiers, except where a middle tier would be meaningless", async () => {
+  it("gives every area the full ladder, except where a tier would be meaningless", async () => {
     // Guards the shape itself. The exceptions are deliberate and declared beside
     // the roles they describe, not copied here — a single-tier role added to the
     // seed used to fail two tests that had no opinion about it.
@@ -94,23 +101,73 @@ describe("three-tier area roles", () => {
     }
 
     for (const [area, tiers] of byArea) {
-      expect([...tiers].sort(), `${area} is missing a tier`).toEqual(["admin", "editor", "viewer"]);
+      // viewer/editor/admin always; superadmin exactly where the area can delete,
+      // which the seed derives rather than declares.
+      const expected = ["admin", "editor", "viewer"];
+      if (tiers.includes("superadmin")) expected.push("superadmin");
+      expect([...tiers].sort(), `${area} is missing a tier`).toEqual([...expected].sort());
     }
   });
 
   it("makes each tier a subset of the one above it", async () => {
     // A viewer who can do something their admin cannot is a mistake, every time.
     const byName = new Map(AREA_ROLES.map((r) => [r.name, new Set<string>(r.permissions)]));
+    const above: Record<string, string> = {
+      viewer: "editor",
+      editor: "admin",
+      admin: "superadmin",
+    };
 
     for (const role of AREA_ROLES) {
       if ((SINGLE_TIER_ROLES as readonly string[]).includes(role.name)) continue;
       const tier = role.name.split(" ").pop()!;
-      if (tier === "admin") continue;
       const area = role.name.slice(0, -(tier.length + 1));
-      const above = byName.get(`${area} ${tier === "viewer" ? "editor" : "admin"}`)!;
-      const extra = [...byName.get(role.name)!].filter((p) => !above.has(p));
+      const next = byName.get(`${area} ${above[tier] ?? ""}`);
+      // The top of a ladder has nothing above it — an area with no delete key stops
+      // at admin, and that is the point of deriving the superadmin tier.
+      if (!next) continue;
+      const extra = [...byName.get(role.name)!].filter((p) => !next.has(p));
       expect(extra, `${role.name} grants what the tier above it does not`).toEqual([]);
     }
+  });
+
+  it("keeps deletion out of every admin tier, and gives it to a superadmin instead", async () => {
+    // The rule the re-cut exists for: running the area day to day is one job,
+    // removing records (and the history that goes with them) is another.
+    const deletes = (name: string) =>
+      (AREA_ROLES.find((r) => r.name === name)?.permissions ?? []).filter((p) =>
+        p.endsWith(":delete"),
+      );
+
+    for (const role of AREA_ROLES) {
+      if (!role.name.endsWith(" admin")) continue;
+      expect(deletes(role.name), `${role.name} can still delete`).toEqual([]);
+    }
+
+    // And every superadmin exists because its admin had deletions to take away.
+    for (const role of AREA_ROLES) {
+      if (!role.name.endsWith(" superadmin")) continue;
+      expect(deletes(role.name).length, `${role.name} deletes nothing`).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives the broad Admin role everything except deleting and the destructive pair", async () => {
+    const admin = new Set(permissionsFor("Admin"));
+    const superadmin = permissionsFor("Superadmin");
+
+    expect([...admin].filter((p) => p.endsWith(":delete"))).toEqual([]);
+    expect(admin.has(PERMISSIONS.BACKUPS_MANAGE)).toBe(false);
+    expect(admin.has(PERMISSIONS.DEBUG_TOGGLE)).toBe(false);
+    // Everything else it is: an administrator is not a lesser role, it is one
+    // without the irreversible verbs.
+    const missing = superadmin.filter(
+      (p) =>
+        !admin.has(p) &&
+        !p.endsWith(":delete") &&
+        p !== PERMISSIONS.BACKUPS_MANAGE &&
+        p !== PERMISSIONS.DEBUG_TOGGLE,
+    );
+    expect(missing).toEqual([]);
   });
 
   it("retires the merged roles rather than leaving them empty", async () => {

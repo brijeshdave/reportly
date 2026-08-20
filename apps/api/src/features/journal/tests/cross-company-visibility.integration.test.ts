@@ -65,7 +65,7 @@ async function superadmin(): Promise<string> {
 
 async function makeGroup(admin: string, name: string, roleName: string): Promise<string> {
   const group = (await inject("POST", "/groups", admin, COMPANY_A, { name })).json();
-  const roles = (await inject("GET", "/roles", admin, COMPANY_A)).json().data;
+  const roles = (await inject("GET", "/roles?pageSize=100", admin, COMPANY_A)).json().data;
   const role = roles.find((r: { name: string }) => r.name === roleName);
   await inject("PUT", `/groups/${group.id}/roles`, admin, COMPANY_A, { ids: [role.id] });
   return group.id as string;

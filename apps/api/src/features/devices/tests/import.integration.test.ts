@@ -153,7 +153,7 @@ describe("device import", () => {
 
     // A group holding only the Assets & devices viewer role (read, no import), and a person in it.
     const group = (await inject("POST", "/groups", admin, { name: "Viewers" })).json();
-    const roles = (await inject("GET", "/roles", admin)).json().data;
+    const roles = (await inject("GET", "/roles?pageSize=100", admin)).json().data;
     const viewer = roles.find((r: { name: string }) => r.name === "Assets & devices viewer");
     await inject("PUT", `/groups/${group.id}/roles`, admin, { ids: [viewer.id] });
 

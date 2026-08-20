@@ -103,7 +103,7 @@ async function makeUser(
 /** A group scoped to the demo company holding the named role. */
 async function makeGroup(admin: string, name: string, roleName: string): Promise<string> {
   const group = (await inject("POST", "/groups", admin, { name })).json();
-  const roles = (await inject("GET", "/roles", admin)).json().data;
+  const roles = (await inject("GET", "/roles?pageSize=100", admin)).json().data;
   const role = roles.find((r: { name: string }) => r.name === roleName);
   await inject("PUT", `/groups/${group.id}/roles`, admin, { ids: [role.id] });
   return group.id as string;

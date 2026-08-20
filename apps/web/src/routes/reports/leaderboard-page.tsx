@@ -31,7 +31,7 @@ import { Badge, Card, EmptyState, PageHeader } from "@/components/ui/primitives.
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { cn } from "@/lib/cn.js";
-import { fetchDepartments, fetchUserDepartments } from "@/services/departments.js";
+import { fetchDepartments, fetchMyDepartments } from "@/services/departments.js";
 import { fetchLeaderboard } from "@/services/reports.js";
 
 export function LeaderboardPage() {
@@ -40,10 +40,20 @@ export function LeaderboardPage() {
   // rather than being defaulted into one.
   const isManagement = session.isSuperadmin || usePermission(PERMISSIONS.ANALYTICS_VIEW);
 
-  const departments = useQuery({ queryKey: ["departments"], queryFn: fetchDepartments });
+  // Two sources, and which one is used says who is asking. Management picks any
+  // department, so it reads the company list — and only management asks for it, since
+  // `departments:read` is the right to enumerate the organisation and seeing your own
+  // standing should not carry it. Everybody else picks from their own departments,
+  // which /me answers for the caller alone and needs no permission at all.
+  const canListDepartments = usePermission(PERMISSIONS.DEPARTMENTS_READ);
+  const departments = useQuery({
+    queryKey: ["departments"],
+    queryFn: fetchDepartments,
+    enabled: isManagement && canListDepartments,
+  });
   const myDepartments = useQuery({
     queryKey: ["users", "departments", session.user.id],
-    queryFn: () => fetchUserDepartments(session.user.id),
+    queryFn: () => fetchMyDepartments(),
   });
 
   const [departmentId, setDepartmentId] = useState<string | null>(null);
@@ -83,7 +93,9 @@ export function LeaderboardPage() {
   // Flat from the API; each option carries its ancestors as a second line so a
   // department deep in the tree still says where it sits.
   const options = departmentOptions(
-    (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
+    departments.data
+      ? departments.data.map((d) => ({ value: d.id, name: d.name, path: d.path }))
+      : mine.map((d) => ({ value: d.departmentId, name: d.name, path: d.path })),
   );
   const entries = board.data?.entries ?? [];
   const podium = entries.filter((e) => e.rank <= 3);

@@ -68,7 +68,7 @@ async function member(adminCookie: string): Promise<{ id: string; cookie: string
   const id = (signUp.json() as { user: { id: string } }).user.id;
 
   const group = (await inject("POST", "/groups", adminCookie, { name: "Staff" })).json();
-  const manager = (await inject("GET", "/roles", adminCookie))
+  const manager = (await inject("GET", "/roles?pageSize=100", adminCookie))
     .json()
     .data.find((role: { name: string }) => role.name === "Manager");
 

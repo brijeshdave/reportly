@@ -25,7 +25,7 @@ describe("PERMISSION_GROUPS", () => {
   it("leads with the areas the sidebar leads with", () => {
     expect(PERMISSION_GROUPS.map((g) => g.label).slice(0, 5)).toEqual([
       "Work",
-      "Reports",
+      "Reports & insights",
       "Scheduling",
       "Routines",
       "Assets",
