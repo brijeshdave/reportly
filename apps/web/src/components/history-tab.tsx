@@ -2,8 +2,10 @@
 // Field-level change history for one entity, reused by every detail page. The
 // route is `/history/:entityType/:id` rather than `/:entity/:id/history`, which
 // `/settings/:namespace/:key` shadows.
-import { formatDateTime } from "@reportly/shared";
+import { PERMISSIONS, formatDateTime } from "@reportly/shared";
 import type { EntityHistory, TrackedEntity } from "@reportly/shared";
+
+import { usePermission } from "@/components/can.js";
 
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
@@ -48,11 +50,18 @@ const columns: TableColumn<EntityHistory>[] = [
 ];
 
 export function HistoryTab({ entityType, id }: { entityType: TrackedEntity; id: string }) {
+  // Either key opens it: `history:read` for this record's own changes, `audit:view`
+  // for an administrator who holds the company-wide trail anyway. Without one, the
+  // request would 403 and the tab would show an error where an absence belongs.
+  const mayRead = usePermission(PERMISSIONS.HISTORY_READ) || usePermission(PERMISSIONS.AUDIT_VIEW);
   const list = useListResource<EntityHistory>({
     resource: `history-${entityType}-${id}`,
     path: `/history/${entityType}/${id}`,
     initial: { sortBy: "createdAt", sortDir: "desc" },
+    enabled: mayRead,
   });
+
+  if (!mayRead) return null;
 
   return (
     <DataTable

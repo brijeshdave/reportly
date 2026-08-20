@@ -7,6 +7,7 @@ import {
   PERMISSIONS,
   TRACKED_ENTITIES,
   auditEventSchema,
+  can,
   entityHistorySchema,
   listQuerySchema,
   paginatedResult,
@@ -83,7 +84,20 @@ export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
   app.get(
     "/history/:entityType/:id",
     {
-      preHandler: guard,
+      // Not the audit guard: a record's own history is a lighter thing than the
+      // company-wide trail, and someone who may read the record should be able to
+      // be granted it. An administrator with audit:view keeps it either way.
+      preHandler: [
+        app.authenticate,
+        app.companyContext,
+        async (request) => {
+          const ctx = request.ctx;
+          if (!ctx) throw new AppError(401, ERROR_CODES.UNAUTHENTICATED, "Authentication required");
+          if (!can(ctx, PERMISSIONS.HISTORY_READ) && !can(ctx, PERMISSIONS.AUDIT_VIEW)) {
+            throw new AppError(403, ERROR_CODES.FORBIDDEN, "Insufficient permissions");
+          }
+        },
+      ],
       schema: {
         tags: ["Audit"],
         summary: "Field-level change history for an entity",

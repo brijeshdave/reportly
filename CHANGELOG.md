@@ -6,6 +6,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`history:read` — a record's own change history, without the audit trail.** The
+  History tab was gated on `audit:view`, which is admin-only on purpose: audit rows
+  carry before/after snapshots of other people's data. That left somebody working a
+  task able to see the task but not what had happened to it. The new key covers the
+  change history of a record you may already read, and is granted to every editor
+  and admin tier; `audit:view` still opens it too, and the company-wide trail stays
+  admin-only. Upgrading grants it to every role that holds `audit:view`, so nobody
+  loses a tab they had.
+
 ### Fixed
 
 - **A task could be completed with the work never logged, and no way back.**

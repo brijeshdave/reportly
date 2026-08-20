@@ -616,6 +616,15 @@ function def(
   };
 }
 
+// Every editor and admin tier may read the change history of a record it may
+// already read. Applied by rule rather than typed into thirty roles: the next area
+// role added gets it for free, and nobody has to remember which tier it belonged to.
+// `audit:view` stays what it is — the company-wide trail, with other people's
+// before/after data in it, and admin-only.
+for (const role of AREA_ROLES) {
+  if (/(editor|admin)$/.test(role.name)) role.permissions.push(PERMISSIONS.HISTORY_READ);
+}
+
 const SYSTEM_REPORT_VIEWS: { name: string; description: string; definition: ReportDefinition }[] = [
   {
     name: "Daily journal",

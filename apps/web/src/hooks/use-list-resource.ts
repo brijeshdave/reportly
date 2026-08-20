@@ -27,6 +27,8 @@ export interface UseListResourceOptions {
   exportPath?: string;
   /** Overrides for the starting state, e.g. a default sort column. */
   initial?: Partial<ListState>;
+  /** Set false to hold the request back — a call that can only 403 is not worth making. */
+  enabled?: boolean;
 }
 
 export interface ListResource<T> {
@@ -55,6 +57,7 @@ export function useListResource<T>({
   path,
   exportPath,
   initial,
+  enabled = true,
 }: UseListResourceOptions): ListResource<T> {
   const [state, setState] = useState<ListState>({ ...initialListState, ...initial });
   const { data: preferences } = useQuery(preferencesQuery);
@@ -62,6 +65,7 @@ export function useListResource<T>({
   const query = useQuery({
     queryKey: [resource, "list", state],
     queryFn: () => fetchList<T>(path, state),
+    enabled,
     // Holding the previous page on screen while the next loads avoids a
     // full-table spinner on every page change.
     placeholderData: keepPreviousData,

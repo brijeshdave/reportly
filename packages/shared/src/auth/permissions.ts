@@ -356,6 +356,14 @@ export const PERMISSIONS = {
   // audit rows carry before/after snapshots of other users' data.
   AUDIT_VIEW: "audit:view",
 
+  // The change history of one record — who changed which field, and to what — on a
+  // record the holder may already read. Deliberately separate from `audit:view`:
+  // the company-wide trail is an administrator's tool, while "what happened to this
+  // task?" is an ordinary question for whoever is working on it. Someone assigned a
+  // task could see the task and not its history, which reads as the history being
+  // broken rather than withheld.
+  HISTORY_READ: "history:read",
+
   // Application logs may contain request context from any user — admin-only too.
   LOGS_VIEW: "logs:view",
 

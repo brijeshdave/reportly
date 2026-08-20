@@ -29,6 +29,13 @@
       "when": 1786273200000,
       "tag": "0003_report_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786359600000,
+      "tag": "0004_history_permission",
+      "breakpoints": true
     }
   ]
 }
