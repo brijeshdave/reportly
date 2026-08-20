@@ -21,6 +21,7 @@ import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { PERMISSION_GROUPS, actionOf, resourceLabel } from "@/routes/roles/permission-groups.js";
+import { useToast } from "@/components/toaster.js";
 import {
   cloneRole,
   createRole,
@@ -66,6 +67,7 @@ export function RoleEditorPage({ mode, roleId }: { mode: RoleEditorPageMode; rol
 function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const copy = COPY[mode];
 
   const [name, setName] = useState(
@@ -83,9 +85,19 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
     enabled: mode === "edit" && Boolean(role),
   });
 
-  const done = async () => {
+  /**
+   * Editing a role is rarely one change — tick a permission, save, tick another —
+   * so a save stays on the page and says so. Creating one has nowhere to stay, so
+   * it opens what was just made, which is where the next edit happens anyway.
+   */
+  const done = async (saved: Role) => {
     await queryClient.invalidateQueries({ queryKey: ["roles"] });
-    await navigate({ to: "/roles" });
+    toast.saved(mode === "edit" ? "Role saved." : `${saved.name} created.`);
+    // There is no read-only role page, so a new role opens in its own editor —
+    // which is where you are anyway, minus the "new" in the title.
+    if (mode !== "edit") {
+      await navigate({ to: "/roles/$roleId/edit", params: { roleId: saved.id } });
+    }
   };
 
   const save = useMutation({
@@ -223,7 +235,13 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
                               type="checkbox"
                               checked={selected.has(permission)}
                               onChange={() => toggle(permission)}
-                              aria-label={permission}
+                              // The name a screen reader announces, matching what the
+                              // screen says. It used to be the raw key — tolerable
+                              // while "users:read" read as "read", and misleading now
+                              // that a report's box says "Downtime — outages" and the
+                              // key says `reports:view:downtime`. The resource is
+                              // included because "read" alone repeats across cards.
+                              aria-label={`${resourceLabel(resource)}: ${actionOf(permission)}`}
                             />
                             {actionOf(permission)}
                           </label>

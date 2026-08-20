@@ -12,6 +12,7 @@ import {
   type ThemeMode,
   type ThemePalette,
   formatDateTime,
+  type ToastPosition,
 } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -39,7 +40,7 @@ import {
   revokeMySession,
   type MySession,
 } from "@/services/auth.js";
-import { saveMyTableDefaults } from "@/services/settings.js";
+import { saveMyTableDefaults, saveMyToasts } from "@/services/settings.js";
 import { updateMyProfile } from "@/services/users.js";
 import { AvatarUpload } from "@/components/avatar-upload.js";
 import { TwoFactorSetup } from "@/routes/profile/two-factor-setup.js";
@@ -435,6 +436,19 @@ function PreferencesTab() {
     },
   });
 
+  const saveToasts = useMutation({
+    mutationFn: saveMyToasts,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.preferences });
+    },
+  });
+
+  const toasts = preferences?.toasts ?? {
+    enabled: true,
+    position: "bottom-right" as ToastPosition,
+    seconds: 4,
+  };
+
   // Send the whole object: a setting is stored whole, so omitting a field resets it.
   const current = preferences?.tableDefaults ?? {
     pageSize: 20 as PageSize,
@@ -536,6 +550,74 @@ function PreferencesTab() {
                     {density === "comfortable" ? "Comfortable" : "Compact"}
                   </option>
                 ))}
+              </select>
+            )}
+          </Field>
+        </div>
+      </Card>
+
+      <Card className="max-w-lg p-6">
+        <h2 className="text-sm font-semibold">Save confirmations</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Saving an edit keeps you on the page, so a brief message says it worked.
+        </p>
+
+        {saveToasts.error ? (
+          <Alert tone="error" className="mt-3">
+            {errorMessage(saveToasts.error)}
+          </Alert>
+        ) : null}
+
+        <div className="mt-4 flex flex-col gap-4">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={toasts.enabled}
+              onChange={(event) => saveToasts.mutate({ ...toasts, enabled: event.target.checked })}
+              disabled={saveToasts.isPending}
+              className="mt-1 h-4 w-4 rounded border-border"
+            />
+            <span>
+              Show them
+              <span className="block text-xs text-muted-foreground">
+                With this off, a save is silent — forms that show their own message still do.
+              </span>
+            </span>
+          </label>
+
+          <Field label="Where">
+            {(props) => (
+              <select
+                {...props}
+                value={toasts.position}
+                onChange={(event) =>
+                  saveToasts.mutate({ ...toasts, position: event.target.value as ToastPosition })
+                }
+                disabled={saveToasts.isPending || !toasts.enabled}
+                className={SELECT_CLASS}
+              >
+                <option value="bottom-right">Bottom right</option>
+                <option value="bottom-center">Bottom centre</option>
+                <option value="top-right">Top right</option>
+              </select>
+            )}
+          </Field>
+
+          <Field label="How long">
+            {(props) => (
+              <select
+                {...props}
+                value={String(toasts.seconds)}
+                onChange={(event) =>
+                  saveToasts.mutate({ ...toasts, seconds: Number(event.target.value) })
+                }
+                disabled={saveToasts.isPending || !toasts.enabled}
+                className={SELECT_CLASS}
+              >
+                <option value="2">2 seconds</option>
+                <option value="4">4 seconds</option>
+                <option value="8">8 seconds</option>
+                <option value="0">Until I dismiss it</option>
               </select>
             )}
           </Field>

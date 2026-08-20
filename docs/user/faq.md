@@ -155,6 +155,16 @@ a leaf.
 If a machine is missing entirely, it is either retired or at a site you do not
 have access to. Assets are scoped by location.
 
+### Someone cannot pick a department when filing an entry
+
+If the form says "You are not in a department yet" and the site reads "Not set" for
+somebody who _is_ in a department, they are on a version before this was fixed. The
+form used to ask the administrative lists for its choices, so filing an entry
+quietly required permission to _manage_ departments and sites.
+
+It now asks only for their own placement, which needs no extra permission. The same
+applied to the shift-change request and the routine editor.
+
 ### A user says the app is empty — no menu, nothing works
 
 Check which company is selected in the top bar. Permissions are resolved **per

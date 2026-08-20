@@ -110,6 +110,18 @@ export function fetchDownline(userId: string): Promise<DownlineMember[]> {
   return http.get<DownlineMember[]>(`/users/${userId}/downline`);
 }
 
+/**
+ * The caller's own departments — for the pickers on forms they may use.
+ *
+ * Not `fetchUserDepartments`: that one is administrative and needs
+ * `departments:read`, which somebody who may only file a journal entry has no
+ * reason to hold. Asking for it there is how a form told a member of two
+ * departments that they were in none.
+ */
+export function fetchMyDepartments(): Promise<UserDepartment[]> {
+  return http.get<UserDepartment[]>("/me/departments");
+}
+
 /** The departments a given user belongs to, shown on their profile. */
 export function fetchUserDepartments(userId: string): Promise<UserDepartment[]> {
   return http.get<UserDepartment[]>(`/users/${userId}/departments`);

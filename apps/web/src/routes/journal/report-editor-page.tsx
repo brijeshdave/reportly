@@ -22,8 +22,8 @@ import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
-import { fetchUserDepartments } from "@/services/departments.js";
-import { fetchLocations } from "@/services/locations.js";
+import { fetchMyDepartments } from "@/services/departments.js";
+import { fetchMyLocations } from "@/services/locations.js";
 import { fetchCategories, fetchSeverities, fetchStatuses } from "@/services/journal-config.js";
 import { createReport, fetchReport, updateReport } from "@/services/journal.js";
 import { fetchTaskPrefill } from "@/services/tasks.js";
@@ -183,7 +183,7 @@ function Editor({
   // The reporter's own departments — you cannot file for one you are not in.
   const myDepartmentsQuery = useQuery({
     queryKey: ["users", me?.id, "departments"],
-    queryFn: () => fetchUserDepartments(me!.id),
+    queryFn: () => fetchMyDepartments(),
     enabled: Boolean(me?.id),
   });
   // This company's only: an entry is filed against the active company, so a
@@ -196,7 +196,7 @@ function Editor({
   );
 
   // Scoped by the API to the sites this person's groups reach.
-  const locations = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
+  const locations = useQuery({ queryKey: ["locations"], queryFn: fetchMyLocations });
 
   // With exactly one department there is nothing to choose, so it is filled in
   // rather than left blank for somebody to wonder about. With several, they pick.

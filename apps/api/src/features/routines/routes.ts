@@ -7,6 +7,8 @@ import {
   PERMISSIONS,
   createRoutineSchema,
   finishOccurrenceSchema,
+  listQuerySchema,
+  paginatedResult,
   occurrenceQuerySchema,
   routineCompletionSchema,
   routineOccurrenceSchema,
@@ -19,6 +21,7 @@ import { z } from "zod";
 
 import { recordAudit } from "@/core/audit.js";
 import { AppError } from "@/core/errors.js";
+import { resolveListQuery } from "@/lib/resolve-list-query.js";
 import * as routines from "@/features/routines/service.js";
 
 const idParams = z.object({ id: z.guid() });
@@ -44,17 +47,38 @@ export async function routinesRoutes(fastify: FastifyInstance): Promise<void> {
       preHandler: guard(PERMISSIONS.ROUTINES_READ),
       schema: {
         tags: ["Routines"],
-        summary: "List routines — the ones assigned to you, or (scope=managed) the ones you manage",
-        querystring: z.object({ scope: z.enum(["assigned", "managed"]).default("assigned") }),
+        summary: "The routines assigned to you — the ones you complete",
         response: { 200: z.array(routineSchema) },
       },
     },
-    async (request) => {
-      const companyId = activeCompany(request.ctx!.companyId);
-      return request.query.scope === "managed"
-        ? routines.listManaged(companyId, request.ctx!.userId, request.ctx!.isSuperadmin)
-        : routines.listAssigned(companyId, request.ctx!.userId);
+    // Unpaged on purpose: My Routines groups every duty by cadence, and a page of
+    // twenty would hide half of somebody's week. The ones you *manage* are a table
+    // instead — see /routines/managed.
+    async (request) =>
+      routines.listAssigned(activeCompany(request.ctx!.companyId), request.ctx!.userId),
+  );
+
+  // The team view. A table like every other list: filtered, sorted and paged by
+  // the server, rather than one unpaged array the browser then sifts through.
+  app.get(
+    "/routines/managed",
+    {
+      preHandler: guard(PERMISSIONS.ROUTINES_READ),
+      schema: {
+        tags: ["Routines"],
+        summary:
+          "Search the routines you manage (filter by title, department, cadence, assignee, site)",
+        querystring: listQuerySchema,
+        response: { 200: paginatedResult(routineSchema) },
+      },
     },
+    async (request) =>
+      routines.listManagedPage(
+        await resolveListQuery(request.query, request.authUserId),
+        activeCompany(request.ctx!.companyId),
+        request.ctx!.userId,
+        request.ctx!.isSuperadmin,
+      ),
   );
 
   // My occurrences across every routine assigned to me, over a window.

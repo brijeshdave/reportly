@@ -8,6 +8,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Save confirmations, configurable per person.** A brief message in the corner
+  when something saves — since a save now keeps you on the page rather than
+  redirecting. Whether they appear, which corner, and how long they stay are
+  settings under Your account → Preferences; an administrator sets the default.
+- **Team routines is a table**, with the same filters, sorting, paging, columns
+  and export as every other list — the cards were pretty at a dozen routines and
+  unusable at three hundred, and their filters ran in the browser over one unpaged
+  request. Filter by title, department, cadence, status, points, **who does it**
+  (your downline) and **the site its people work at** — a routine belongs to a
+  department, and departments span sites, so that last one is the question a
+  manager actually asks. The unpaged `?scope=managed` list it replaces is gone.
+- **Paging controls above every table as well as below**, so a full page of rows
+  does not have to be scrolled to reach "next".
 - **A permission per report.** `reports:view` granted every report at once —
   including every report added afterwards. Each of the seventeen now has its own
   key (`reports:view:downtime`, `reports:view:part_register`, …), so a shift lead
@@ -102,6 +115,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Filing a journal entry required permission to administer departments.** The
+  entry form asked `/users/:id/departments` and `/locations` for its pickers, both
+  gated on administrative read permissions — so somebody holding `journal:create`
+  was told "You are not in a department yet" with the site reading "Not set" and
+  the category picker disabled behind it, while their placement was perfectly
+  correct. Forms now ask `GET /me/departments` and `GET /me/locations`, which need
+  only a session: a person's own placement is already in it. The shift-change
+  request and the routine editor had the same flaw.
+- **Saving an edit no longer throws you back to the index.** An edit stays on the
+  page and confirms; creating opens what was just made; deleting still returns to
+  the list, because what you were looking at is gone.
 - **"All companies" left ordinary users with an empty app.** Permissions are
   resolved per company, so that state grants none at all — an empty sidebar and a
   refusal from every screen, indistinguishable from having had access revoked. It

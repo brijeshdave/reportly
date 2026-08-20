@@ -17,8 +17,11 @@ import {
   type RoutineOccurrenceState,
   type RoutineRecurrence,
   type RoutineStatus,
+  type PaginatedResult,
+  type ResolvedListQuery,
   type UpdateRoutine,
 } from "@reportly/shared";
+import { toPaginatedResult } from "@reportly/shared";
 
 import { AppError } from "@/core/errors.js";
 import { notify } from "@/core/queue/notifications.js";
@@ -67,15 +70,24 @@ async function withAssignees(rows: RoutineRow[]): Promise<Routine[]> {
   return rows.map((r) => serialize(r, byRoutine.get(r.id) ?? []));
 }
 
-/** Routines the caller manages (created), or all of them for a superadmin. */
-export async function listManaged(
+/**
+ * The managed list as a table: server-side filters, sort and paging.
+ *
+ * The rows a manager owns: what they created, or everything in the company for a
+ * superadmin.
+ */
+export async function listManagedPage(
+  query: ResolvedListQuery,
   companyId: string,
   userId: string,
   isSuperadmin: boolean,
-): Promise<Routine[]> {
-  return withAssignees(
-    isSuperadmin ? await repo.allRoutines(companyId) : await repo.managedBy(companyId, userId),
+): Promise<PaginatedResult<Routine>> {
+  const { rows, total } = await repo.listManagedRoutines(
+    query,
+    companyId,
+    isSuperadmin ? null : userId,
   );
+  return toPaginatedResult(await withAssignees(rows), total, query);
 }
 
 /** Routines assigned to the caller — the ones they complete. */

@@ -1,34 +1,113 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // The routines a manager owns for their team — create them, and open one to see who is
 // keeping up. The compliance grid and the editor are their own pages.
+//
+// A table, like every other list in the app: the cards were pretty at a dozen
+// routines and unusable at three hundred, and their four filters ran in the
+// browser over whatever the one unpaged request happened to return. Filtering,
+// sorting and paging now happen on the server, and the two filters a manager
+// actually asks by — who does it, and where they work — are answered there too,
+// because a routine belongs to a department and departments span sites.
 import {
+  PERMISSIONS,
   ROUTINE_CADENCES,
   ROUTINE_CADENCE_LABELS,
   type Routine,
-  type RoutineCadence,
 } from "@reportly/shared";
 import { useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Award, Building2, ListChecks, Plus } from "lucide-react";
+import { Award, Building2, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { Alert, Spinner } from "@/components/ui/form.js";
+import { Can } from "@/components/can.js";
+import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
+import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
+import { Alert } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { Badge, Button, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { useListResource } from "@/hooks/use-list-resource.js";
+import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
-import { awardRoutineMonth, fetchManagedRoutines } from "@/services/routines.js";
-import { Toolbar, ToolbarSearch, ToolbarSelect } from "@/routes/routines/filters.js";
+import { fetchDownline, fetchMyDepartments } from "@/services/departments.js";
+import { fetchMyLocations } from "@/services/locations.js";
+import { awardRoutineMonth } from "@/services/routines.js";
 import { describeCadence } from "@/routes/routines/util.js";
 
-type StatusFilter = "all" | "active" | "paused";
-type SortKey = "title" | "points" | "people" | "cadence";
-
-const SORT_LABELS: Record<SortKey, string> = {
-  title: "Title (A–Z)",
-  points: "Points (high–low)",
-  people: "People (most)",
-  cadence: "Cadence",
-};
+const columns: TableColumn<Routine>[] = [
+  {
+    id: "title",
+    accessorKey: "title",
+    header: "Routine",
+    cell: ({ row }) => (
+      <Link
+        to="/routines/manage/$routineId"
+        params={{ routineId: row.original.id }}
+        className="font-medium text-foreground hover:underline"
+      >
+        {row.original.title}
+      </Link>
+    ),
+  },
+  {
+    id: "cadence",
+    accessorKey: "cadence",
+    header: "Cadence",
+    cell: ({ row }) => (
+      <span className="text-sm">
+        {ROUTINE_CADENCE_LABELS[row.original.cadence]}
+        <span className="block text-xs text-muted-foreground">{describeCadence(row.original)}</span>
+      </span>
+    ),
+  },
+  {
+    id: "departmentName",
+    accessorKey: "departmentName",
+    header: "Department",
+    // The server sorts on the department's id, not its name, so offering a sort
+    // here would order the rows by something nobody can see.
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.departmentName ?? <span className="text-muted-foreground">—</span>,
+  },
+  {
+    id: "assignees",
+    accessorKey: "assignees",
+    header: "Who does it",
+    enableSorting: false,
+    cell: ({ row }) => {
+      const names = row.original.assignees.map((a) => a.name);
+      if (names.length === 0) return <span className="text-muted-foreground">Nobody</span>;
+      return (
+        <span className="text-sm" title={names.join(", ")}>
+          {names.slice(0, 2).join(", ")}
+          {names.length > 2 ? ` +${names.length - 2}` : ""}
+        </span>
+      );
+    },
+  },
+  {
+    id: "points",
+    accessorKey: "points",
+    header: "Points",
+    cell: ({ row }) => <Badge tone="brand">{row.original.points} pts</Badge>,
+  },
+  {
+    id: "status",
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => (
+      <Badge tone={row.original.status === "active" ? "success" : "neutral"}>
+        {row.original.status}
+      </Badge>
+    ),
+  },
+  {
+    id: "startDate",
+    accessorKey: "startDate",
+    header: "Started",
+    cell: ({ row }) => <span className="text-xs">{row.original.startDate}</span>,
+  },
+];
 
 /** The month that just closed, as the "YYYY-MM" an <input type="month"> holds. */
 function lastMonthValue(): string {
@@ -49,47 +128,76 @@ function monthName(value: string): string {
 export function TeamRoutinesPage() {
   const { data: session } = useSuspenseQuery(sessionQuery);
   const navigate = useNavigate();
-  const routines = useQuery({ queryKey: ["routines", "managed"], queryFn: fetchManagedRoutines });
-  const all = routines.data ?? [];
+  const list = useListResource<Routine>({
+    resource: "routines-managed",
+    path: "/routines/managed",
+    initial: { sortBy: "title" },
+  });
 
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [cadence, setCadence] = useState<RoutineCadence | "all">("all");
-  const [department, setDepartment] = useState("all");
-  const [sort, setSort] = useState<SortKey>("title");
+  // The three option lists come from the caller's own view of the org — their
+  // departments, their downline, their sites — so a manager without
+  // `departments:read` or `locations:read` still gets working filters.
+  const myDepartments = useQuery({
+    queryKey: ["users", "departments", session.user.id],
+    queryFn: () => fetchMyDepartments(),
+  });
+  const downline = useQuery({
+    queryKey: ["users", "downline", session.user.id],
+    queryFn: () => fetchDownline(session.user.id),
+  });
+  const myLocations = useQuery({ queryKey: ["me", "locations"], queryFn: fetchMyLocations });
 
-  // Departments to filter by come from the routines themselves.
-  const departments = useMemo(
-    () =>
-      [...new Set(all.map((r) => r.departmentName).filter((n): n is string => Boolean(n)))].sort(),
-    [all],
+  const filterDefs = useMemo<FilterDef[]>(
+    () => [
+      { field: "title", label: "Title", kind: "text" },
+      {
+        field: "departmentId",
+        label: "Department",
+        kind: "combobox",
+        options: departmentOptions(
+          (myDepartments.data ?? [])
+            .filter((d) => d.companyId === session.companyId)
+            .map((d) => ({ value: d.departmentId, name: d.name, path: d.path })),
+        ),
+      },
+      {
+        field: "cadence",
+        label: "Cadence",
+        kind: "select",
+        options: ROUTINE_CADENCES.map((c) => ({ value: c, label: ROUTINE_CADENCE_LABELS[c] })),
+      },
+      {
+        field: "status",
+        label: "Status",
+        kind: "select",
+        options: [
+          { value: "active", label: "Active" },
+          { value: "paused", label: "Paused" },
+        ],
+      },
+      {
+        // Not a column on the routine: it keeps the ones somebody in this list is
+        // assigned to. Only the caller's downline is offered, which is the same
+        // set they may assign to in the first place.
+        field: "assigneeId",
+        label: "Assigned to",
+        kind: "combobox",
+        options: [...new Map((downline.data ?? []).map((m) => [m.userId, m])).values()].map(
+          (m) => ({ value: m.userId, label: m.name, hint: m.departmentName }),
+        ),
+      },
+      {
+        // Also not a column: a routine has no site. This keeps the routines whose
+        // people work at that one.
+        field: "locationId",
+        label: "Site (of whoever does it)",
+        kind: "combobox",
+        options: (myLocations.data ?? []).map((l) => ({ value: l.id, label: l.name })),
+      },
+      { field: "points", label: "Points at least", kind: "number", op: "gte" },
+    ],
+    [myDepartments.data, downline.data, myLocations.data, session.companyId],
   );
-
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = all.filter(
-      (r) =>
-        (q === "" || r.title.toLowerCase().includes(q)) &&
-        (status === "all" || r.status === status) &&
-        (cadence === "all" || r.cadence === cadence) &&
-        (department === "all" || r.departmentName === department),
-    );
-    const cadenceOrder = (c: RoutineCadence) => ROUTINE_CADENCES.indexOf(c);
-    return filtered.sort((a, b) => {
-      switch (sort) {
-        case "points":
-          return b.points - a.points || a.title.localeCompare(b.title);
-        case "people":
-          return b.assignees.length - a.assignees.length || a.title.localeCompare(b.title);
-        case "cadence":
-          return (
-            cadenceOrder(a.cadence) - cadenceOrder(b.cadence) || a.title.localeCompare(b.title)
-          );
-        default:
-          return a.title.localeCompare(b.title);
-      }
-    });
-  }, [all, search, status, cadence, department, sort]);
 
   // The award runs automatically on the 2nd of each month; this is the manual re-run,
   // defaulting to the month that just closed.
@@ -141,10 +249,12 @@ export function TeamRoutinesPage() {
               <Award className="h-4 w-4" />
               Award
             </Button>
-            <Button size="sm" onClick={() => void navigate({ to: "/routines/manage/new" })}>
-              <Plus className="h-4 w-4" />
-              New routine
-            </Button>
+            <Can permission={PERMISSIONS.ROUTINES_MANAGE}>
+              <Button size="sm" onClick={() => void navigate({ to: "/routines/manage/new" })}>
+                <Plus className="h-4 w-4" />
+                New routine
+              </Button>
+            </Can>
           </div>
         }
       />
@@ -156,101 +266,35 @@ export function TeamRoutinesPage() {
           now count on the leaderboard.
         </Alert>
       ) : null}
-      {routines.isLoading ? (
-        <Spinner />
-      ) : routines.error ? (
-        <ErrorAlert error={routines.error} />
-      ) : all.length === 0 ? (
-        <EmptyState
-          icon={ListChecks}
-          title="No routines yet"
-          description="Create a recurring duty for your team."
-        />
-      ) : (
-        <>
-          <Toolbar>
-            <ToolbarSearch value={search} onChange={setSearch} placeholder="Filter by title…" />
-            <ToolbarSelect
-              label="Status"
-              value={status}
-              onChange={(v) => setStatus(v as StatusFilter)}
-            >
-              <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-            </ToolbarSelect>
-            <ToolbarSelect
-              label="Cadence"
-              value={cadence}
-              onChange={(v) => setCadence(v as RoutineCadence | "all")}
-            >
-              <option value="all">All</option>
-              {ROUTINE_CADENCES.map((c) => (
-                <option key={c} value={c}>
-                  {ROUTINE_CADENCE_LABELS[c]}
-                </option>
-              ))}
-            </ToolbarSelect>
-            {departments.length > 0 ? (
-              <ToolbarSelect label="Department" value={department} onChange={setDepartment}>
-                <option value="all">All</option>
-                {departments.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </ToolbarSelect>
-            ) : null}
-            <ToolbarSelect label="Sort by" value={sort} onChange={(v) => setSort(v as SortKey)}>
-              {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-                <option key={k} value={k}>
-                  {SORT_LABELS[k]}
-                </option>
-              ))}
-            </ToolbarSelect>
-          </Toolbar>
-          {rows.length === 0 ? (
-            <EmptyState
-              icon={ListChecks}
-              title="No matches"
-              description="No routines match these filters."
-            />
-          ) : (
-            <div className="grid gap-3 pt-3 sm:grid-cols-2 lg:grid-cols-3">
-              {rows.map((r) => (
-                <RoutineCard key={r.id} routine={r} />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
-}
 
-function RoutineCard({ routine }: { routine: Routine }) {
-  return (
-    <Card className="group relative flex cursor-pointer flex-col gap-1.5 p-4 transition hover:border-primary/50 hover:shadow-sm">
-      <Link
-        to="/routines/manage/$routineId"
-        params={{ routineId: routine.id }}
-        className="absolute inset-0 rounded-xl"
-        aria-label={routine.title}
+      <DataTable
+        {...list}
+        columns={columns}
+        filterDefs={filterDefs}
+        // Started is detail rather than headline: it settles an argument about
+        // when a duty began, and crowds the table the rest of the time.
+        initialColumnVisibility={{ startDate: false }}
+        emptyTitle="No routines yet"
+        emptyDescription="Create a recurring duty for your team."
+        renderCard={(routine) => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <Link
+                to="/routines/manage/$routineId"
+                params={{ routineId: routine.id }}
+                className="block truncate text-sm font-medium hover:underline"
+              >
+                {routine.title}
+              </Link>
+              <span className="text-xs text-muted-foreground">
+                {ROUTINE_CADENCE_LABELS[routine.cadence]} · {routine.assignees.length}{" "}
+                {routine.assignees.length === 1 ? "person" : "people"}
+              </span>
+            </div>
+            <Badge tone="brand">{routine.points} pts</Badge>
+          </div>
+        )}
       />
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-medium">{routine.title}</span>
-        {routine.status === "paused" ? <Badge tone="neutral">Paused</Badge> : null}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {ROUTINE_CADENCE_LABELS[routine.cadence]} · {describeCadence(routine)}
-      </p>
-      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-        <Badge tone="brand">{routine.points} pts</Badge>
-        <span>
-          {routine.assignees.length} {routine.assignees.length === 1 ? "person" : "people"}
-        </span>
-        {routine.departmentName ? <span>· {routine.departmentName}</span> : null}
-      </div>
-    </Card>
+    </>
   );
 }

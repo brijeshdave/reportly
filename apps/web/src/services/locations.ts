@@ -29,6 +29,14 @@ export function fetchCompanyLocations(companyId: string): Promise<Location[]> {
  * to name a company explicitly. The API scopes the list to the caller's own group
  * locations, so what comes back is exactly what they may pick.
  */
+/**
+ * The sites the caller may file against. Needs no `locations:read`: it answers
+ * "where may I put this", not "manage the sites".
+ */
+export function fetchMyLocations(): Promise<Location[]> {
+  return http.get<Location[]>("/me/locations");
+}
+
 export function fetchLocations(): Promise<Location[]> {
   return http.get<Location[]>("/locations");
 }

@@ -20,6 +20,7 @@ import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useToast } from "@/components/toaster.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
 import { SHIFT_COLOR_CLASSES } from "@/routes/shifts/shift-colors.js";
@@ -43,6 +44,7 @@ export function ShiftEditorPage({ mode, shiftId }: { mode: ShiftEditorMode; shif
 function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [name, setName] = useState(shift?.name ?? "");
   const [code, setCode] = useState(shift?.code ?? "");
@@ -60,9 +62,20 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
   const durationLabel =
     bothValid && !zeroLength ? `${shiftDurationMinutes(startMinute, endMinute) / 60}h` : "";
 
-  const done = async () => {
+  /** A deletion has nowhere to stay — the thing it was showing is gone. */
+  const removed = async () => {
     await queryClient.invalidateQueries({ queryKey: ["shifts"] });
+    toast.saved("Shift deleted.");
     await navigate({ to: "/shifts" });
+  };
+
+  const done = async (saved: { id: string; name: string }) => {
+    await queryClient.invalidateQueries({ queryKey: ["shifts"] });
+    toast.saved(mode === "edit" ? "Shift saved." : `${saved.name} created.`);
+    // An edit stays where it is; a new one opens what was just created.
+    if (mode !== "edit") {
+      await navigate({ to: "/shifts/$shiftId/edit", params: { shiftId: saved.id } });
+    }
   };
 
   const save = useMutation({
@@ -82,7 +95,7 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
 
   const remove = useMutation({
     mutationFn: () => deleteShift(shift!.id),
-    onSuccess: done,
+    onSuccess: removed,
   });
 
   const submit = (event: FormEvent) => {

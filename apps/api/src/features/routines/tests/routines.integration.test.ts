@@ -127,8 +127,8 @@ describe("routines", () => {
     expect(created.json()).toMatchObject({ departmentId: dept.id, departmentName: "Ops" });
 
     // The member sees it in their assigned list, and the manager in their managed list.
-    expect((await inject("GET", "/routines?scope=assigned", ravi.cookie)).json()).toHaveLength(1);
-    expect((await inject("GET", "/routines?scope=managed", boss.cookie)).json()).toHaveLength(1);
+    expect((await inject("GET", "/routines", ravi.cookie)).json()).toHaveLength(1);
+    expect((await inject("GET", "/routines/managed", boss.cookie)).json().total).toBe(1);
     // The member has no manage rights.
     expect(
       (await inject("POST", "/routines", ravi.cookie, daily(dept.id, [ravi.id]))).statusCode,
@@ -428,5 +428,81 @@ describe("routines", () => {
     expect(
       (await inject("PATCH", `/routines/${id}`, other.cookie, { title: "Hijack" })).statusCode,
     ).toBe(403);
+  });
+
+  it("lists the routines a manager owns as a filtered, sorted, paged table", async () => {
+    const admin = await superadmin();
+    const { boss, ravi, dept } = await fixture(admin);
+
+    // A second report for boss, and two sites to tell the two apart by.
+    const priya = await makeUser(admin, "priya", await makeGroup(admin, "Members2", "Member"));
+    const kim = (
+      await inject("POST", "/locations", admin, { companyId: DEMO_COMPANY_ID, name: "Kim" })
+    ).json();
+    const kosamba = (
+      await inject("POST", "/locations", admin, { companyId: DEMO_COMPANY_ID, name: "Kosamba" })
+    ).json();
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: boss.id, rank: "lead", reportsToId: null, locationIds: [kim.id, kosamba.id] },
+        { userId: ravi.id, rank: "member", reportsToId: boss.id, locationIds: [kim.id] },
+        { userId: priya.id, rank: "member", reportsToId: boss.id, locationIds: [kosamba.id] },
+      ],
+    });
+
+    await inject("POST", "/routines", boss.cookie, {
+      ...daily(dept.id, [ravi.id]),
+      title: "Boiler check",
+    });
+    await inject("POST", "/routines", boss.cookie, {
+      ...daily(dept.id, [priya.id]),
+      title: "Air filter swap",
+      cadence: "weekly",
+      anchorWeekday: 1,
+    });
+
+    const page = (await inject("GET", "/routines/managed?page=1&pageSize=5", boss.cookie)).json();
+    expect(page).toMatchObject({ total: 2, page: 1, hasNext: false });
+    // Default sort is by title, ascending.
+    expect(page.data.map((r: { title: string }) => r.title)).toEqual([
+      "Air filter swap",
+      "Boiler check",
+    ]);
+    expect(page.data[0].assignees).toHaveLength(1);
+
+    const filtered = async (filters: unknown) =>
+      (
+        await inject(
+          "GET",
+          `/routines/managed?filters=${encodeURIComponent(JSON.stringify(filters))}`,
+          boss.cookie,
+        )
+      ).json();
+
+    // A column filter, and the two that are not columns: who does it, and where they work.
+    expect(
+      (await filtered([{ field: "cadence", op: "eq", value: "weekly" }])).data.map(
+        (r: { title: string }) => r.title,
+      ),
+    ).toEqual(["Air filter swap"]);
+    expect(
+      (await filtered([{ field: "assigneeId", op: "in", value: [ravi.id] }])).data.map(
+        (r: { title: string }) => r.title,
+      ),
+    ).toEqual(["Boiler check"]);
+    expect(
+      (await filtered([{ field: "locationId", op: "in", value: [kosamba.id] }])).data.map(
+        (r: { title: string }) => r.title,
+      ),
+    ).toEqual(["Air filter swap"]);
+
+    // The page respects its size, and reports what is left.
+    const first = (await inject("GET", "/routines/managed?pageSize=5&page=1", boss.cookie)).json();
+    expect(first.data).toHaveLength(2);
+    expect(first.totalPages).toBe(1);
+
+    // Another manager's table is empty — the list is still what *you* manage.
+    const other = await makeUser(admin, "othermgr", await makeGroup(admin, "M3", "Manager"));
+    expect((await inject("GET", "/routines/managed", other.cookie)).json().total).toBe(0);
   });
 });

@@ -75,7 +75,7 @@ describe("creating", () => {
 
     await user.type(screen.getByLabelText("Name"), "Auditor");
     await openTab(user, "System");
-    await user.click(screen.getByRole("checkbox", { name: PERMISSIONS.AUDIT_VIEW }));
+    await user.click(screen.getByRole("checkbox", { name: "audit: view" }));
     await user.click(screen.getByRole("button", { name: "Create role" }));
 
     expect(createRole).toHaveBeenCalledTimes(1);
@@ -112,7 +112,7 @@ describe("editing", () => {
     expect(screen.getByText(/^1 of \d+ permissions$/)).toBeInTheDocument();
 
     await openTab(user, "System");
-    expect(screen.getByRole("checkbox", { name: PERMISSIONS.AUDIT_VIEW })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "audit: view" })).toBeChecked();
   });
 
   it("warns which groups a change affects, before saving", async () => {
@@ -132,7 +132,7 @@ describe("editing", () => {
     await renderEditor("edit", role());
 
     await openTab(user, "People & access");
-    await user.click(screen.getByRole("checkbox", { name: PERMISSIONS.USERS_READ }));
+    await user.click(screen.getByRole("checkbox", { name: "users: read" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     const [id, input] = updateRole.mock.calls[0]!;
@@ -159,7 +159,7 @@ describe("cloning", () => {
     await renderEditor("clone", role({ id: "sys", name: "Manager", isSystem: true }));
 
     await openTab(user, "People & access");
-    await user.click(screen.getByRole("checkbox", { name: PERMISSIONS.USERS_READ }));
+    await user.click(screen.getByRole("checkbox", { name: "users: read" }));
     await user.click(screen.getByRole("button", { name: "Create copy" }));
 
     expect(cloneRole).toHaveBeenCalledWith("sys", "Manager copy");

@@ -14,7 +14,7 @@ import { Alert, Field, Select, Spinner } from "@/components/ui/form.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
-import { fetchUserDepartments } from "@/services/departments.js";
+import { fetchMyDepartments } from "@/services/departments.js";
 import { fetchMyEntries, fetchSchedule, requestSwap } from "@/services/shifts.js";
 
 export function ShiftChangeRequestPage() {
@@ -24,7 +24,7 @@ export function ShiftChangeRequestPage() {
 
   const myDepartments = useQuery({
     queryKey: ["users", "departments", me],
-    queryFn: () => fetchUserDepartments(me),
+    queryFn: () => fetchMyDepartments(),
   });
   // A schedule belongs to the active company, so only this company's memberships
   // are candidates — the others cannot be scheduled against from here.

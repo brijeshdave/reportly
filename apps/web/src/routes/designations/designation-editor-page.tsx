@@ -12,6 +12,7 @@ import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useToast } from "@/components/toaster.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import {
   createDesignation,
@@ -50,6 +51,7 @@ function Editor({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [name, setName] = useState(designation?.name ?? "");
   const [active, setActive] = useState((designation?.status ?? "active") === "active");
@@ -57,12 +59,26 @@ function Editor({
 
   const held = designation?.userCount ?? 0;
 
-  const done = async () => {
+  /** A deletion has nowhere to stay — the thing it was showing is gone. */
+  const removed = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["designations"] });
+    toast.saved("Designation deleted.");
+    await navigate({ to: "/designations" });
+  };
+
+  const done = async (saved: { id: string; name: string }) => {
     // A rename changes what every holder is called, so their pages are stale too.
     await queryClient.invalidateQueries({ queryKey: ["designations"] });
     await queryClient.invalidateQueries({ queryKey: ["users"] });
     await queryClient.invalidateQueries({ queryKey: ["departments"] });
-    await navigate({ to: "/designations" });
+    toast.saved(mode === "edit" ? "Designation saved." : `${saved.name} created.`);
+    // An edit stays where it is; a new one opens what was just created.
+    if (mode !== "edit") {
+      await navigate({
+        to: "/designations/$designationId/edit",
+        params: { designationId: saved.id },
+      });
+    }
   };
 
   const save = useMutation({
@@ -78,7 +94,7 @@ function Editor({
 
   const remove = useMutation({
     mutationFn: () => deleteDesignation(designation!.id),
-    onSuccess: done,
+    onSuccess: removed,
   });
 
   const submit = (event: FormEvent) => {

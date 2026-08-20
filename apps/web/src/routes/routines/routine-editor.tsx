@@ -19,7 +19,7 @@ import { MultiSelect } from "@/components/multi-select.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
-import { fetchDownline, fetchUserDepartments } from "@/services/departments.js";
+import { fetchDownline, fetchMyDepartments } from "@/services/departments.js";
 import { createRoutine, fetchRoutine, updateRoutine } from "@/services/routines.js";
 import { dayOffset } from "@/routes/routines/util.js";
 
@@ -52,7 +52,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
   });
   const myDepartments = useQuery({
     queryKey: ["users", "departments", session.user.id],
-    queryFn: () => fetchUserDepartments(session.user.id),
+    queryFn: () => fetchMyDepartments(),
   });
   // Only this company's. A routine is created against the active company, so a
   // department from another one is not a choice — the API rejects it, and it used

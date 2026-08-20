@@ -1,10 +1,20 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Data access for routine definitions and their assignees. Completions live in their
 // own repo alongside this one (added with the completion flow).
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
-import { companies, departments, routineAssignees, routines, users } from "@/core/db/schema.js";
+import {
+  companies,
+  departmentUserLocations,
+  departments,
+  routineAssignees,
+  routines,
+  users,
+} from "@/core/db/schema.js";
+import type { ResolvedListQuery } from "@reportly/shared";
+
+import { buildListParts, type ListConfig } from "@/lib/list-query.js";
 
 export interface RoutineRow {
   id: string;
@@ -59,6 +69,89 @@ export async function managedBy(companyId: string, userId: string): Promise<Rout
   return base()
     .where(and(eq(routines.companyId, companyId), eq(routines.createdBy, userId)))
     .orderBy(desc(routines.createdAt));
+}
+
+/**
+ * The managed list as a real list resource: filtered, sorted and paged by the
+ * server like every other table in the app.
+ *
+ * Two of its filters are not columns. A routine has no assignee and no site — it
+ * belongs to a *department*, and departments span plants. `assigneeId` and
+ * `locationId` therefore narrow by **who does it**: the routine is kept when
+ * somebody assigned to it is that person, or works at that site. That is the
+ * question a manager is actually asking ("what does the Kim team do?"), and it
+ * composes with the department filter rather than duplicating it.
+ *
+ * They are pulled out of `filters` here rather than being passed separately,
+ * because `buildListParts` ignores a field it does not know: left in, they would
+ * narrow nothing and say nothing.
+ */
+const listConfig: ListConfig = {
+  columns: {
+    title: routines.title,
+    cadence: routines.cadence,
+    points: routines.points,
+    status: routines.status,
+    startDate: routines.startDate,
+    departmentId: routines.departmentId,
+    createdAt: routines.createdAt,
+  },
+  defaultSort: routines.title,
+};
+
+/** The filter fields answered by a subquery over the assignees rather than a column. */
+const VIRTUAL_FIELDS = new Set(["assigneeId", "locationId"]);
+
+function assigneeSubquery(field: string, values: string[]): SQL {
+  const routineIds =
+    field === "assigneeId"
+      ? db
+          .select({ id: routineAssignees.routineId })
+          .from(routineAssignees)
+          .where(inArray(routineAssignees.userId, values))
+      : db
+          .select({ id: routineAssignees.routineId })
+          .from(routineAssignees)
+          .innerJoin(
+            departmentUserLocations,
+            eq(departmentUserLocations.userId, routineAssignees.userId),
+          )
+          .where(inArray(departmentUserLocations.locationId, values));
+  return inArray(routines.id, routineIds);
+}
+
+export async function listManagedRoutines(
+  query: ResolvedListQuery,
+  companyId: string,
+  /** Null for a superadmin, who manages everything in the company. */
+  ownerId: string | null,
+): Promise<{ rows: RoutineRow[]; total: number }> {
+  const virtual = query.filters.filter((f) => VIRTUAL_FIELDS.has(f.field));
+  const parts = buildListParts(listConfig, {
+    ...query,
+    filters: query.filters.filter((f) => !VIRTUAL_FIELDS.has(f.field)),
+  });
+
+  const byPeople = virtual.map((filter) => {
+    const values = (Array.isArray(filter.value) ? filter.value : [filter.value]).map(String);
+    return values.length > 0 ? assigneeSubquery(filter.field, values) : undefined;
+  });
+
+  const where = and(
+    eq(routines.companyId, companyId),
+    ownerId ? eq(routines.createdBy, ownerId) : undefined,
+    ...byPeople,
+    parts.where,
+  );
+
+  const [rows, [count]] = await Promise.all([
+    base().where(where).orderBy(parts.orderBy).limit(parts.limit).offset(parts.offset),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(routines)
+      .where(where),
+  ]);
+  return { rows, total: count?.n ?? 0 };
 }
 
 /** Every routine in the company — for a superadmin's managed view. */

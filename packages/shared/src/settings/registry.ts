@@ -395,6 +395,41 @@ export const TABLE_DEFAULTS: SettingDef<typeof tableDefaultsSchema> = {
     "Default rows per page and row density for tables (admins set the default; users may override)",
 };
 
+/**
+ * Save confirmations.
+ *
+ * Saving an edit used to return you to the index, which was its own confirmation —
+ * crude, but you knew it had worked. Now an edit stays where it is, so something
+ * has to say so, and on a long form an inline message can be off-screen.
+ *
+ * Configurable because a notification that appears without being asked for is a
+ * matter of taste: some people find them reassuring and some find them noise, and
+ * the corner they appear in collides with different things on different screens.
+ */
+export const TOAST_POSITIONS = ["top-right", "bottom-right", "bottom-center"] as const;
+export type ToastPosition = (typeof TOAST_POSITIONS)[number];
+
+/** Seconds before a toast fades. 0 means it waits to be dismissed. */
+export const TOAST_DURATIONS = [2, 4, 8, 0] as const;
+
+export const toastSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  position: z.enum(TOAST_POSITIONS).default("bottom-right"),
+  seconds: z.number().int().min(0).max(60).default(4),
+});
+
+export type ToastSettings = z.infer<typeof toastSettingsSchema>;
+
+export const UI_TOASTS: SettingDef<typeof toastSettingsSchema> = {
+  namespace: "ui",
+  key: "toasts",
+  schema: toastSettingsSchema,
+  userOverridable: true,
+  description:
+    "Whether a save shows a brief confirmation, where it appears, and how long it stays " +
+    "(admins set the default; users may override)",
+};
+
 // --- debug ---
 export const debugModeSchema = z.object({
   enabled: z.boolean().default(false),
@@ -578,6 +613,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   DEBUG_MODE,
   TABLE_DEFAULTS,
   UI_THEME,
+  UI_TOASTS,
 ];
 
 export function findSettingDef(namespace: string, key: string): SettingDef | undefined {

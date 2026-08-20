@@ -6,7 +6,14 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 
-import { ERROR_CODES, PARTS_MODULE, myDayQuerySchema, myDaySchema } from "@reportly/shared";
+import {
+  ERROR_CODES,
+  PARTS_MODULE,
+  locationSchema,
+  myDayQuerySchema,
+  myDaySchema,
+  userDepartmentSchema,
+} from "@reportly/shared";
 
 import { db } from "@/core/db/index.js";
 import { env } from "@/core/env.js";
@@ -15,6 +22,8 @@ import { AppError } from "@/core/errors.js";
 import { companies, groupUsers, groups, userCompanies, users } from "@/core/db/schema.js";
 import { avatarVersions } from "@/features/avatars/repo.js";
 import { myDay } from "@/features/me/my-day-service.js";
+import * as departmentsService from "@/features/departments/service.js";
+import * as locationsService from "@/features/locations/service.js";
 import * as usersService from "@/features/users/service.js";
 
 const mySessionSchema = z.object({
@@ -27,6 +36,55 @@ const mySessionSchema = z.object({
 });
 
 export async function meRoutes(app: FastifyInstance): Promise<void> {
+  /**
+   * Where the caller works — their own memberships, and the sites they may file
+   * against.
+   *
+   * These exist because filing a journal entry, asking for a shift change or
+   * creating a routine all need to *name* a department and a site, and the lists
+   * that offer them were the administrative ones: `/users/:id/departments` behind
+   * `departments:read`, `/locations` behind `locations:read`. Somebody holding
+   * `journal:create` and nothing else therefore met "You are not in a department
+   * yet" on a form they were entitled to use, with the category picker disabled
+   * behind it because no department could be chosen.
+   *
+   * Authenticated is the only gate they need, and it is not an escalation: a
+   * person's own placement is already in their session, and these add the names
+   * for ids the client has been given anyway. Neither answers anything about
+   * anybody else.
+   */
+  app.get(
+    "/me/departments",
+    {
+      preHandler: [app.authenticate, app.companyContext],
+      schema: {
+        tags: ["Me"],
+        summary: "The departments the caller belongs to, for the pickers on forms they may use",
+        response: { 200: z.array(userDepartmentSchema) },
+      },
+    },
+    async (request) => departmentsService.departmentsForUser(request.authUserId!),
+  );
+
+  app.get(
+    "/me/locations",
+    {
+      preHandler: [app.authenticate, app.companyContext],
+      schema: {
+        tags: ["Me"],
+        summary: "The sites in the active company the caller may file against",
+        response: { 200: z.array(locationSchema) },
+      },
+    },
+    async (request) => {
+      const companyId = request.ctx!.companyId;
+      if (!companyId) return [];
+      // The same scoped list the Locations screen shows, minus the permission to
+      // administer them: this is "where may I file", not "manage the sites".
+      return locationsService.listLocations(companyId, request.ctx!);
+    },
+  );
+
   app.get(
     "/me",
     {

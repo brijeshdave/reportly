@@ -11,10 +11,8 @@ import type {
 
 import { http } from "@/services/http.js";
 
-export const fetchAssignedRoutines = () =>
-  http.get<Routine[]>("/routines", { query: { scope: "assigned" } });
-export const fetchManagedRoutines = () =>
-  http.get<Routine[]>("/routines", { query: { scope: "managed" } });
+/** Unpaged: My Routines groups the whole week by cadence. The team table pages. */
+export const fetchAssignedRoutines = () => http.get<Routine[]>("/routines");
 export const fetchRoutine = (id: string) => http.get<Routine>(`/routines/${id}`);
 export const createRoutine = (input: CreateRoutine) => http.post<Routine>("/routines", input);
 export const updateRoutine = (id: string, input: UpdateRoutine) =>

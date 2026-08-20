@@ -15,6 +15,7 @@ import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Spinner } from "@/components/ui/form.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useToast } from "@/components/toaster.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { createDevice, deleteDevice, fetchAssets, updateDevice } from "@/services/assets.js";
 import { AssetCascadePicker } from "@/components/asset-cascade-picker.js";
@@ -49,6 +50,7 @@ export function DeviceEditorPage({
 function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const assets = useQuery({ queryKey: ["assets"], queryFn: fetchAssets });
   const departments = useQuery({ queryKey: ["departments"], queryFn: fetchDepartments });
@@ -74,11 +76,22 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
   const [active, setActive] = useState((device?.status ?? "active") === "active");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const done = async () => {
+  /** A deletion has nowhere to stay — the thing it was showing is gone. */
+  const removed = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["devices"] });
+    toast.saved("Device deleted.");
+    await navigate({ to: "/devices" });
+  };
+
+  const done = async (saved: { id: string; name: string }) => {
     await queryClient.invalidateQueries({ queryKey: ["devices"] });
     // The tree shows a per-asset device count, so it is stale once one moves.
     await queryClient.invalidateQueries({ queryKey: ["assets"] });
-    await navigate({ to: "/devices" });
+    toast.saved(mode === "edit" ? "Device saved." : `${saved.name} created.`);
+    // An edit stays where it is; a new one opens what was just created.
+    if (mode !== "edit") {
+      await navigate({ to: "/devices/$deviceId/edit", params: { deviceId: saved.id } });
+    }
   };
 
   const save = useMutation({
@@ -104,7 +117,7 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
     onSuccess: done,
   });
 
-  const remove = useMutation({ mutationFn: () => deleteDevice(device!.id), onSuccess: done });
+  const remove = useMutation({ mutationFn: () => deleteDevice(device!.id), onSuccess: removed });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();

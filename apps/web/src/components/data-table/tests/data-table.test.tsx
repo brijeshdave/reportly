@@ -142,17 +142,37 @@ describe("sorting", () => {
 });
 
 describe("pagination", () => {
+  /**
+   * The controls appear above the rows and below them, so a bare `getByRole` finds
+   * two of everything. These assertions are about the pair behaving identically,
+   * which is why they are scoped to one bar rather than made ambiguous.
+   */
+  const bottomBar = () =>
+    within(screen.getByRole("group", { name: "Pagination, below the table" }));
+  const topBar = () => within(screen.getByRole("group", { name: "Pagination, above the table" }));
+
+  it("offers the same controls above the rows as below", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderTable();
+
+    // A full page of rows put "next" a scroll away; the top bar is the fix, and
+    // it has to actually work rather than merely be there.
+    await user.click(topBar().getByRole("button", { name: "Next page" }));
+    expect(handlers.onPageChange).toHaveBeenCalledWith(3);
+    expect(topBar().getByText("21-40 of 45")).toBeInTheDocument();
+  });
+
   it("uses the page numbers the server supplied", async () => {
     const user = userEvent.setup({ delay: null });
     renderTable();
 
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(bottomBar().getByRole("button", { name: "Next page" }));
     expect(handlers.onPageChange).toHaveBeenCalledWith(3);
 
-    await user.click(screen.getByRole("button", { name: "Last page" }));
+    await user.click(bottomBar().getByRole("button", { name: "Last page" }));
     expect(handlers.onPageChange).toHaveBeenCalledWith(3);
 
-    await user.click(screen.getByRole("button", { name: "First page" }));
+    await user.click(bottomBar().getByRole("button", { name: "First page" }));
     expect(handlers.onPageChange).toHaveBeenCalledWith(1);
   });
 
@@ -160,22 +180,24 @@ describe("pagination", () => {
     renderTable({
       result: result({ page: 1, previousPage: null, hasPrevious: false }),
     });
-    expect(screen.getByRole("button", { name: "First page" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+    expect(bottomBar().getByRole("button", { name: "First page" })).toBeDisabled();
+    expect(bottomBar().getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(bottomBar().getByRole("button", { name: "Next page" })).toBeEnabled();
   });
 
   it("reports the visible range and the page position", () => {
     renderTable();
-    expect(screen.getByText("21-40 of 45")).toBeInTheDocument();
-    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+    // Both bars report it; they read from the same result, so they cannot disagree.
+    expect(bottomBar().getByText("21-40 of 45")).toBeInTheDocument();
+    expect(topBar().getByText("21-40 of 45")).toBeInTheDocument();
+    expect(bottomBar().getByText("Page 2 of 3")).toBeInTheDocument();
   });
 
   it("changes the page size through the shared options", async () => {
     const user = userEvent.setup({ delay: null });
     renderTable();
 
-    await user.selectOptions(screen.getByLabelText("Rows per page"), "50");
+    await user.selectOptions(bottomBar().getByLabelText("Rows per page"), "50");
     expect(handlers.onPageSizeChange).toHaveBeenCalledWith(50);
   });
 });

@@ -6,6 +6,7 @@ import { PAGE_SIZE_OPTIONS, type PageSize, type PaginatedResult } from "@reportl
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 
 import { Button } from "@/components/ui/primitives.js";
+import { cn } from "@/lib/cn.js";
 import { rowRange } from "@/lib/list-query.js";
 
 export function PaginationBar<T>({
@@ -13,11 +14,14 @@ export function PaginationBar<T>({
   onPageChange,
   onPageSizeChange,
   disabled,
+  placement = "bottom",
 }: {
   result: PaginatedResult<T>;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: PageSize) => void;
   disabled?: boolean;
+  /** Which edge it sits on — the rule sits between the bar and the rows. */
+  placement?: "top" | "bottom";
 }) {
   const { page, pageSize, total, lastPage, firstPage, previousPage, nextPage } = result;
   const { from, to } = rowRange(page, pageSize, total);
@@ -35,13 +39,27 @@ export function PaginationBar<T>({
   ];
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border px-4 py-3">
+    <div
+      // The whole bar is the named thing, not just its buttons: with one above the
+      // rows and one below, the row count and the page-size control are duplicated
+      // too, and a screen reader needs to know which set it is in.
+      role="group"
+      aria-label={
+        placement === "top" ? "Pagination, above the table" : "Pagination, below the table"
+      }
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-4 px-4 py-3",
+        placement === "top" ? "border-b border-border" : "border-t border-border",
+      )}
+    >
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <label htmlFor="rows-per-page" className="whitespace-nowrap">
+        {/* Unique per bar: with one above and one below, a shared id would point
+            both labels at the same control. */}
+        <label htmlFor={`rows-per-page-${placement}`} className="whitespace-nowrap">
           Rows per page
         </label>
         <select
-          id="rows-per-page"
+          id={`rows-per-page-${placement}`}
           value={pageSize}
           disabled={disabled}
           onChange={(event) => onPageSizeChange(Number(event.target.value) as PageSize)}
@@ -59,7 +77,7 @@ export function PaginationBar<T>({
         {total === 0 ? "No rows" : `${from}-${to} of ${total}`}
       </p>
 
-      <nav className="flex items-center gap-1" aria-label="Pagination">
+      <nav className="flex items-center gap-1">
         {steps.map(({ label, icon: Icon, target, enabled }) => (
           <Button
             key={label}

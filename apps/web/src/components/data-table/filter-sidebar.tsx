@@ -28,8 +28,10 @@ export interface FilterDef {
    * How the value is entered; determines the operator sent to the API.
    * - `select` — a native dropdown, for a handful of fixed options.
    * - `combobox` — a type-to-search dropdown, for many options (people, tags…).
+   * - `number` — a numeric box, for a count or a score; pair it with `op: "gte"`
+   *   for an "at least" filter and say so in the label.
    */
-  kind: "text" | "select" | "combobox" | "boolean" | "daterange";
+  kind: "text" | "select" | "combobox" | "boolean" | "number" | "daterange";
   /** Options for `kind: "select"` or `"combobox"`. */
   options?: SelectOption[];
   /** Defaults to `contains` for text and `eq` for the rest. */
@@ -90,8 +92,17 @@ export function FilterSidebar({
   if (!open) return null;
 
   const change = (def: FilterDef, raw: string) => {
-    // A boolean column expects a real boolean; "" still means "no filter".
-    const value = def.kind === "boolean" && raw !== "" ? raw === "true" : raw;
+    // A boolean column expects a real boolean, and a numeric one a real number —
+    // Postgres will not compare an integer with the string the input holds. ""
+    // still means "no filter" in both cases.
+    const value =
+      raw === ""
+        ? raw
+        : def.kind === "boolean"
+          ? raw === "true"
+          : def.kind === "number"
+            ? Number(raw)
+            : raw;
     setDraft((current) => upsertDraft(current, { field: def.field, op: opFor(def), value }));
   };
 
@@ -177,7 +188,18 @@ export function FilterSidebar({
             return (
               <Field key={def.field} label={def.label}>
                 {(props) =>
-                  def.kind === "text" ? (
+                  def.kind === "number" ? (
+                    <Input
+                      {...props}
+                      type="number"
+                      value={value}
+                      onChange={(event) => change(def, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") apply();
+                      }}
+                      placeholder={def.label}
+                    />
+                  ) : def.kind === "text" ? (
                     <Input
                       {...props}
                       value={value}

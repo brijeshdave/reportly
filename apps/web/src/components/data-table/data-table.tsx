@@ -180,6 +180,20 @@ export function DataTable<T extends RowData>({
           />
         ) : (
           <>
+            {/* Above the rows as well as below: on a full page of results the
+                controls were only reachable by scrolling past every row, which is
+                a long way to go to say "next". Same controls, same counts — the
+                bottom one stays for anybody who has read to the end. */}
+            {list.result ? (
+              <PaginationBar
+                result={list.result}
+                onPageChange={list.onPageChange}
+                onPageSizeChange={list.onPageSizeChange}
+                disabled={list.isFetching}
+                placement="top"
+              />
+            ) : null}
+
             {/* Desktop: a real table. */}
             <div className={cn("overflow-x-auto", renderCard && "hidden md:block")}>
               <table className="w-full border-collapse text-sm">

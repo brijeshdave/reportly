@@ -21,6 +21,7 @@ import {
 import { Suspense, useState, useEffect } from "react";
 
 import { Avatar } from "@/components/avatar.js";
+import { Toaster } from "@/components/toaster.js";
 import { ErrorBoundary } from "@/components/error-boundary.js";
 import { NotificationBell } from "@/components/notification-bell.js";
 import { useTheme } from "@/components/theme-provider.js";
@@ -445,49 +446,54 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
-    // No background fill on this root: the body carries the theme's gradient wash,
-    // and the sidebar and topbar are opaque cards on top of it, so it shows through
-    // behind the main content.
-    <div className="flex h-screen overflow-hidden">
-      <aside className="hidden w-64 shrink-0 lg:block">
-        <Sidebar />
-      </aside>
+    // Mounted once, around everything: a save confirmation outlives the form that
+    // raised it — a page may navigate away in the same breath — so it cannot live
+    // inside the page.
+    <Toaster>
+      {/* No background fill on this root: the body carries the theme's gradient
+          wash, and the sidebar and topbar are opaque cards on top of it, so it
+          shows through behind the main content. */}
+      <div className="flex h-screen overflow-hidden">
+        <aside className="hidden w-64 shrink-0 lg:block">
+          <Sidebar />
+        </aside>
 
-      {drawerOpen ? (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div
-            className="absolute inset-0 bg-foreground/40"
-            onClick={() => setDrawerOpen(false)}
-            aria-hidden="true"
-          />
-          <div className="absolute inset-y-0 left-0 w-72" role="dialog" aria-label="Navigation">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Close navigation"
-              className="absolute right-2 top-2 z-10"
+        {drawerOpen ? (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div
+              className="absolute inset-0 bg-foreground/40"
               onClick={() => setDrawerOpen(false)}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-            <Sidebar onNavigate={() => setDrawerOpen(false)} />
+              aria-hidden="true"
+            />
+            <div className="absolute inset-y-0 left-0 w-72" role="dialog" aria-label="Navigation">
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close navigation"
+                className="absolute right-2 top-2 z-10"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+              <Sidebar onNavigate={() => setDrawerOpen(false)} />
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onOpenSidebar={() => setDrawerOpen(true)} />
-        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <ErrorBoundary boundary="app-shell">
-            {/* Every page is fetched when its route is, so there is a moment before
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar onOpenSidebar={() => setDrawerOpen(true)} />
+          <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+            <ErrorBoundary boundary="app-shell">
+              {/* Every page is fetched when its route is, so there is a moment before
                 one arrives. Inside the error boundary, not outside: a chunk that
                 fails to load is an error to be shown, not a spinner for ever. */}
-            <Suspense fallback={<PageSpinner />}>
-              <Outlet />
-            </Suspense>
-          </ErrorBoundary>
-        </main>
+              <Suspense fallback={<PageSpinner />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
+          </main>
+        </div>
       </div>
-    </div>
+    </Toaster>
   );
 }

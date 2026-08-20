@@ -270,6 +270,15 @@ responsible for.
 **Team routines** is where recurring duties are defined, assigned and tracked.
 Compliance is per person and per routine, and month-end awards follow from it.
 
+It is a table, with the filters, sorting, paging, column choice and export every
+other list has. Two of its filters answer a question the routine itself cannot:
+
+| Filter                        | What it keeps                                                                                                                                                                          |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Assigned to**               | Routines somebody in your reporting line is assigned to. Only your own downline is offered — they are the people you may assign to in the first place.                                 |
+| **Site (of whoever does it)** | Routines whose assignees work at that site. A routine belongs to a _department_, and a department can span every plant, so "where is this routine?" is really "where are its people?". |
+| **Points at least**           | Routines worth at least that many points.                                                                                                                                              |
+
 ### Add someone
 
 Two ways, both needing `users:create`. Either way they have **no access** until you
@@ -334,6 +343,23 @@ the organisation, not who may see what.
 **Prefer deactivating.** Deleting is refused while a department still has people or
 sub-departments in it, so a whole branch of the org chart can never vanish by
 accident.
+
+### Saving keeps you where you are
+
+Saving an edit stays on the page, with a brief confirmation in the corner — you can
+carry on making changes instead of finding your way back. Creating something opens
+what you just made, which is where the next edit happens anyway. Deleting is the
+one that returns you to the list, because what you were looking at is gone.
+
+The confirmations are yours to configure under **Your account → Preferences**:
+whether they appear at all, which corner they sit in, and how long they stay
+(including "until I dismiss it"). An administrator sets the default for everybody;
+anybody may override it for themselves.
+
+### Tables page from the top as well as the bottom
+
+Every table carries the same paging controls above the rows and below them, so on a
+full page you do not have to scroll to the end to reach "next".
 
 ### How departments are shown when you pick one
 

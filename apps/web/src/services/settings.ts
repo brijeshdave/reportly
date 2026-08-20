@@ -11,6 +11,9 @@ import {
   passwordRulesSchema,
   tableDefaultsSchema,
   themeSettingsSchema,
+  UI_TOASTS,
+  toastSettingsSchema,
+  type ToastSettings,
 } from "@reportly/shared";
 
 import { http } from "@/services/http.js";
@@ -30,6 +33,7 @@ function pick(records: SettingRecord[], namespace: string, key: string): unknown
 export interface MyPreferences {
   theme: ThemeSettings;
   tableDefaults: TableDefaults;
+  toasts: ToastSettings;
 }
 
 /** The caller's effective preferences (their override, else the org default). */
@@ -40,6 +44,7 @@ export async function fetchMyPreferences(): Promise<MyPreferences> {
     tableDefaults: tableDefaultsSchema.parse(
       pick(records, TABLE_DEFAULTS.namespace, TABLE_DEFAULTS.key) ?? {},
     ),
+    toasts: toastSettingsSchema.parse(pick(records, UI_TOASTS.namespace, UI_TOASTS.key) ?? {}),
   };
 }
 
@@ -49,6 +54,15 @@ export async function fetchMyPreferences(): Promise<MyPreferences> {
  */
 export async function fetchPasswordRules(): Promise<PasswordRules> {
   return passwordRulesSchema.parse(await http.get<unknown>("/password-rules"));
+}
+
+/** Persist the caller's own save-confirmation preferences. */
+export async function saveMyToasts(toasts: ToastSettings): Promise<ToastSettings> {
+  const record = await http.put<SettingRecord>(
+    `/settings/me/${UI_TOASTS.namespace}/${UI_TOASTS.key}`,
+    { value: toasts },
+  );
+  return toastSettingsSchema.parse(record.value);
 }
 
 /** Persist the caller's own theme (does not change the org default). */
