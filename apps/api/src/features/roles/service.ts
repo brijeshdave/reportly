@@ -25,6 +25,7 @@ import {
   permissionsForRoles,
   rolesWithPermissionKeys,
   setRolePermissions,
+  systemRoleImpact as systemRoleImpactRows,
   updateRoleName,
   upsertRoles,
   type ResolvedRoleRow,
@@ -212,4 +213,9 @@ export async function importRoles(parsed: RoleParseResult): Promise<RoleImportOu
 
   const { created, updated } = await upsertRoles(resolved);
   return { created, updated, problems: [] };
+}
+
+/** See `repo.systemRoleImpact` — the count the settings switch shows before it is flicked. */
+export async function systemRoleImpact(): Promise<{ users: number; groups: number }> {
+  return systemRoleImpactRows();
 }

@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
   ERROR_CODES,
   PARTS_MODULE,
+  SYSTEM_ROLES_SETTING,
   locationSchema,
   myDayQuerySchema,
   myDaySchema,
@@ -17,7 +18,7 @@ import {
 
 import { db } from "@/core/db/index.js";
 import { env } from "@/core/env.js";
-import { getEffectiveSetting } from "@/core/settings/service.js";
+import { getEffectiveSetting, getSystemSetting } from "@/core/settings/service.js";
 import { AppError } from "@/core/errors.js";
 import { companies, groupUsers, groups, userCompanies, users } from "@/core/db/schema.js";
 import { avatarVersions } from "@/features/avatars/repo.js";
@@ -136,6 +137,11 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
         ? await getEffectiveSetting(PARTS_MODULE, { companyId: ctx.companyId })
         : null;
 
+      // Whether the shipped roles grant anything. Sent for the same reason as the
+      // module flags: a picker that offers a role conferring nothing is offering a
+      // choice that does nothing, and there is no permission that says so.
+      const systemRoles = await getSystemSetting(SYSTEM_ROLES_SETTING);
+
       return {
         user: { ...user, avatarVersion: avatarVersion ?? null },
         companyId: ctx.companyId,
@@ -156,6 +162,7 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
         // does this work at all. Off, and the word should not appear in their
         // sidebar however their grants read.
         modules: { parts: parts?.enabled ?? false },
+        systemRoles: systemRoles.enabled,
       };
     },
   );

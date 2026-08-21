@@ -15,7 +15,9 @@ import { HistoryTab } from "@/components/history-tab.js";
 import { EffectivePermissionsTab } from "@/routes/groups/effective-permissions-tab.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { Spinner } from "@/components/ui/form.js";
+import { Alert } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import {
   UnsavedChangesNotice,
@@ -222,6 +224,7 @@ function MembersTab({ group, assignments }: TabProps) {
 
 function RolesTab({ group, assignments }: TabProps) {
   const canAssign = usePermission(PERMISSIONS.GROUPS_ASSIGN);
+  const { data: session } = useQuery(sessionQuery);
   const roles = useOptions<Role>("roles", "/roles", !group.isSystem);
   const save = useAssignmentSaver(group.id, "roles");
   const [dirty, setDirty] = useState(false);
@@ -231,18 +234,30 @@ function RolesTab({ group, assignments }: TabProps) {
   if (roles.isLoading) return <Spinner />;
   if (roles.error) return <ErrorAlert error={roles.error} />;
 
+  const shippedRolesOff = session?.systemRoles === false;
+
   const options: PickerOption[] = (roles.data ?? []).map((role) => ({
     id: role.id,
     label: role.name,
+    // Switched off system-wide: the row stays, so what a group already holds is
+    // still visible and comes back intact when the switch goes on again.
+    locked: role.isSystem && shippedRolesOff,
     // The count reads as part of the name rather than a line under it — fifty
     // two-line rows is a list nobody scans. The badge says which roles cannot be
     // edited, before somebody picks one and finds out.
-    meta: `(${role.permissions.length})`,
+    meta: role.isSystem && shippedRolesOff ? "switched off" : `(${role.permissions.length})`,
     badge: role.isSystem ? "System" : "Custom",
   }));
 
   return (
-    <Card className="p-6">
+    <Card className="flex flex-col gap-4 p-6">
+      {shippedRolesOff ? (
+        <Alert tone="warning">
+          The shipped roles are switched off in Settings &rarr; Roles &amp; access, so they grant
+          nothing and cannot be assigned. What a group already holds is kept, and comes back the
+          moment they are switched on again.
+        </Alert>
+      ) : null}
       <AssignmentPicker
         options={options}
         selectedIds={assignments.roles}

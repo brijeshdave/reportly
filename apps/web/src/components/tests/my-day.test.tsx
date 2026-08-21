@@ -64,6 +64,7 @@ function renderMyDay(permissions: string[] = []) {
     passwordExpired: false,
     queueAdmin: "off",
     modules: { parts: false },
+    systemRoles: true,
   });
   return render(
     <QueryClientProvider client={client}>

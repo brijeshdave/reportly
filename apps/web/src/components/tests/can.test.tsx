@@ -32,6 +32,7 @@ function renderWithSession(session: Partial<Session>, ui: React.ReactNode) {
     passwordExpired: false,
     queueAdmin: "off",
     modules: { parts: false },
+    systemRoles: true,
     ...session,
   } satisfies Session);
 

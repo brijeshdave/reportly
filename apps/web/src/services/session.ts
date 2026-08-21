@@ -60,6 +60,14 @@ export interface Session {
    * changes nothing else.
    */
   modules: { parts: boolean };
+  /**
+   * Whether the shipped system roles grant anything (Settings → Roles & access).
+   *
+   * Not a permission: with them switched off a system role still exists and can
+   * still be ticked, and would confer nothing. A picker that offers a choice which
+   * does nothing is worse than one that says why it cannot.
+   */
+  systemRoles: boolean;
 }
 
 export function fetchSession(): Promise<Session> {

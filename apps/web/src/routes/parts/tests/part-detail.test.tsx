@@ -77,6 +77,7 @@ function session(permissions: string[]): Session {
     passwordExpired: false,
     queueAdmin: "off",
     modules: { parts: true },
+    systemRoles: true,
   };
 }
 

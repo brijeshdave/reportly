@@ -2,7 +2,12 @@
 // Resolves the per-request AuthContext from the authenticated user + active
 // company: permissions (group -> role -> permission), location scope, and
 // superadmin status. Downstream code reads only the resolved ctx.
-import { ALL_PERMISSIONS, type AuthContext, type Permission } from "@reportly/shared";
+import {
+  ALL_PERMISSIONS,
+  SYSTEM_ROLES_SETTING,
+  type AuthContext,
+  type Permission,
+} from "@reportly/shared";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
@@ -11,10 +16,12 @@ import {
   groupUsers,
   groups,
   permissions as permissionsTable,
+  roles,
   rolePermissions,
   userCompanies,
   userLocations,
 } from "@/core/db/schema.js";
+import { getSystemSetting } from "@/core/settings/service.js";
 
 const SUPERADMIN_GROUP = "Superadmin";
 
@@ -90,12 +97,23 @@ export async function buildAuthContext(
   const groupIds = await userGroupIds(userId);
   if (groupIds.length === 0) return empty;
 
+  // With the shipped roles switched off, they confer nothing — the assignments stay
+  // in the database untouched, so the switch is reversible, and this is the one place
+  // that has to honour it. A custom role is unaffected either way.
+  const systemRoles = await getSystemSetting(SYSTEM_ROLES_SETTING);
+
   const permRows = await db
     .selectDistinct({ key: permissionsTable.key })
     .from(groupRoles)
+    .innerJoin(roles, eq(roles.id, groupRoles.roleId))
     .innerJoin(rolePermissions, eq(rolePermissions.roleId, groupRoles.roleId))
     .innerJoin(permissionsTable, eq(permissionsTable.id, rolePermissions.permissionId))
-    .where(inArray(groupRoles.groupId, groupIds));
+    .where(
+      and(
+        inArray(groupRoles.groupId, groupIds),
+        systemRoles.enabled ? undefined : eq(roles.isSystem, false),
+      ),
+    );
 
   const locRows = await db
     .select({ locationId: userLocations.locationId })

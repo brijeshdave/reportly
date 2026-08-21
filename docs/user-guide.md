@@ -536,6 +536,17 @@ Editing a custom role changes what every group holding it may do, retroactively 
 the editor names those groups before you save. Deleting a role is refused while any
 group still holds it.
 
+### Turn the shipped roles off
+
+**Settings → Roles & access** (`settings:manage`). If you describe your access from
+scratch, the fifty roles that ship with Reportly are noise. Switching them off hides
+them from the pickers and stops them granting anything.
+
+**Nothing is deleted.** Each group keeps the roles it holds, so switching them back on
+restores every grant exactly as it was. Before you flick it, the panel says how many
+people would lose _all_ access — those whose groups hold system roles and nothing
+else. Superadmins are unaffected, so the switch can always be undone.
+
 ### See what a group actually grants
 
 **Groups → _the group_ → Effective permissions.** A group with four roles answers

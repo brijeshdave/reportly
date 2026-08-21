@@ -50,6 +50,7 @@ const session: Session = {
   passwordExpired: false,
   queueAdmin: "off",
   modules: { parts: false },
+  systemRoles: true,
 };
 
 /** The policy the server reports. Deliberately not the registry default. */

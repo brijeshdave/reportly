@@ -454,6 +454,36 @@ export const DEBUG_MODE: SettingDef<typeof debugModeSchema> = {
   description: "Verbose request debugging; auto-expires",
 };
 
+/**
+ * Whether the shipped roles are in force.
+ *
+ * An installation that describes its own access from scratch does not want fifty
+ * system roles cluttering every picker — but deleting them is not the answer, since
+ * they cannot be deleted and, more to the point, the decision has to be reversible.
+ *
+ * Off means: the shipped roles are not offered, are shown as disabled where a group
+ * already holds one, and **stop conferring permissions**. Nothing is deleted — the
+ * group↔role rows stay exactly as they are, so turning it back on restores every
+ * grant. That is what makes the switch safe to try.
+ *
+ * The Superadmin *group* bypasses roles entirely, so whoever turns it off can always
+ * turn it back on.
+ */
+export const systemRolesSchema = z.object({
+  enabled: z.boolean().default(true),
+});
+
+export const SYSTEM_ROLES_SETTING: SettingDef<typeof systemRolesSchema> = {
+  namespace: "access",
+  key: "systemRoles",
+  schema: systemRolesSchema,
+  userOverridable: false,
+  description:
+    "Whether the shipped system roles grant anything. Turning them off hides them from " +
+    "the pickers and stops them conferring permissions; no assignment is deleted, so " +
+    "turning them back on restores every grant.",
+};
+
 export const PASSWORD_POLICY: SettingDef<typeof passwordPolicySchema> = {
   namespace: "auth",
   key: "passwordPolicy",
@@ -614,6 +644,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   TABLE_DEFAULTS,
   UI_THEME,
   UI_TOASTS,
+  SYSTEM_ROLES_SETTING,
 ];
 
 export function findSettingDef(namespace: string, key: string): SettingDef | undefined {

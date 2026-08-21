@@ -36,6 +36,7 @@ function session(over: Partial<Session>): Session {
     passwordExpired: false,
     queueAdmin: "off",
     modules: { parts: false },
+    systemRoles: true,
     ...over,
   };
 }

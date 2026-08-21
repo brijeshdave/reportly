@@ -51,6 +51,24 @@ export async function rolesRoutes(fastify: FastifyInstance): Promise<void> {
     async (request) => roles.listRoles(await resolveListQuery(request.query, request.authUserId)),
   );
 
+  // What turning the shipped roles off would cost, so the switch can say it before
+  // it is flicked rather than after. `settings:manage` because it is a settings
+  // decision — the number only matters to whoever can act on it.
+  app.get(
+    "/roles/system-impact",
+    {
+      preHandler: guard(PERMISSIONS.SETTINGS_MANAGE),
+      schema: {
+        tags: ["Roles"],
+        summary: "How many people would lose all access if the system roles were switched off",
+        response: {
+          200: z.object({ users: z.number().int(), groups: z.number().int() }),
+        },
+      },
+    },
+    async () => roles.systemRoleImpact(),
+  );
+
   // --- bulk export / import (static paths, before /:id) ---
 
   app.get(

@@ -31,6 +31,11 @@ export function importRoles(file: File): Promise<ImportOutcome> {
 }
 import type { Reference } from "@/services/locations.js";
 
+/** How many people would lose all access if the shipped roles were switched off. */
+export function fetchSystemRoleImpact(): Promise<{ users: number; groups: number }> {
+  return http.get<{ users: number; groups: number }>("/roles/system-impact");
+}
+
 export function fetchRole(id: string): Promise<Role> {
   return http.get<Role>(`/roles/${id}`);
 }

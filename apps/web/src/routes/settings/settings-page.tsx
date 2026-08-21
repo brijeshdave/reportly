@@ -27,6 +27,7 @@ import { Alert, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { errorMessage } from "@/lib/error-message.js";
+import { SystemRolesNotice } from "@/routes/settings/system-roles-card.js";
 import { debugQuery, queryKeys } from "@/lib/queries.js";
 import { disableDebug, enableDebug } from "@/services/debug.js";
 import { fetchAllSettings, saveSystemSetting, type SettingRecord } from "@/services/settings.js";
@@ -44,6 +45,7 @@ const NAMESPACE_LABELS: Record<string, string> = {
   logging: "Logging",
   debug: "Debug",
   ui: "Appearance",
+  access: "Roles & access",
 };
 
 /**
@@ -120,6 +122,7 @@ export function SettingsPage({ tab }: { tab: string }) {
           <DebugCard />
         ) : (
           <>
+            {activeTab === "access" ? <SystemRolesNotice /> : null}
             {defsFor(activeTab).map((def) => (
               <SettingForm
                 key={`${def.namespace}.${def.key}`}

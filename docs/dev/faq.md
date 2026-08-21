@@ -137,6 +137,25 @@ Two things to know before changing it:
   handed the deletion right to every group that used to have it would have made the
   change meaningless.
 
+### What happens when the system roles are switched off?
+
+`access.systemRoles` is read in exactly one place that matters: `buildAuthContext`
+adds `roles.is_system = false` to the permission query when it is off. Everything
+else follows from that — the context is rebuilt per request, so the switch bites
+immediately and no session has to be dropped.
+
+What it deliberately does **not** do is touch a single `group_roles` row. That is
+what makes it reversible, and it is the whole design: an administrator has to be
+able to try it and put it back. Two consequences to keep in mind when changing this
+area:
+
+- **The UI must not pretend the roles are gone.** A group that holds a shipped role
+  still shows it, locked, and marked "switched off" — hiding it would make the
+  restore look like magic. `/me` carries `systemRoles` so the picker knows.
+- **The Superadmin group is the escape hatch.** It grants access directly rather
+  than through a role, so it is excluded from the impact count and from the switch
+  itself. Without that, an installation could lock itself out of its own settings.
+
 ### Why is a role's tier not always viewer/editor/admin?
 
 Because a tier nobody would ever be given is worse than a missing one. Most areas

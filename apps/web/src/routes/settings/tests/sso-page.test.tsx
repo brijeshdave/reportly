@@ -59,6 +59,7 @@ function renderPage(overrides: Partial<Record<SsoProviderId, RedactedSsoProvider
     passwordExpired: false,
     queueAdmin: "off",
     modules: { parts: false },
+    systemRoles: true,
   });
 
   render(

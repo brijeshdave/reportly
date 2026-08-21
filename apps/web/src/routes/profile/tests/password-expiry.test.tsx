@@ -41,6 +41,7 @@ function session(passwordExpired: boolean): Session {
     passwordExpired,
     queueAdmin: "off",
     modules: { parts: false },
+    systemRoles: true,
   };
 }
 

@@ -191,3 +191,59 @@ export async function groupsHolding(roleId: string): Promise<RoleReference[]> {
     .where(eq(groupRoles.roleId, roleId))
     .orderBy(groups.name);
 }
+
+/**
+ * What switching the shipped roles off would cost, in people.
+ *
+ * Counted before the switch is flicked rather than discovered afterwards: somebody
+ * whose only access comes through a system role loses everything the moment it stops
+ * conferring, and "everything" here means they sign in to an empty app. The count is
+ * the difference between a decision and a surprise.
+ *
+ * Superadmins are excluded — the Superadmin *group* bypasses roles entirely, which is
+ * also why whoever turns this off can always turn it back on.
+ */
+export async function systemRoleImpact(): Promise<{ users: number; groups: number }> {
+  const result = await db.execute<{ users: number; groups: number }>(sql`
+    WITH group_kinds AS (
+      SELECT gr."group_id" AS id,
+             bool_or(r."is_system") AS has_system,
+             bool_or(NOT r."is_system") AS has_custom
+        FROM "group_roles" gr
+        JOIN "roles" r ON r."id" = gr."role_id"
+       GROUP BY gr."group_id"
+    ),
+    -- The Superadmin group grants its access directly rather than through a role, so
+    -- its members lose nothing and must not be counted. It is also the escape hatch:
+    -- whoever switches the shipped roles off can always switch them back on.
+    superadmins AS (
+      SELECT DISTINCT gu."user_id"
+        FROM "group_users" gu
+        JOIN "groups" g ON g."id" = gu."group_id"
+       WHERE g."is_system" AND g."name" = 'Superadmin'
+    ),
+    losers AS (
+      SELECT DISTINCT gu."user_id"
+        FROM "group_users" gu
+        JOIN group_kinds gk ON gk."id" = gu."group_id"
+       WHERE gk."has_system"
+         AND gu."user_id" NOT IN (SELECT "user_id" FROM superadmins)
+    ),
+    keepers AS (
+      SELECT DISTINCT gu."user_id"
+        FROM "group_users" gu
+        JOIN group_kinds gk ON gk."id" = gu."group_id"
+       WHERE gk."has_custom"
+    )
+    SELECT
+      (SELECT count(*)::int FROM losers WHERE "user_id" NOT IN (SELECT "user_id" FROM keepers))
+        AS users,
+      (SELECT count(*)::int
+         FROM group_kinds gk
+         JOIN "groups" g ON g."id" = gk."id"
+        WHERE gk."has_system" AND NOT gk."has_custom" AND g."name" <> 'Superadmin')
+        AS groups
+  `);
+  const row = result.rows[0];
+  return { users: Number(row?.users ?? 0), groups: Number(row?.groups ?? 0) };
+}

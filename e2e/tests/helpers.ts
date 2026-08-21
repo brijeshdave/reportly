@@ -287,7 +287,10 @@ export async function changePassword(page: Page, from: string, to: string): Prom
  * needs no second click.
  */
 export async function openNavGroup(page: Page, group: string): Promise<void> {
-  const header = page.getByRole("button", { name: group, exact: true });
+  // Scoped to the sidebar: a page can perfectly well have its own button with the
+  // same word on it — the Roles list has a System/Custom filter — and an unscoped
+  // locator then matches two things and fails.
+  const header = page.getByLabel("Main").getByRole("button", { name: group, exact: true });
   if ((await header.getAttribute("aria-expanded")) === "false") await header.click();
 }
 

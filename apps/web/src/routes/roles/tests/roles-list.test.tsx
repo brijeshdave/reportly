@@ -71,6 +71,7 @@ const session: Session = {
   passwordExpired: false,
   queueAdmin: "off",
   modules: { parts: false },
+  systemRoles: true,
 };
 
 function page(): PaginatedResult<Role> {
