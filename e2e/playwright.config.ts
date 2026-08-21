@@ -49,7 +49,9 @@ export default defineConfig({
   // The API builds its databases as the first half of its own start command: it
   // cannot boot against a database that does not exist, and globalSetup is not
   // guaranteed to run first. reuseExistingServer stays off — a server already on
-  // the port is a stale one from a killed run, pointed who-knows-where.
+  // the port is a stale one from a killed run, pointed who-knows-where. `test:e2e`
+  // runs `free-ports.ts` first to clear exactly that, which is what stops one
+  // cancelled run from failing every run after it.
   webServer: external
     ? undefined
     : [

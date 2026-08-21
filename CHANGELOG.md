@@ -8,6 +8,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A cancelled e2e run no longer breaks every run after it.** Playwright starts the
+  API through pnpm, and killing the run took the shell while leaving the server
+  listening, so the next `test:e2e` died on "port 3100 is already used". The suite
+  now clears its own two ports first — and only ever kills a process belonging to
+  this checkout, verified against its working directory and command line. Anything
+  else is named and left alone, and a run pointed at somebody else's stack
+  (`BASE_URL` set) touches nothing at all.
+
 - **`scripts/upgrade.sh` drove the wrong stack for anyone keeping their own compose
   file.** It passed `-f compose.prod.yaml` explicitly, while an operator who has
   tailored their stack keeps an untracked `compose.yaml` (or `.yml`, or either
