@@ -26,10 +26,16 @@ build
 deploy/k8s/secret.yaml
 
 # Your own compose file. `compose.dev.yaml` (development) and `compose.prod.yaml`
-# (the shipped production reference) are tracked; `compose.yaml` is yours to
-# tailor, and staying untracked is what stops a `git pull` overwriting it.
+# (the shipped production reference) are tracked, so a pull rewrites them. The four
+# names below are the ones Docker Compose picks up on its own: whichever you write
+# is yours to tailor, and staying untracked is what stops a pull overwriting it.
+# `scripts/upgrade.sh` finds it the same way, so it drives the stack you run.
 compose.yaml
+compose.yml
+docker-compose.yaml
+docker-compose.yml
 compose.override.yaml
+compose.override.yml
 
 # Test / coverage
 coverage

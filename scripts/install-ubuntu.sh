@@ -15,7 +15,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-COMPOSE_FILE=compose.prod.yaml
+. "$(dirname "$0")/compose-file.sh"
+COMPOSE_FILE="$(resolve_compose_file)"
+mapfile -t COMPOSE_FILE_ARGS < <(compose_file_args "$COMPOSE_FILE")
+
 PUBLIC_HOSTNAME=""
 ACME_EMAIL=""
 SMTP_HOST=""
@@ -121,18 +124,18 @@ echo "==> Creating the data directories"
 "$(dirname "$0")/data-dirs.sh"
 
 echo "==> Building and starting the stack (this takes a few minutes on first run)"
-docker compose -f "$COMPOSE_FILE" "${PROFILE_ARGS[@]}" up -d --build
+docker compose "${COMPOSE_FILE_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d --build
 
 echo "==> Seeding"
 # Migrations already ran: the `migrate` service is a gate `api` waits on.
-docker compose -f "$COMPOSE_FILE" exec -T api node dist/cli/index.js seed
+docker compose "${COMPOSE_FILE_ARGS[@]}" exec -T api node dist/cli/index.js seed
 
 echo "==> Checking the install"
-docker compose -f "$COMPOSE_FILE" exec -T api node dist/cli/index.js doctor || true
+docker compose "${COMPOSE_FILE_ARGS[@]}" exec -T api node dist/cli/index.js doctor || true
 
 echo
 echo "==> Superadmin password (shown once, not stored anywhere readable)"
-docker compose -f "$COMPOSE_FILE" exec -T api node dist/cli/index.js reset-superadmin
+docker compose "${COMPOSE_FILE_ARGS[@]}" exec -T api node dist/cli/index.js reset-superadmin
 
 cat <<EOF
 

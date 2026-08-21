@@ -237,7 +237,29 @@ scripts/upgrade.sh
 
 It backs the database up first, pulls, rebuilds, migrates, restarts, waits for
 readiness and runs `doctor` — stopping at the first failure with the exact
-command to roll back.
+command to roll back. It prints which compose file it is driving before it starts.
+
+#### If you keep your own compose file
+
+`compose.prod.yaml` is the shipped reference and is **tracked**, so a `git pull`
+rewrites it. Anyone who has tailored their stack keeps their own file instead —
+`compose.yaml`, `compose.yml`, `docker-compose.yaml` or `docker-compose.yml`, all
+four of which are gitignored and none of which a pull will touch.
+
+The scripts find it rather than assuming, in this order:
+
+|     | Where it looks                                                             |                                                                         |
+| --- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 1   | `COMPOSE_FILE` in the environment                                          | Compose's own variable, so a value you already export is obeyed         |
+| 2   | `COMPOSE_FILE=` in `.env`                                                  | untracked, so setting it once survives every pull                       |
+| 3   | **the file your running stack was started from**                           | read off the containers themselves, so it is a fact rather than a guess |
+| 4   | `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` | Compose's own precedence, for a stack that is currently down            |
+| 5   | `compose.prod.yaml`                                                        | the shipped default                                                     |
+
+A `:`-separated list works throughout, exactly as Compose reads it —
+`COMPOSE_FILE=compose.yaml:compose.override.yaml`. The development stack
+(`compose.dev.yaml`) is never picked up by detection: a checkout with `pnpm
+app:infra` running must not have its databases rebuilt by an upgrade.
 
 > **Upgrading an install first created before v0.3.0:** the job scheduler changed
 > when BullMQ moved to v6. Old repeatable entries linger in Redis and can cause

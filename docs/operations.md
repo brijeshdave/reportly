@@ -2,6 +2,12 @@
 
 ## The command line
 
+> **The examples below say `-f compose.prod.yaml`.** If you keep your own compose
+> file — `compose.yaml` and the three other names Compose recognises are gitignored
+> for exactly that reason — substitute it, or export `COMPOSE_FILE` once and drop the
+> `-f` entirely. `scripts/upgrade.sh` works it out for itself; see
+> [Upgrades](ops/deployment-ubuntu.md#upgrades).
+
 Run from the repository with `pnpm --filter @reportly/api cli <command>`, or
 **inside the API container** with `node dist/cli/index.js <command>`:
 

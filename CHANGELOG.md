@@ -8,6 +8,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`scripts/upgrade.sh` drove the wrong stack for anyone keeping their own compose
+  file.** It passed `-f compose.prod.yaml` explicitly, while an operator who has
+  tailored their stack keeps an untracked `compose.yaml` (or `.yml`, or either
+  `docker-compose` spelling) precisely so a `git pull` cannot overwrite it — which
+  `.gitignore` has always invited. The scripts now find the file instead of assuming
+  it: `COMPOSE_FILE` from the environment or `.env`, else **the file the running
+  stack was actually started from** (read off the containers' own labels), else the
+  four names Compose itself picks up, else the shipped default. The upgrade prints
+  which one it chose before it touches anything.
+
 - **Seeding could overwrite an administrator's own role.** Roles are unique by name,
   so a hand-made "Tasks admin" occupies a name a release may later ship. `cli seed`
   looked roles up by name alone and reconciled whatever it found against the shipped

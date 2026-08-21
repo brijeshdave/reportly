@@ -11,7 +11,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-COMPOSE_FILE=compose.prod.yaml
+# Which stack to drive: the operator's own compose.yaml when they keep one, else
+# the shipped reference. See scripts/compose-file.sh.
+. "$(dirname "$0")/compose-file.sh"
+COMPOSE_FILE="$(resolve_compose_file)"
+mapfile -t COMPOSE_FILE_ARGS < <(compose_file_args "$COMPOSE_FILE")
+
 PULL=1
 [ "${1:-}" = "--no-pull" ] && PULL=0
 
@@ -26,7 +31,13 @@ if grep -qE '^PUBLIC_HOSTNAME=.+' .env; then
   PROFILE_ARGS=(--profile tls)
 fi
 
-compose() { docker compose -f "$COMPOSE_FILE" "${PROFILE_ARGS[@]}" "$@"; }
+compose() { docker compose "${COMPOSE_FILE_ARGS[@]}" "${PROFILE_ARGS[@]}" "$@"; }
+
+for file in "${COMPOSE_FILE_ARGS[@]}"; do
+  [ "$file" = "-f" ] && continue
+  [ -f "$file" ] || die "Compose file not found: $file (set COMPOSE_FILE in .env to the one you use)."
+done
+echo "==> Using $COMPOSE_FILE"
 
 PREVIOUS="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
