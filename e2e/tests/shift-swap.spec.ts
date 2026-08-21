@@ -84,10 +84,11 @@ test("a colleague swap is requested and approved", async ({ page }) => {
     await cell.click();
     // The toolbar only exists while a cell is selected, and it goes again as soon
     // as a shift is chosen — so wait for it rather than assume it is still there
-    // from the person before.
-    const setShift = page.getByLabel("Set shift");
+    // from the person before. Each shift is its own button now, in its own colour;
+    // it used to be a "Set shift…" dropdown.
+    const setShift = page.getByRole("button", { name: "M", exact: true });
     await expect(setShift).toBeVisible();
-    await setShift.selectOption({ label: `M · Morning ${tag}` });
+    await setShift.click();
     // And wait for the code to land in the cell. Setting a shift re-renders the
     // whole grid, so clicking the next person immediately hits a node that is on
     // its way out and selects nothing.

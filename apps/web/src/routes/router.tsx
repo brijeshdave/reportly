@@ -221,7 +221,12 @@ const authedRoute = createRoute({
     // refusing everything else, and the enrolment lives on the security tab. Inside
     // the grace period nothing is redirected — the banner in the shell does the
     // asking, because taking somebody's work away a week early is not the deal.
-    if (session.twoFactor.overdue && location.pathname !== "/profile") {
+    // Optional, deliberately: this reads a field off a payload that arrives over the
+    // wire, and a session cached by an older build — or fetched mid-sign-in — has no
+    // `twoFactor` at all. Throwing here does not fail loudly, it aborts the
+    // navigation, which surfaces as a blank ERR_ABORTED with nothing pointing back
+    // to this line.
+    if (session.twoFactor?.overdue && location.pathname !== "/profile") {
       throw redirect({ to: "/profile", search: { tab: "security" } });
     }
 

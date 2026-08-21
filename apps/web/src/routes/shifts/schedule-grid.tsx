@@ -153,7 +153,7 @@ function Chip({
     return (
       <span
         className={cn(
-          "w-full whitespace-nowrap rounded px-1 text-center font-semibold",
+          "flex h-full w-full items-center justify-center whitespace-nowrap font-semibold",
           size.code,
           cellClasses(stateColors[state]),
         )}
@@ -168,7 +168,7 @@ function Chip({
   return (
     <span
       className={cn(
-        "w-full whitespace-nowrap rounded px-1 text-center font-bold",
+        "flex h-full w-full items-center justify-center whitespace-nowrap font-bold",
         size.code,
         cellClasses(shift.color),
       )}
@@ -286,7 +286,10 @@ export function ScheduleGridView({
       ) : null}
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="border-collapse text-sm">
+        {/* Fixed layout with an explicit width per day: the boxes are the calendar,
+            and boxes of different widths because one holds "W/O" and the next holds
+            "A" read as a broken table rather than a rota. */}
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead>
             <tr>
               <th
@@ -294,7 +297,7 @@ export function ScheduleGridView({
                   // 7rem, not 9: every millimetre here is a millimetre the 31 day
                   // columns do not get, and a truncated name with the full one on
                   // hover costs less than a month that does not fit across.
-                  "sticky left-0 z-10 min-w-[7rem] max-w-[9rem] border-b border-r border-border bg-card px-2 py-2 text-left font-semibold",
+                  "sticky left-0 z-10 w-[7rem] border-b border-r border-border bg-card px-2 py-2 text-left font-semibold",
                   size.head,
                 )}
               >
@@ -371,7 +374,7 @@ export function ScheduleGridView({
                       key={date}
                       style={{ width: "1.9rem" }}
                       className={cn(
-                        "relative border-b border-l border-border p-0 text-center align-middle",
+                        "relative h-px border-b border-l border-border p-0 text-center align-middle",
                         isWeekend(date) ? "bg-muted/30" : "",
                         selected
                           ? "bg-primary/15 ring-1 ring-inset ring-primary"
@@ -399,7 +402,7 @@ export function ScheduleGridView({
                           (editable && isGap ? "No shift assigned (gap)" : undefined)
                         }
                         className={cn(
-                          "flex w-full items-center justify-center px-0.5",
+                          "flex w-full items-center justify-center",
                           size.row,
                           editable ? "cursor-pointer hover:bg-muted/70" : "cursor-default",
                           dim ? "opacity-30" : "",

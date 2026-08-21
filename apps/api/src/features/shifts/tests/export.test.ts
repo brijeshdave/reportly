@@ -3,6 +3,7 @@
 // a printed rota is argued with a fortnight later and "is this the current one?" is
 // the first question; and the landscape page rule, because a month is 31 columns and
 // portrait A4 either shrinks it past reading or spills a third of it onto page two.
+import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import type { ScheduleGrid } from "@reportly/shared";
 
@@ -84,5 +85,22 @@ describe("the printable roster", () => {
     // The zip magic: an .xlsx that is not a zip is a file nobody can open.
     expect(buffer.subarray(0, 2).toString("latin1")).toBe("PK");
     expect(buffer.length).toBeGreaterThan(1000);
+  });
+
+  it("keeps the weekday and the date in separate cells", async () => {
+    // "1 Sa" in one cell is neither a date nor a weekday: it cannot be sorted,
+    // filtered or referenced, and it reads as a typo.
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await scheduleToXlsx(grid, stamp));
+    const sheet = wb.worksheets[0]!;
+
+    const weekdays = sheet.getRow(4);
+    const dates = sheet.getRow(5);
+    expect(weekdays.getCell(2).value).toBe("Sa");
+    expect(dates.getCell(2).value).toBe(1);
+    expect(weekdays.getCell(3).value).toBe("Su");
+    expect(dates.getCell(3).value).toBe(2);
+    // And the name column keeps a single heading across both rows.
+    expect(sheet.getCell(4, 1).value).toBe("Person");
   });
 });

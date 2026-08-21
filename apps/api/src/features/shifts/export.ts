@@ -108,15 +108,27 @@ export async function scheduleToXlsx(grid: ScheduleGrid, stamp: ExportStamp): Pr
   sheet.getRow(2).font = { italic: true, size: 10, color: { argb: "FF666666" } };
   sheet.addRow([]);
 
-  const headerRow = sheet.addRow([
-    "Person",
-    ...grid.days.map((d) => `${Number(d.slice(8, 10))} ${WEEKDAY_INITIALS[weekdayOf(d)]}`),
-  ]);
-  headerRow.font = { bold: true };
-  headerRow.eachCell((cell) => {
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEFEF" } };
-    cell.alignment = { horizontal: "center" };
-  });
+  // Two header rows, not one cell holding "1 Sa": a spreadsheet column is sorted,
+  // filtered and referenced by what is in the cell, and "1 Sa" is neither a date nor
+  // a weekday. The screen stacks them for the same reason.
+  const weekdayRow = sheet.addRow(["", ...grid.days.map((d) => WEEKDAY_INITIALS[weekdayOf(d)])]);
+  const dayRow = sheet.addRow(["Person", ...grid.days.map((d) => Number(d.slice(8, 10)))]);
+
+  for (const row of [weekdayRow, dayRow]) {
+    row.font = { bold: true };
+    row.eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEFEF" } };
+      cell.alignment = { horizontal: "center" };
+    });
+  }
+  // The weekday row is the quieter of the two — it repeats every seven columns.
+  weekdayRow.font = { bold: false, size: 9, color: { argb: "FF666666" } };
+  // "Person" spans both, so the name column has one heading rather than a blank
+  // above it.
+  sheet.mergeCells(weekdayRow.number, 1, dayRow.number, 1);
+  sheet.getCell(weekdayRow.number, 1).value = "Person";
+  sheet.getCell(weekdayRow.number, 1).font = { bold: true };
+  sheet.getCell(weekdayRow.number, 1).alignment = { horizontal: "left", vertical: "middle" };
 
   for (const member of grid.members) {
     const row = sheet.addRow([
@@ -137,7 +149,9 @@ export async function scheduleToXlsx(grid: ScheduleGrid, stamp: ExportStamp): Pr
 
   sheet.getColumn(1).width = 26;
   for (let i = 2; i <= grid.days.length + 1; i += 1) sheet.getColumn(i).width = 4.5;
-  sheet.views = [{ state: "frozen", xSplit: 1, ySplit: 4 }];
+  // Freeze below both header rows and right of the names, so scrolling a long month
+  // keeps the dates and the people on screen.
+  sheet.views = [{ state: "frozen", xSplit: 1, ySplit: dayRow.number }];
 
   // The legend on its own sheet: a code with no key is a puzzle to anybody who did
   // not build the rota.

@@ -8,6 +8,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The roster spreadsheet put the weekday and the date in one cell** — "1 Sa", which
+  is neither a date nor a weekday, cannot be sorted or referenced, and reads as a
+  typo. They are two header rows now, as they are on screen.
+- **Calendar cells are filled edge to edge and every box is the same size.** The
+  colour sat in a padded pill inside the cell and the boxes took their width from
+  their contents, so a row of "W/O" and "A" looked like a broken table rather than a
+  rota.
+- **A missing `twoFactor` field in a cached session aborted navigation.** The router
+  read it without a guard, so the throw surfaced as a blank `ERR_ABORTED` with
+  nothing pointing back at the cause.
+
 - **`W/O` split across two lines** in a narrow calendar cell, stacking "W/" above
   "O".
 
