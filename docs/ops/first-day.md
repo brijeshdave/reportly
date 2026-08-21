@@ -84,6 +84,7 @@ A group holds three things: **roles**, the **companies** they apply to, and the
 | IT managers       | Manager | Your company, all sites  | Team leads, the HOD         |
 | IT staff          | Member  | Your company, their site | Engineers, the service desk |
 
+Viewer is read-only: every screen, no verb — an auditor, or a screen on a wall.
 Member is read-plus-file: enough to record work and see their own. Manager adds
 creating and updating, plus the reliability figures. **Admin is everything except
 deleting** — and except restoring a backup or turning on debug logging. Superadmin

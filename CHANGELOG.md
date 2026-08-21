@@ -6,6 +6,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An Admin could not withdraw their own comment while a Manager could.** Moving
+  deletion up a tier caught `comments:delete` by accident: withdrawing your own
+  remark is not removing somebody else's record (that is `comments:moderate`, which
+  stays an administrator's grant). Restored on upgrade.
+
 ### Changed
 
 - **Deleting is a superadmin's act, not an administrator's.** Every `* admin` system
@@ -35,6 +42,13 @@ viewer`, …), so a shift lead can hold the rota reports without the cartridge
   `/me/departments` instead.
 
 ### Added
+
+- **A `Viewer` system role** — Member without the filing: every read, no verb at all.
+  For an auditor, a visiting manager, or a screen on a wall. It completes the broad
+  ladder (Superadmin ⊇ Admin ⊇ Manager ⊇ Member ⊇ Viewer), which is now held in shape
+  by a test rather than by memory. The company figures — analytics, insights, the
+  leaderboard, the reports — are deliberately not in it: each has a role of its own,
+  so handing them out stays a decision.
 
 - **A switch to turn the shipped roles off** (Settings → Roles & access). An
   installation that describes its own access from scratch can stop the fifty system

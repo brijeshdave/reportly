@@ -53,8 +53,17 @@ const SUPERADMIN_GROUP = "Superadmin";
  * Deleting is a superadmin's act, not an administrator's — the rule the tiers below
  * and the area roles further down both follow. An edit leaves a history; a deletion
  * takes the history with it.
+ *
+ * One exception, and it is about *whose* record: `comments:delete` is withdrawing
+ * your own remark, not removing somebody else's work (that is `comments:moderate`,
+ * which stays an administrator's grant either way). Treating it as a deletion left
+ * a Manager able to withdraw a comment and an Admin not — caught by the ladder test,
+ * which is the whole reason that test exists.
  */
-const canDelete = (permission: Permission): boolean => permission.endsWith(":delete");
+const OWN_RECORD_DELETES: readonly string[] = [PERMISSIONS.COMMENTS_DELETE];
+
+const canDelete = (permission: Permission): boolean =>
+  permission.endsWith(":delete") && !OWN_RECORD_DELETES.includes(permission);
 
 /**
  * Two more that an "everything but delete" administrator does not get: restoring over
@@ -71,7 +80,9 @@ const NEVER_BELOW_SUPERADMIN: readonly Permission[] = [
 // switches that are destructive by nature; Manager may read/create/update; Member is
 // read-only. (The Superadmin *group* additionally bypasses company scoping — that is
 // a group property, not a role.)
-export function permissionsFor(role: "Superadmin" | "Admin" | "Manager" | "Member"): Permission[] {
+export function permissionsFor(
+  role: "Superadmin" | "Admin" | "Manager" | "Member" | "Viewer",
+): Permission[] {
   if (role === "Superadmin") return [...ALL_PERMISSIONS];
   // Everything but deletion. An administrator runs the system day to day; removing a
   // record — and the history that goes with it — is a superadmin's decision, as are
@@ -142,6 +153,18 @@ export function permissionsFor(role: "Superadmin" | "Admin" | "Manager" | "Membe
   // grant; drop `comments:update` from the list below to make comments immutable
   // for Members again.
   const read = ALL_PERMISSIONS.filter((p) => p.endsWith(":read"));
+
+  // Viewer is Member without the filing: it looks at the work and touches none of
+  // it. The tier an auditor, a visiting manager or a wall screen wants.
+  //
+  // Deliberately *only* the `:read` keys. The `:view` ones — analytics, insights,
+  // the leaderboard, the seventeen reports — are the management figures, and each
+  // already has a role of its own to hand out (`Analytics viewer`, `Reports
+  // viewer`, …). Folding them in here would make the read-only tier the widest
+  // grant of company figures in the system, which is the opposite of what its name
+  // promises.
+  if (role === "Viewer") return [...read];
+
   return [
     ...read,
     PERMISSIONS.JOURNAL_CREATE,
@@ -154,7 +177,7 @@ export function permissionsFor(role: "Superadmin" | "Admin" | "Manager" | "Membe
   ];
 }
 
-const SYSTEM_ROLES = ["Superadmin", "Admin", "Manager", "Member"] as const;
+const SYSTEM_ROLES = ["Superadmin", "Admin", "Manager", "Member", "Viewer"] as const;
 
 /**
  * Job-shaped roles, alongside the four broad ones above.

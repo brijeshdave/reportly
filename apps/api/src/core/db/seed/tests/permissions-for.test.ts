@@ -14,7 +14,9 @@ describe("permissionsFor", () => {
     // history with it, restoring replaces the database, and debug mode raises log
     // volume for every company — none of them is day-to-day administration.
     const admin = permissionsFor("Admin");
-    expect(admin.filter((p) => p.endsWith(":delete"))).toEqual([]);
+    // Every deletion except withdrawing your own comment, which is not removing
+    // somebody else's record — see OWN_RECORD_DELETES.
+    expect(admin.filter((p) => p.endsWith(":delete"))).toEqual(["comments:delete"]);
     expect(admin).not.toContain("backups:manage");
     expect(admin).not.toContain("debug:toggle");
     expect(admin).toContain("users:update");
@@ -154,5 +156,47 @@ describe("AREA_ROLES", () => {
     const names = AREA_ROLES.map((r) => r.name);
     expect(new Set(names).size).toBe(names.length);
     expect(AREA_ROLES.every((r) => r.permissions.length > 0)).toBe(true);
+  });
+});
+
+describe("the broad ladder", () => {
+  // Superadmin ⊇ Admin ⊇ Manager ⊇ Member ⊇ Viewer. Stated as a test because the
+  // tiers are computed by four separate rules, and a permission granted to a lower
+  // tier but not the one above it is drift nobody notices until somebody is
+  // promoted and loses a screen.
+  const LADDER = ["Superadmin", "Admin", "Manager", "Member", "Viewer"] as const;
+
+  it("each tier holds everything the tier below it holds", () => {
+    for (let i = 0; i < LADDER.length - 1; i += 1) {
+      const above = new Set(permissionsFor(LADDER[i]!));
+      const below = permissionsFor(LADDER[i + 1]!);
+      const missing = below.filter((p) => !above.has(p));
+      expect(missing, `${LADDER[i]} is missing what ${LADDER[i + 1]} holds`).toEqual([]);
+    }
+  });
+
+  it("Viewer looks and touches nothing", () => {
+    const viewer = permissionsFor("Viewer");
+    expect(
+      viewer.filter((p) => !p.endsWith(":read")),
+      "a viewer holding a verb",
+    ).toEqual([]);
+
+    expect(viewer).toContain("journal:read");
+    expect(viewer).not.toContain("journal:create");
+    // The management figures are not part of "read-only across the app": each has a
+    // role of its own, so handing them out stays a decision.
+    expect(viewer).not.toContain("analytics:view");
+    expect(viewer).not.toContain("audit:view");
+  });
+
+  it("every permission is reachable from some role", () => {
+    // Otherwise a key exists, is enforced, and can be granted to nobody — which is
+    // a permission that silently forbids the thing it names.
+    const granted = new Set([
+      ...LADDER.flatMap((role) => permissionsFor(role)),
+      ...AREA_ROLES.flatMap((role) => role.permissions),
+    ]);
+    expect(ALL_PERMISSIONS.filter((p) => !granted.has(p))).toEqual([]);
   });
 });

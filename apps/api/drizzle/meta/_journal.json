@@ -43,6 +43,13 @@
       "when": 1786446000000,
       "tag": "0005_role_recut",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786532400000,
+      "tag": "0006_viewer_role",
+      "breakpoints": true
     }
   ]
 }

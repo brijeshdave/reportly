@@ -134,9 +134,11 @@ describe("three-tier area roles", () => {
   it("keeps deletion out of every admin tier, and gives it to a superadmin instead", async () => {
     // The rule the re-cut exists for: running the area day to day is one job,
     // removing records (and the history that goes with them) is another.
+    // `comments:delete` is withdrawing your own remark, not removing somebody else's
+    // record — see OWN_RECORD_DELETES in the seed. It is not what this rule is about.
     const deletes = (name: string) =>
-      (AREA_ROLES.find((r) => r.name === name)?.permissions ?? []).filter((p) =>
-        p.endsWith(":delete"),
+      (AREA_ROLES.find((r) => r.name === name)?.permissions ?? []).filter(
+        (p) => p.endsWith(":delete") && p !== "comments:delete",
       );
 
     for (const role of AREA_ROLES) {
@@ -155,7 +157,8 @@ describe("three-tier area roles", () => {
     const admin = new Set(permissionsFor("Admin"));
     const superadmin = permissionsFor("Superadmin");
 
-    expect([...admin].filter((p) => p.endsWith(":delete"))).toEqual([]);
+    // Withdrawing your own comment is the one deletion an administrator keeps.
+    expect([...admin].filter((p) => p.endsWith(":delete"))).toEqual(["comments:delete"]);
     expect(admin.has(PERMISSIONS.BACKUPS_MANAGE)).toBe(false);
     expect(admin.has(PERMISSIONS.DEBUG_TOGGLE)).toBe(false);
     // Everything else it is: an administrator is not a lesser role, it is one
