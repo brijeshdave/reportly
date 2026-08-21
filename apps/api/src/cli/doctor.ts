@@ -17,6 +17,11 @@ import {
   pgTarget,
   redactSecrets,
 } from "@/features/backups/pg-connection.js";
+import { eq } from "drizzle-orm";
+
+import { db } from "@/core/db/index.js";
+import { AREA_ROLES, SYSTEM_ROLE_NAMES as SYSTEM_ROLES_FOR_DOCTOR } from "@/core/db/seed/index.js";
+import { roles } from "@/core/db/schema.js";
 import { verifyMailer } from "@/core/mail/mailer.js";
 import { pingRedis } from "@/core/redis.js";
 import { activeStorage } from "@/core/storage/index.js";
@@ -259,6 +264,36 @@ function checkConfig(): Check[] {
 const SYMBOL: Record<Level, string> = { ok: "ok  ", warn: "warn", fail: "FAIL" };
 
 /** Runs every check, prints a report, and returns true when nothing failed. */
+/**
+ * Custom roles sitting on a shipped role's name.
+ *
+ * Roles are unique by name, so an administrator's "Tasks admin" and a release's
+ * "Tasks admin" cannot both exist. The seed leaves theirs alone — which is right,
+ * their role is not ours to rewrite — but it means the shipped one is silently
+ * absent, and nothing else would ever say so. Warn rather than fail: the install
+ * works, it is simply missing a role somebody may be looking for.
+ */
+async function checkRoleNameCollisions(): Promise<Check> {
+  try {
+    const shipped = new Set<string>([
+      ...SYSTEM_ROLES_FOR_DOCTOR,
+      ...AREA_ROLES.map((role) => role.name),
+    ]);
+    const rows = await db.select({ name: roles.name }).from(roles).where(eq(roles.isSystem, false));
+    const clashes = rows.map((r) => r.name).filter((name) => shipped.has(name));
+
+    return clashes.length === 0
+      ? ok("role names", "no custom role occupies a shipped role's name")
+      : warn(
+          "role names",
+          `custom role(s) hold shipped names, so those shipped roles are absent: ${clashes.join(", ")}. ` +
+            `Rename yours to get the shipped one; yours is left exactly as it is either way.`,
+        );
+  } catch (err) {
+    return warn("role names", `could not be checked: ${reason(err)}`);
+  }
+}
+
 export async function runDoctor(): Promise<boolean> {
   const checks: Check[] = [
     ...(await checkDatabases()),
@@ -267,6 +302,7 @@ export async function runDoctor(): Promise<boolean> {
     await checkStorage(),
     checkPasswordCharacters(),
     ...(await checkBackupTools()),
+    await checkRoleNameCollisions(),
     await checkBackupConnection(),
     ...checkConfig(),
   ];

@@ -8,6 +8,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Seeding could overwrite an administrator's own role.** Roles are unique by name,
+  so a hand-made "Tasks admin" occupies a name a release may later ship. `cli seed`
+  looked roles up by name alone and reconciled whatever it found against the shipped
+  definition — deleting every permission the definition did not list. The comment
+  above that loop had claimed for months that custom roles were untouched; the code
+  never checked. It does now: a shipped role that cannot claim its name is skipped,
+  the administrator's role is left exactly as they left it, and `cli doctor` names
+  the collision so it can be resolved deliberately.
+
 - **Reports showed other sites' rows.** Each report had its own permission, but five
   of the queries behind them never narrowed their rows to the reader's sites: the
   leaderboard, the routine log, routine compliance, the shift-change history, and the

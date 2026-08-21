@@ -179,6 +179,9 @@ export function permissionsFor(
 
 const SYSTEM_ROLES = ["Superadmin", "Admin", "Manager", "Member", "Viewer"] as const;
 
+/** The broad tier names, for anything that needs to know what the release ships. */
+export const SYSTEM_ROLE_NAMES: readonly string[] = SYSTEM_ROLES;
+
 /**
  * Job-shaped roles, alongside the four broad ones above.
  *
@@ -1116,7 +1119,21 @@ export async function seedDatabase(database: Database = db): Promise<void> {
       )
       .onConflictDoNothing({ target: roles.name });
 
-    const roleRows = await tx.select({ id: roles.id, name: roles.name }).from(roles);
+    // **Only system roles**, and that filter is load-bearing rather than tidy.
+    //
+    // Roles are unique by name, so an administrator who creates "Tasks admin" for
+    // their own use occupies a name a later release may ship. Looking the role up by
+    // name alone — which is what this did — then reconciles *their* role against the
+    // shipped definition and deletes every permission the definition does not list.
+    // The comment below promised custom roles were untouched; the code did not check,
+    // and four hand-made roles were overwritten on a real database before anyone
+    // noticed. A shipped role that cannot claim its name is skipped instead: the
+    // administrator's role is theirs, and losing a shipped one is recoverable by
+    // renaming, while losing theirs is not.
+    const roleRows = await tx
+      .select({ id: roles.id, name: roles.name })
+      .from(roles)
+      .where(eq(roles.isSystem, true));
     const roleIdByName = new Map(roleRows.map((r) => [r.name, r.id]));
 
     const grantsByRole: { name: string; permissions: Permission[] }[] = [
@@ -1138,6 +1155,9 @@ export async function seedDatabase(database: Database = db): Promise<void> {
     // tailored is theirs, and nothing here may edit it.
     for (const { name: roleName, permissions: keys } of grantsByRole) {
       const roleId = roleIdByName.get(roleName);
+      // Missing means a custom role holds the name (the insert above conflicts and
+      // does nothing). Skipping is the safe half; the loud half is `cli doctor`,
+      // which names the collision so it can be resolved deliberately.
       if (!roleId) continue;
 
       const wanted = keys
