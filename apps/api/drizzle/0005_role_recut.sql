@@ -14,6 +14,13 @@
 --      decision for whoever runs the server, not a side effect of an upgrade. After
 --      migrating, grant `<area> superadmin` to the groups that should still have it.
 --
+-- **Every statement below only ever reads or writes a role with `is_system = true`.**
+-- Roles are unique by name, so an administrator may already own a role called
+-- "Tasks admin" or "Analytics viewer" — names this migration introduces. Without the
+-- filter it would grant permissions into *their* role and attach it to groups, which
+-- is not a migration's business. Learned the hard way: the first run of this file
+-- rewrote four hand-made roles on a development copy of a real database.
+--
 -- Permissions for the new roles are set here from what the old ones held, and are
 -- then reconciled against the seed definitions by `cli seed` — which is the second
 -- half of the documented upgrade, and which this migration does not depend on.
@@ -49,8 +56,11 @@ INSERT INTO "role_permissions" ("role_id", "permission_id")
 SELECT new_r."id", rp."permission_id"
   FROM "roles" old_r
   JOIN "role_permissions" rp ON rp."role_id" = old_r."id"
-  JOIN "roles" new_r ON new_r."name" = replace(old_r."name", ' admin', ' superadmin')
- WHERE old_r."name" IN (
+  JOIN "roles" new_r
+    ON new_r."name" = replace(old_r."name", ' admin', ' superadmin')
+   AND new_r."is_system" = true
+ WHERE old_r."is_system" = true
+   AND old_r."name" IN (
    'Assets & devices admin', 'Organisation admin', 'Journal admin', 'Access admin'
  )
 ON CONFLICT DO NOTHING;
@@ -77,8 +87,9 @@ SELECT new_r."id", p."id"
     ('Reports & analytics editor',  'Analytics viewer',   'analytics:%'),
     ('Reports & analytics viewer',  'Analytics viewer',   'analytics:%')
   ) AS m(old_name, new_name, key_pattern) ON m."old_name" = old_r."name"
-  JOIN "roles" new_r ON new_r."name" = m."new_name"
- WHERE p."key" LIKE m."key_pattern"
+  JOIN "roles" new_r ON new_r."name" = m."new_name" AND new_r."is_system" = true
+ WHERE old_r."is_system" = true
+   AND p."key" LIKE m."key_pattern"
    AND p."key" NOT LIKE '%:delete'
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
@@ -96,7 +107,7 @@ SELECT r."id", p."id"
     ('Tasks superadmin', 'tasks:delete'),
     ('Tasks editor', 'tasks:read'),
     ('Tasks editor', 'tasks:update')
-  ) AS t(role_name, key) ON t."role_name" = r."name"
+  ) AS t(role_name, key) ON t."role_name" = r."name" AND r."is_system" = true
   JOIN "permissions" p ON p."key" = t."key"
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
@@ -107,7 +118,8 @@ INSERT INTO "role_permissions" ("role_id", "permission_id")
 SELECT r."id", p."id"
   FROM "roles" r
   CROSS JOIN "permissions" p
- WHERE r."name" IN ('Reports viewer', 'Reports admin', 'Analytics viewer')
+ WHERE r."is_system" = true
+   AND r."name" IN ('Reports viewer', 'Reports admin', 'Analytics viewer')
    AND p."key" IN ('journal:read', 'departments:read')
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
@@ -135,7 +147,7 @@ SELECT r."id", p."id"
     ('Cartridge reports viewer',   'reports:view:part_failures'),
     ('Cartridge reports viewer',   'reports:view:part_workload'),
     ('Leaderboard reports viewer', 'reports:view:leaderboard')
-  ) AS f(role_name, key) ON f."role_name" = r."name"
+  ) AS f(role_name, key) ON f."role_name" = r."name" AND r."is_system" = true
   JOIN "permissions" p ON p."key" = f."key"
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
@@ -144,7 +156,8 @@ INSERT INTO "role_permissions" ("role_id", "permission_id")
 SELECT r."id", p."id"
   FROM "roles" r
   CROSS JOIN "permissions" p
- WHERE r."name" LIKE '% reports viewer'
+ WHERE r."is_system" = true
+   AND r."name" LIKE '% reports viewer'
    AND p."key" = 'journal:read'
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
@@ -169,7 +182,8 @@ SELECT gr."group_id", new_r."id"
     ('Reports & analytics viewer', 'Reports viewer'),
     ('Reports & analytics viewer', 'Analytics viewer')
   ) AS m(old_name, new_name) ON m."old_name" = old_r."name"
-  JOIN "roles" new_r ON new_r."name" = m."new_name"
+  JOIN "roles" new_r ON new_r."name" = m."new_name" AND new_r."is_system" = true
+ WHERE old_r."is_system" = true
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 

@@ -163,4 +163,40 @@ describe("migration 0005 — the role re-cut", () => {
     const after = await db.select({ n: sql<number>`count(*)::int` }).from(roles);
     expect(after[0]!.n).toBe(before[0]!.n);
   });
+
+  it("does not touch a role an administrator made under one of the new names", async () => {
+    // Roles are unique by name, so an administrator's "Tasks admin" and the shipped
+    // one cannot both exist. The first version of this migration wrote into theirs —
+    // granting permissions and attaching it to groups — because every statement
+    // matched on name alone. Their role is not a migration's business.
+    await db.delete(roles).where(inArray(roles.name, ["Tasks admin", "Analytics viewer"]));
+    const [mine] = await db
+      .insert(roles)
+      .values({ name: "Tasks admin", isSystem: false })
+      .returning({ id: roles.id });
+    const [journalRead] = await db
+      .select({ id: permissions.id })
+      .from(permissions)
+      .where(eq(permissions.key, "journal:read"));
+    await db.insert(rolePermissions).values({ roleId: mine!.id, permissionId: journalRead!.id });
+
+    // A group holding the combined role, which is what step 4 carries across.
+    const oldId = await oldRole("Tasks & downtime editor", ["tasks:read", "tasks:update"]);
+    const [group] = await db
+      .insert(groups)
+      .values({ name: "Line supervisors" })
+      .returning({ id: groups.id });
+    await db.insert(groupRoles).values({ groupId: group!.id, roleId: oldId });
+
+    await replayMigration();
+
+    // Their role: exactly as they left it, and never attached to anybody.
+    const keys = await db
+      .select({ key: permissions.key })
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(eq(rolePermissions.roleId, mine!.id));
+    expect(keys.map((k) => k.key)).toEqual(["journal:read"]);
+    expect(await rolesOfGroup(group!.id)).not.toContain("Tasks admin");
+  });
 });
