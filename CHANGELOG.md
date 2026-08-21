@@ -8,6 +8,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The roster cell is filled edge to edge, rather than holding a coloured badge.**
+  The colour sat on a span wrapped around the shift's letter, inside layout wrappers
+  that shrink to their contents — so each day showed a small tinted pill with the
+  table visible around it. It now sits on the cell itself and the letter is plain
+  text on top. A test asserts that, because the same thing has gone wrong twice and
+  "the colour area is bad" is a hard report to turn back into a class name.
+
 - **The roster spreadsheet put the weekday and the date in one cell** — "1 Sa", which
   is neither a date nor a weekday, cannot be sorted or referenced, and reads as a
   typo. They are two header rows now, as they are on screen.

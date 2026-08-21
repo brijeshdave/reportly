@@ -15,6 +15,7 @@ import {
   type ScheduleGrid,
   type ScheduleStateColors,
   type Shift,
+  type ShiftColor,
 } from "@reportly/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
@@ -128,6 +129,28 @@ function siteInitials(options: { id: string; name: string }[], id: string): stri
 }
 
 /**
+ * The colour a whole cell is painted.
+ *
+ * One assignment is the ordinary case and gets its colour edge to edge. Two or more
+ * on one day — which happens on a central rota where somebody covers two sites — has
+ * no single colour to be, so the cell stays plain and the codes inside carry their
+ * own. The changes view likewise: it shows a before and an after, and a cell cannot
+ * be two colours without saying something false about one of them.
+ */
+function fillFor(
+  cells: ScheduleEntry[],
+  view: ScheduleView,
+  shifts: Shift[],
+  stateColors: ScheduleStateColors,
+): string {
+  if (view === "changes" || cells.length !== 1) return "";
+  const { shiftId, state } = cellView(cells[0]!, view);
+  if (state !== "working") return cellClasses(stateColors[state]);
+  const shift = shifts.find((s) => s.id === shiftId);
+  return shift ? cellClasses(shift.color) : "";
+}
+
+/**
  * One day, drawn as a solid block of its colour.
  *
  * `whitespace-nowrap` is load-bearing, not tidiness: without it a narrow column breaks
@@ -140,22 +163,30 @@ function Chip({
   shifts,
   stateColors,
   density,
+  painted,
 }: {
   shiftId: string | null;
   state: EntryState;
   shifts: Shift[];
   stateColors: ScheduleStateColors;
   density: GridDensity;
+  /** True when the cell behind is already this colour — see `fillFor`. */
+  painted?: boolean;
 }) {
   const size = DENSITY[density];
+
+  // When the cell behind is already this colour, the code is plain text on it. Only
+  // an unpainted cell — two assignments in one day, or the changes view — colours
+  // itself, and then it is honestly a chip because it is one of several.
+  const own = (color: ShiftColor) => (painted ? "" : cn("rounded px-1", cellClasses(color)));
 
   if (state !== "working") {
     return (
       <span
         className={cn(
-          "flex h-full w-full items-center justify-center whitespace-nowrap font-semibold",
+          "whitespace-nowrap text-center font-semibold",
           size.code,
-          cellClasses(stateColors[state]),
+          own(stateColors[state]),
         )}
         title={ENTRY_STATE_LABELS[state]}
       >
@@ -167,11 +198,7 @@ function Chip({
   if (!shift) return null;
   return (
     <span
-      className={cn(
-        "flex h-full w-full items-center justify-center whitespace-nowrap font-bold",
-        size.code,
-        cellClasses(shift.color),
-      )}
+      className={cn("whitespace-nowrap text-center font-bold", size.code, own(shift.color))}
       title={`${shift.name} · ${formatMinutesOfDay(shift.startMinute)}–${formatMinutesOfDay(shift.endMinute)}`}
     >
       {shift.code}
@@ -401,10 +428,15 @@ export function ScheduleGridView({
                           siteTitle(cells, grid.locationOptions) ??
                           (editable && isGap ? "No shift assigned (gap)" : undefined)
                         }
+                        // The colour goes on the button, which is the whole cell —
+                        // not on a span around the letter. A tinted pill with the
+                        // table showing through around it reads as a badge stuck in
+                        // a box; a filled cell reads as a rota.
                         className={cn(
-                          "flex w-full items-center justify-center",
+                          "flex h-full w-full items-center justify-center",
                           size.row,
-                          editable ? "cursor-pointer hover:bg-muted/70" : "cursor-default",
+                          fillFor(cells, view, grid.shifts, grid.stateColors),
+                          editable ? "cursor-pointer" : "cursor-default",
                           dim ? "opacity-30" : "",
                         )}
                       >
@@ -474,6 +506,7 @@ export function ScheduleGridView({
                                     shifts={grid.shifts}
                                     stateColors={grid.stateColors}
                                     density={density}
+                                    painted={cells.length === 1}
                                   />
                                   {/* Where a travelling person spent the day. Initials
                                       only — the cell is 1.9rem wide — with the full
