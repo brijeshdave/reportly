@@ -12,9 +12,15 @@ it reads as letters. **Grid size** (Compact / Comfortable / Large) sits beside t
 month and is remembered for you — a full month fits across the screen at every size,
 and Compact is there for a department with many people.
 
-`W/O`, `L` and `PH` take their colours from a company setting (`shifts.stateColors`),
-defaulting to slate, **dark red** and teal. The brush toolbar paints in the same
-colours, so it doubles as the legend.
+`W/O`, `L` and `PH` take their colours from **Shifts → Calendar colours** (needs
+`companies:update`), defaulting to slate, **dark red** and dark teal. Each code
+previews itself there in the colour it is about to be. The brush toolbar paints in the
+same colours, so it doubles as the legend.
+
+Every colour comes in a **light** and a **dark** shade, and light is the default:
+ordinary shifts should be quiet enough to read for an hour, while dark is for what
+has to be found at a glance — leave, a public holiday, the one shift you are scanning
+for. Colour everything dark and nothing stands out, because everything does.
 
 ## Days a shift does not run
 
