@@ -50,6 +50,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Tags have their own screen, under System.** They were a tab on Journal setup,
+  grouped by where the words are used; `tags:manage` is a permission in its own
+  right, and holding only that one meant opening a page of four catalogues you may
+  not touch to reach the one you own. A separate permission gets a separate place to
+  exercise it.
+
 - **Deleting is a superadmin's act, not an administrator's.** Every `* admin` system
   role has lost its `:delete` keys, and each area that can delete gained a
   `* superadmin` tier that holds them. The broad **Admin** role likewise: everything

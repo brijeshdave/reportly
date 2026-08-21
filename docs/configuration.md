@@ -135,8 +135,12 @@ never disturbs entries that already reference it.
 
 The tabs carry separate permissions, so they can be delegated independently:
 severities and statuses need `journal-config:manage` (they change what recorded
-work is worth), while `categories:manage`, `device-types:manage` and
-`tags:manage` are each grantable on their own.
+work is worth), while `categories:manage` and `device-types:manage` are each
+grantable on their own.
+
+**Tags are not here.** They have `tags:manage` to themselves, so they have a
+screen to themselves: **System → Tags**. Somebody who curates the vocabulary
+should not have to open a page of catalogues they may not touch to reach it.
 
 ### Severities
 
@@ -165,12 +169,22 @@ two departments may each have a "Safety" that means different things. Pick a
 department, then add its categories. None are seeded; you build the list that suits
 each department.
 
-### Tags and device types
+### Device types
+
+Device types decide, among other things, whether downtime can be recorded against
+a device at all — see [Downtime](#downtime).
+
+## Tags (`System → Tags`)
+
+Its own screen, gated on `tags:manage` alone.
 
 Tags are **department-scoped and multi-select**, so each department keeps its own
-vocabulary. Category stays single-select, because the recurring-issue analytics
-group by it. Device types decide, among other things, whether downtime can be
-recorded against a device at all — see [Downtime](#downtime).
+vocabulary and one team's labels never clutter another's. Category stays
+single-select by contrast, because the recurring-issue analytics group by it.
+
+A new tag arrives already coloured — the server picks from a twenty-hue palette,
+preferring one the department is not already using — so the common case is type a
+name and press Add. The colour is editable for anyone who organises by it.
 
 ### Appraisal (`reports.appraisal`)
 

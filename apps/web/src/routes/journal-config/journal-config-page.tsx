@@ -22,7 +22,6 @@ import { CategoriesTab } from "@/routes/journal-config/categories-tab.js";
 import { DeviceTypesTab } from "@/routes/journal-config/device-types-tab.js";
 import { SeveritiesTab } from "@/routes/journal-config/severities-tab.js";
 import { StatusesTab } from "@/routes/journal-config/statuses-tab.js";
-import { TagsTab } from "@/routes/journal-config/tags-tab.js";
 import {
   downloadVocabularyTemplate,
   exportVocabulary,
@@ -33,18 +32,18 @@ const TABS = [
   { id: "severities", label: "Severities" },
   { id: "statuses", label: "Statuses" },
   { id: "categories", label: "Categories" },
-  { id: "tags", label: "Tags" },
   { id: "device-types", label: "Device types" },
 ];
 
 export function ReportConfigPage({ tab }: { tab: string }) {
   const navigate = useNavigate({ from: "/journal-config" });
   // One permission per catalogue rather than one for the page. They are separable
-  // by design, so somebody may hold tags:manage and see every tab but only be able
-  // to edit that one — the controls elsewhere are simply absent.
+  // by design, so somebody may hold categories:manage and see every tab but only be
+  // able to edit that one — the controls elsewhere are simply absent. Tags left
+  // this page entirely for the same reason: their permission stands alone, so their
+  // screen does too.
   const canManageConfig = usePermission(PERMISSIONS.JOURNAL_CONFIG_MANAGE);
   const canManageCategories = usePermission(PERMISSIONS.CATEGORIES_MANAGE);
-  const canManageTags = usePermission(PERMISSIONS.TAGS_MANAGE);
   const canManageDeviceTypes = usePermission(PERMISSIONS.DEVICE_TYPES_MANAGE);
   const canImport = usePermission(PERMISSIONS.JOURNAL_CONFIG_IMPORT);
   const [importOpen, setImportOpen] = useState(false);
@@ -52,7 +51,7 @@ export function ReportConfigPage({ tab }: { tab: string }) {
   const { data: session } = useSuspenseQuery(sessionQuery);
   const activeTab = TABS.some((candidate) => candidate.id === tab) ? tab : "severities";
 
-  // Categories, tags and device types belong to a company's departments, so the
+  // Categories and device types belong to a company's departments, so the
   // API cannot answer without knowing which company — it returns 400 with
   // "X-Company-Id header is required". Say that in words rather than letting a
   // reference id stand where an instruction belongs: with "All companies"
@@ -67,7 +66,7 @@ export function ReportConfigPage({ tab }: { tab: string }) {
         <EmptyState
           icon={Building2}
           title="Pick a company first"
-          description="Choose a company in the top-bar switcher. Categories, tags and device types belong to a company's departments, so there is nothing to show until one is chosen."
+          description="Choose a company in the top-bar switcher. Categories and device types belong to a company's departments, so there is nothing to show until one is chosen."
         />
       </>
     );
@@ -77,7 +76,7 @@ export function ReportConfigPage({ tab }: { tab: string }) {
     <>
       <PageHeader
         title="Journal setup"
-        description="The severity ladder, the status workflow, and each department's own words — categories, tags and device types. A category is the one kind of problem a report is; tags are as many labels as you like. Retire an entry to stop it being offered without disturbing the records already using it."
+        description="The severity ladder, the status workflow, and each department's own categories and device types. A category is the one kind of problem an entry is; tags — as many labels as you like — have a screen of their own under System. Retire an entry to stop it being offered without disturbing the records already using it."
         actions={
           <div className="flex items-center gap-2">
             <Button size="sm" variant="secondary" onClick={() => void exportVocabulary()}>
@@ -122,9 +121,6 @@ export function ReportConfigPage({ tab }: { tab: string }) {
         </TabPanel>
         <TabPanel id="categories" active={activeTab}>
           <CategoriesTab canManage={canManageCategories} />
-        </TabPanel>
-        <TabPanel id="tags" active={activeTab}>
-          <TagsTab canManage={canManageTags} />
         </TabPanel>
         <TabPanel id="device-types" active={activeTab}>
           <DeviceTypesTab canManage={canManageDeviceTypes} />

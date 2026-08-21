@@ -34,6 +34,7 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  Tags,
   TrendingUp,
   Trophy,
   Users,
@@ -249,10 +250,13 @@ export const NAV_GROUPS: NavGroup[] = [
         anyPermission: [
           PERMISSIONS.JOURNAL_CONFIG_MANAGE,
           PERMISSIONS.CATEGORIES_MANAGE,
-          PERMISSIONS.TAGS_MANAGE,
           PERMISSIONS.DEVICE_TYPES_MANAGE,
         ],
       },
+      // Its own entry rather than a tab on the page above: `tags:manage` is a
+      // permission on its own, and holding it should not mean opening a page of
+      // catalogues you may not touch to reach the one you own.
+      { label: "Tags", to: "/tags", icon: Tags, permission: PERMISSIONS.TAGS_MANAGE },
       { label: "Settings", to: "/settings", icon: Settings, permission: PERMISSIONS.SETTINGS_READ },
       {
         label: "Single sign-on",

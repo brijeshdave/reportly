@@ -856,6 +856,16 @@ const reportConfigRoute = createRoute({
   },
 });
 
+// Tags have their own screen because they have their own permission — see
+// routes/tags/tags-page.tsx. `tags:manage` guards it: reading tags needs nothing
+// (they are drawn on every entry), but this page exists to change them.
+const tagsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tags",
+  beforeLoad: requirePermission(PERMISSIONS.TAGS_MANAGE),
+  component: lazyRouteComponent(() => import("@/routes/tags/tags-page.js"), "TagsPage"),
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/settings",
@@ -1030,6 +1040,7 @@ const routeTree = rootRoute.addChildren([
     companiesRoute,
     companyDetailRoute,
     reportConfigRoute,
+    tagsRoute,
     settingsRoute,
     ssoRoute,
     logsRoute,

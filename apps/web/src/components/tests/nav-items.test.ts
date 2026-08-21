@@ -35,6 +35,18 @@ describe("visibleNavGroups", () => {
     expect(labels).not.toContain("Groups");
   });
 
+  it("gives tags:manage its own way in, without the page of catalogues around it", () => {
+    // Why Tags left Journal setup: holding one catalogue's permission should not
+    // mean opening a page of four to reach it.
+    const groups = visibleNavGroups({
+      permissions: [PERMISSIONS.TAGS_MANAGE],
+      isSuperadmin: false,
+    });
+    const labels = groups.flatMap((group) => group.items.map((item) => item.label));
+    expect(labels).toEqual(["Tags"]);
+    expect(groups.map((group) => group.label)).toEqual(["System"]);
+  });
+
   it("shows the Reports group only to someone who may view reports", () => {
     const without = visibleNavGroups({
       permissions: [PERMISSIONS.JOURNAL_READ],
@@ -95,6 +107,7 @@ describe("visibleNavGroups", () => {
       "Groups",
       "Roles",
       "JournalEntry setup",
+      "Tags",
       "Settings",
       "Single sign-on",
       "Logs",
