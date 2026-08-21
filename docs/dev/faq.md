@@ -116,6 +116,29 @@ Three consequences worth knowing before changing it:
   rest — that the key is in the catalogue, that no key outlives its report, and
   that every runner takes the caller so it _can_ narrow its rows.
 
+### How does a report know which rows a reader may see?
+
+Two facts decide it, and `REPORT_SCOPE` in `@reportly/shared` says which apply to
+each source:
+
+| Shape    | Narrowed by                                                   | Sources                                                          |
+| -------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `people` | the reader **plus their downline**, the company, and the site | journal, downtime, leaderboard, both routine reports             |
+| `place`  | the company and the site                                      | reliability, the four shift reports, all seven cartridge reports |
+
+The site is not always a column. A points award, a routine completion or a day
+worked has no location of its own — the _person_ in the row has, through their
+department memberships, which is what `withPersonLocations()` narrows by. Somebody
+with no membership recorded stays visible to everyone, for the same reason an
+unplaced asset does: not yet placed is not the same as hidden, and it keeps the rule
+safe to switch on in an organisation that has not filled its memberships in.
+
+`report-permissions.test.ts` fails the build if a source declares no shape, if a
+runner never receives the caller, or if the narrowing helpers disappear from the
+report queries. It cannot prove a given query is _right_ — that is what the
+integration tests do, one per family, each asserting that a reader confined to Plant
+A sees no Plant B row and that a superadmin does.
+
 ### Why can an admin role not delete anything?
 
 Because deleting is not administration. An edit leaves the change history behind,

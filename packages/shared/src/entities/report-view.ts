@@ -202,6 +202,51 @@ export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
   part_workload: "reports:view:part_workload",
 };
 
+/**
+ * How each report's rows must be narrowed to what the reader is allowed to see.
+ *
+ * Two shapes, and the difference is whether there is a person in the row:
+ *
+ * - `people` — the row is somebody's work, so it narrows by **the reader plus their
+ *   downline**, by company, and by site. This is the rule the journal already
+ *   enforces; the reporting line decides who may read whose work.
+ * - `place` — the row is a machine, a cartridge or a shift slot: no person to narrow
+ *   by, so company and site decide it. The reporting line does not apply to a pump.
+ *
+ * Exhaustive by type, like `REPORT_VIEW_PERMISSION` above, and for the same reason:
+ * adding a source without saying how it narrows stops the build. A report that
+ * forgets to narrow does not look broken — it looks like a report with more rows,
+ * which is exactly why nobody notices until the wrong plant's figures are in a
+ * meeting.
+ */
+export type ReportScopeShape = "people" | "place";
+
+export const REPORT_SCOPE: Record<ReportSource, ReportScopeShape> = {
+  journal: "people",
+  downtime: "people",
+  reliability: "place",
+  leaderboard: "people",
+  // The rota is a place's timetable: who is on at this site this week. Who may see
+  // it is the site, not the reporting line — a shift lead reads the whole board.
+  shift_roster: "place",
+  shift_changes: "place",
+  shift_coverage: "place",
+  // Days worked per person — but the rota it counts is a site's board, and it is
+  // already gated on being able to read the department. Narrowing it to the
+  // reader's downline as well would leave a shift lead reading a board they run
+  // with half its rows missing.
+  shift_attendance: "place",
+  routine_log: "people",
+  routine_compliance: "people",
+  part_register: "place",
+  part_services: "place",
+  part_consumption: "place",
+  part_health: "place",
+  printer_health: "place",
+  part_failures: "place",
+  part_workload: "place",
+};
+
 /** Every per-report key, for seeding a role that may read all of them. */
 export const ALL_REPORT_VIEW_PERMISSIONS: readonly Permission[] = REPORT_SOURCES.map(
   (source) => REPORT_VIEW_PERMISSION[source],

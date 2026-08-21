@@ -12,8 +12,9 @@ import {
   routines,
   users,
 } from "@/core/db/schema.js";
-import type { ResolvedListQuery } from "@reportly/shared";
+import type { AuthContext, ResolvedListQuery } from "@reportly/shared";
 
+import { withPersonLocations } from "@/core/db/scoped.js";
 import { buildListParts, type ListConfig } from "@/lib/list-query.js";
 
 export interface RoutineRow {
@@ -180,7 +181,11 @@ export interface AssigneeRow {
 }
 
 /** The assignees of a set of routines, with names — for serializing them together. */
-export async function assigneesFor(routineIds: string[]): Promise<AssigneeRow[]> {
+export async function assigneesFor(
+  routineIds: string[],
+  /** Given, only the people working at the caller's sites are returned. */
+  ctx?: AuthContext,
+): Promise<AssigneeRow[]> {
   if (routineIds.length === 0) return [];
   return db
     .select({
@@ -190,7 +195,14 @@ export async function assigneesFor(routineIds: string[]): Promise<AssigneeRow[]>
     })
     .from(routineAssignees)
     .innerJoin(users, eq(users.id, routineAssignees.userId))
-    .where(inArray(routineAssignees.routineId, routineIds))
+    .where(
+      and(
+        inArray(routineAssignees.routineId, routineIds),
+        // The compliance report is one row per person; a reader restricted to a
+        // site should not get a row for somebody who works at another one.
+        ctx ? withPersonLocations(ctx, routineAssignees.userId) : undefined,
+      ),
+    )
     .orderBy(asc(users.name));
 }
 

@@ -762,6 +762,160 @@ describe("reports", () => {
     // A quiet month has no failures.
     expect(rows.find((r) => r.cells.month === "Feb 2026")!.cells.failures).toBe("0");
   });
+
+  it("keeps another plant's people out of the leaderboard", async () => {
+    // The award has no site of its own — the person earning it has, through their
+    // department membership. Without that link the leaderboard was the whole
+    // company's standings however narrow the reader's access.
+    const admin = await superadmin();
+    const { plantA, plantB, lead, operator, dept } = await fixture(admin);
+
+    // Somebody at the *other* plant, in the same department, earning points there.
+    const elsewhere = await makeUser(
+      admin,
+      "Nita Elsewhere",
+      "nita",
+      await makeGroup(admin, "Plant B crew", "Member"),
+    );
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: lead.id, rank: "lead", locationIds: [plantA.id] },
+        { userId: operator.id, rank: "member", reportsToId: lead.id, locationIds: [plantA.id] },
+        { userId: elsewhere.id, rank: "member", reportsToId: lead.id, locationIds: [plantB.id] },
+      ],
+    });
+
+    const score = async (
+      who: { id: string; cookie: string },
+      locationId: string,
+      points: number,
+    ) => {
+      const report = (
+        await inject("POST", "/journal", who.cookie, {
+          kind: "issue",
+          title: `Work at ${locationId}`,
+          state: "submitted",
+          locationId,
+          reportDate: FIXED_DATE,
+        })
+      ).json();
+      const statuses = (await inject("GET", "/journal-statuses", admin)).json();
+      const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
+      await inject("PATCH", `/journal/${report.id}/status`, admin, { statusId: resolved.id });
+      await inject("PUT", `/journal/${report.id}/scores`, admin, {
+        scores: [{ userId: who.id, points }],
+      });
+    };
+    await score(lead, plantA.id, 8);
+    await score(elsewhere, plantB.id, 5);
+
+    // The superadmin sees both; the lead, who is confined to Plant A, sees only theirs.
+    const asAdmin = await inject("POST", "/reports/run", admin, {
+      definition: { ...WIDE, source: "leaderboard", grouping: "none" },
+    });
+    const adminNames = asAdmin
+      .json()
+      .groups.flatMap((g: { rows: Row[] }) => g.rows)
+      .map((r: Row) => r.cells.person);
+    expect(adminNames).toContain("Nita Elsewhere");
+
+    const asLead = await inject("POST", "/reports/run", lead.cookie, {
+      definition: { ...WIDE, source: "leaderboard", grouping: "none" },
+    });
+    const leadNames = asLead
+      .json()
+      .groups.flatMap((g: { rows: Row[] }) => g.rows)
+      .map((r: Row) => r.cells.person);
+    expect(leadNames).toContain("Ravi Lead");
+    expect(leadNames).not.toContain("Nita Elsewhere");
+  });
+
+  it("gives each site its share of somebody who works at both", async () => {
+    // Reported from the field: people hold work and points at several sites (and in
+    // several companies — the company filter separates those). So the leaderboard
+    // narrows by the site of the *work*, not by where the person is on file: asking
+    // "does this person work at one of my sites?" would fold their other plant's
+    // points into the total I am reading here.
+    const admin = await superadmin();
+    const { plantA, plantB, lead, operator, dept } = await fixture(admin);
+
+    // The operator works at both plants; the lead can only see Plant A.
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: lead.id, rank: "lead", locationIds: [plantA.id] },
+        {
+          userId: operator.id,
+          rank: "member",
+          reportsToId: lead.id,
+          locationIds: [plantA.id, plantB.id],
+        },
+      ],
+    });
+
+    // The operator files their own work — the author is a participant, and a score
+    // goes to the people on the entry.
+    const score = async (locationId: string, points: number, title: string) => {
+      const report = (
+        await inject("POST", "/journal", operator.cookie, {
+          kind: "issue",
+          title,
+          state: "submitted",
+          locationId,
+          reportDate: FIXED_DATE,
+        })
+      ).json();
+      const statuses = (await inject("GET", "/journal-statuses", admin)).json();
+      const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
+      await inject("PATCH", `/journal/${report.id}/status`, admin, { statusId: resolved.id });
+      await inject("PUT", `/journal/${report.id}/scores`, admin, {
+        scores: [{ userId: operator.id, points }],
+      });
+    };
+    await score(plantA.id, 6, "Belt at A");
+    await score(plantB.id, 9, "Pump at B");
+
+    const pointsFor = async (cookie: string) => {
+      const res = await inject("POST", "/reports/run", cookie, {
+        definition: { ...WIDE, source: "leaderboard", grouping: "none" },
+      });
+      const rows = res.json().groups.flatMap((g: { rows: Row[] }) => g.rows);
+      return rows.find((r: Row) => r.cells.person === "Sam Operator")?.cells.points;
+    };
+
+    // The superadmin sees the whole 15; the Plant A lead sees the 6 earned at their
+    // plant, and the same person's Plant B work is simply not theirs to read.
+    expect(await pointsFor(admin)).toBe("15");
+    expect(await pointsFor(lead.cookie)).toBe("6");
+  });
+
+  it("keeps another plant's machines out of the per-device reliability report", async () => {
+    const admin = await superadmin();
+    const { plantA, plantB, lead } = await fixture(admin);
+
+    const asset = (
+      await inject("POST", "/assets", admin, { name: "Line A", locationId: plantA.id })
+    ).json();
+    await inject("POST", "/devices", admin, {
+      name: "Pump A",
+      assetId: asset.id,
+      locationId: plantA.id,
+    });
+    await inject("POST", "/devices", admin, { name: "Pump B", locationId: plantB.id });
+
+    const run = async (cookie: string) =>
+      (
+        await inject("POST", "/reports/run", cookie, {
+          definition: { ...WIDE, source: "reliability", byDevice: true, grouping: "none" },
+        })
+      )
+        .json()
+        .groups.flatMap((g: { rows: Row[] }) => g.rows)
+        .map((r: Row) => r.cells.asset ?? r.cells.device ?? "");
+
+    expect(await run(admin)).toEqual(expect.arrayContaining(["Pump B"]));
+    const seenByLead = await run(lead.cookie);
+    expect(seenByLead).not.toContain("Pump B");
+  });
 });
 
 interface Row {

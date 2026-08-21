@@ -2,12 +2,13 @@
 // The schedule change log: writing a row per disturbance to a published schedule, and
 // reading them back for the change-history report. Labels are stored resolved, so this
 // reads without re-joining the catalogue and stays accurate through a later rename.
-import { ENTRY_STATE_CODES } from "@reportly/shared";
+import { ENTRY_STATE_CODES, type AuthContext } from "@reportly/shared";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
-import { scheduleChangeLog, users } from "@/core/db/schema.js";
+import { scheduleChangeLog, schedules, users } from "@/core/db/schema.js";
+import { withLocationsNullable } from "@/core/db/scoped.js";
 
 /** A cell as a short human label: the shift name, W/O / L / PH, or "—" for empty. */
 export function cellLabel(shiftName: string | null, state: string | null): string {
@@ -53,6 +54,7 @@ const actor = alias(users, "change_actor");
  * per-day changes.
  */
 export async function changesForReport(
+  ctx: AuthContext,
   companyId: string,
   departmentId: string,
   from: Date,
@@ -71,12 +73,16 @@ export async function changesForReport(
       createdAt: scheduleChangeLog.createdAt,
     })
     .from(scheduleChangeLog)
+    .innerJoin(schedules, eq(schedules.id, scheduleChangeLog.scheduleId))
     .leftJoin(subject, eq(subject.id, scheduleChangeLog.subjectUserId))
     .leftJoin(actor, eq(actor.id, scheduleChangeLog.actorUserId))
     .where(
       and(
         eq(scheduleChangeLog.companyId, companyId),
         eq(scheduleChangeLog.departmentId, departmentId),
+        // The change belongs to a rota, and a rota belongs to a site. A department
+        // spanning three plants would otherwise hand every reader all three.
+        withLocationsNullable(ctx, schedules.locationId),
         gte(scheduleChangeLog.date, fromDate),
         lt(scheduleChangeLog.date, toDate),
       ),

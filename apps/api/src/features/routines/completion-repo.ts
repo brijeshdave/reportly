@@ -3,7 +3,10 @@
 // Start creates the row (in progress); finish stamps the finish time and notes.
 import { and, asc, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
+import type { AuthContext } from "@reportly/shared";
+
 import { db } from "@/core/db/index.js";
+import { withPersonLocations } from "@/core/db/scoped.js";
 import { pointAwards, routineCompletions, routines, users } from "@/core/db/schema.js";
 
 export interface CompletionRow {
@@ -71,6 +74,8 @@ export async function completionsForRoutines(
   routineIds: string[],
   from: string,
   to: string,
+  /** Given, the rows are narrowed to people working at the caller's sites. */
+  ctx?: AuthContext,
 ): Promise<CompletionRow[]> {
   if (routineIds.length === 0) return [];
   return withUser()
@@ -79,6 +84,8 @@ export async function completionsForRoutines(
         inArray(routineCompletions.routineId, routineIds),
         gte(routineCompletions.occurrenceDate, from),
         lt(routineCompletions.occurrenceDate, to),
+        // A completion has no site of its own; the person who did the work has.
+        ctx ? withPersonLocations(ctx, routineCompletions.userId) : undefined,
       ),
     )
     .orderBy(asc(routineCompletions.occurrenceDate));

@@ -279,23 +279,28 @@ const deviceLabelCol = sql<string>`case when ${devices.identifier} is null then 
  * one is chosen, otherwise every device in the company. Ordered by name.
  */
 export async function devicesForReliability(
+  ctx: AuthContext,
   companyId: string,
   assetId: string | null,
 ): Promise<{ id: string; name: string }[]> {
+  // A device at a site belongs to the people who can reach that site; one with no
+  // site is everybody's. Without this the per-device reliability report listed every
+  // machine in the company, whatever the reader was restricted to.
+  const scope = withLocationsNullable(ctx, devices.locationId);
+
   if (assetId) {
     const deviceIds = (await scopeUnderAsset(assetId, companyId)).deviceIds;
     if (deviceIds.length === 0) return [];
-    const rows = await db
+    return db
       .select({ id: devices.id, name: deviceLabelCol })
       .from(devices)
-      .where(and(eq(devices.companyId, companyId), inArray(devices.id, deviceIds)))
+      .where(and(eq(devices.companyId, companyId), inArray(devices.id, deviceIds), scope))
       .orderBy(devices.name);
-    return rows;
   }
   return db
     .select({ id: devices.id, name: deviceLabelCol })
     .from(devices)
-    .where(eq(devices.companyId, companyId))
+    .where(and(eq(devices.companyId, companyId), scope))
     .orderBy(devices.name);
 }
 
@@ -382,6 +387,7 @@ export interface LeaderboardRaw {
  * no journal join — so journal and routine points count together.
  */
 export async function leaderboardRows(
+  ctx: AuthContext,
   companyId: string,
   from: Date,
   to: Date,
@@ -390,29 +396,50 @@ export async function leaderboardRows(
   if (visibleUserIds && visibleUserIds.length === 0) return [];
   const fromDate = from.toISOString().slice(0, 10);
   const toDate = to.toISOString().slice(0, 10);
-  return db
-    .select({
-      userId: pointAwards.beneficiaryUserId,
-      name: users.name,
-      departmentId: pointAwards.departmentId,
-      departmentName: departments.name,
-      own: sql<number>`coalesce(sum(${pointAwards.points}) filter (where ${pointAwards.kind} = 'direct'), 0)::real`,
-      team: sql<number>`coalesce(sum(${pointAwards.points}) filter (where ${pointAwards.kind} = 'rollup'), 0)::real`,
-    })
-    .from(pointAwards)
-    .innerJoin(users, eq(users.id, pointAwards.beneficiaryUserId))
-    .leftJoin(departments, eq(departments.id, pointAwards.departmentId))
-    .where(
-      and(
-        eq(pointAwards.companyId, companyId),
-        // Someone opted out of the standings is left out entirely, points and all.
-        eq(users.countsOnLeaderboard, true),
-        gte(pointAwards.earnedOn, fromDate),
-        lt(pointAwards.earnedOn, toDate),
-        visibleUserIds ? inArray(pointAwards.beneficiaryUserId, visibleUserIds) : undefined,
-      ),
-    )
-    .groupBy(pointAwards.beneficiaryUserId, users.name, pointAwards.departmentId, departments.name);
+  return (
+    db
+      .select({
+        userId: pointAwards.beneficiaryUserId,
+        name: users.name,
+        departmentId: pointAwards.departmentId,
+        departmentName: departments.name,
+        own: sql<number>`coalesce(sum(${pointAwards.points}) filter (where ${pointAwards.kind} = 'direct'), 0)::real`,
+        team: sql<number>`coalesce(sum(${pointAwards.points}) filter (where ${pointAwards.kind} = 'rollup'), 0)::real`,
+      })
+      .from(pointAwards)
+      .innerJoin(users, eq(users.id, pointAwards.beneficiaryUserId))
+      .leftJoin(departments, eq(departments.id, pointAwards.departmentId))
+      // For the site of the award, which is the site of the work that earned it.
+      .leftJoin(journalEntries, eq(journalEntries.id, pointAwards.reportId))
+      .where(
+        and(
+          eq(pointAwards.companyId, companyId),
+          // Someone opted out of the standings is left out entirely, points and all.
+          eq(users.countsOnLeaderboard, true),
+          gte(pointAwards.earnedOn, fromDate),
+          lt(pointAwards.earnedOn, toDate),
+          visibleUserIds ? inArray(pointAwards.beneficiaryUserId, visibleUserIds) : undefined,
+          // Narrowed by the site of the *work*, not of the person.
+          //
+          // Somebody can hold work and points at several sites — and in several
+          // companies, though the company filter above already separates those. Asking
+          // "does this person work at one of my sites?" would then fold their other
+          // plant's points into a total I am reading here, which is the leak this
+          // whole change exists to close. Asking "was this earned at a site I can
+          // see?" gives each reader that site's share of a shared person.
+          //
+          // A routine or a service award has no journal entry and therefore no site;
+          // the NULL-aware helper keeps those visible, exactly as an unplaced asset is.
+          withLocationsNullable(ctx, journalEntries.locationId),
+        ),
+      )
+      .groupBy(
+        pointAwards.beneficiaryUserId,
+        users.name,
+        pointAwards.departmentId,
+        departments.name,
+      )
+  );
 }
 
 export async function departmentNameOf(

@@ -51,7 +51,16 @@ const CALLER_SCOPED_REPOS = [
   "reports/repo.ts",
   "analytics/repo.ts",
   "shifts/schedule-repo.ts",
+  // These three narrow by the *person* in the row rather than by a location column
+  // — a completion, an assignment and a change log have no site of their own — so
+  // they are checked for the helper that does that, below.
+  "routines/completion-repo.ts",
+  "routines/repo.ts",
+  "shifts/change-log-repo.ts",
 ];
+
+/** Files that may satisfy the check with `withPersonLocations` instead. */
+const PERSON_SCOPED_REPOS = new Set(["routines/completion-repo.ts", "routines/repo.ts"]);
 
 /**
  * Services that must resolve a scope and hand it down. The repo takes the
@@ -81,7 +90,9 @@ describe("location scoping is actually wired up", () => {
   it.each(CALLER_SCOPED_REPOS)("%s scopes its reads to the caller's sites", (file) => {
     const source = read(file);
     expect(
-      source.includes("withLocationsNullable(ctx") || source.includes("withLocations(ctx"),
+      source.includes("withLocationsNullable(ctx") ||
+        source.includes("withLocations(ctx") ||
+        (PERSON_SCOPED_REPOS.has(file) && source.includes("withPersonLocations(ctx")),
       `${file} reads rows that belong to a site but never narrows them to the ` +
         `caller's. A report that shows one plant's figures to another plant is a ` +
         `disclosure, not an inconvenience.`,
@@ -120,7 +131,10 @@ describe("location scoping is actually wired up", () => {
     // somewhere, or it is decoration that lends false confidence.
     const helpers = readFileSync(resolve(here, "../scoped.ts"), "utf8");
     const exported = [...helpers.matchAll(/export function (\w+)/g)].map((m) => m[1]!);
-    const callers = LOCATION_SCOPED_SERVICES.map(read).join("\n");
+    // Repos count as callers too: the site of a points award or a routine
+    // completion comes from the person in the row, and the query that joins them is
+    // the only place that narrowing can happen.
+    const callers = [...LOCATION_SCOPED_SERVICES, ...CALLER_SCOPED_REPOS].map(read).join("\n");
 
     for (const name of exported) {
       expect(

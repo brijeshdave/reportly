@@ -8,6 +8,22 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Reports showed other sites' rows.** Each report had its own permission, but five
+  of the queries behind them never narrowed their rows to the reader's sites: the
+  leaderboard, the routine log, routine compliance, the shift-change history, and the
+  per-device reliability report. Somebody restricted to one plant could read another
+  plant's standings, completions and machines. All five now narrow, and every source
+  declares in code which shape it narrows by — the reader's reporting line and site
+  for a report about people's work, the site alone for one about machines — so a
+  report added later cannot skip it without failing the build. Where a row can be
+  traced to work that happened somewhere — a points award to its journal entry — the
+  _work's_ site decides it, not the person's: somebody who works at two plants
+  contributes their Plant A points to Plant A's leaderboard and their Plant B points
+  to Plant B's, rather than their whole total appearing in both.
+- **An account with no company, or no group, now says so.** It used to render an
+  empty dashboard and 403 from everything, which reads as a broken app rather than an
+  unfinished setup.
+
 - **An Admin could not withdraw their own comment while a Manager could.** Moving
   deletion up a tier caught `comments:delete` by accident: withdrawing your own
   remark is not removing somebody else's record (that is `comments:moderate`, which

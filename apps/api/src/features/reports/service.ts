@@ -395,7 +395,7 @@ async function runReliabilityByDevice(
   const assetName = definition.assetId
     ? await repo.assetNameOf(definition.assetId, ctx.companyId!)
     : null;
-  const devices = await repo.devicesForReliability(ctx.companyId!, definition.assetId ?? null);
+  const devices = await repo.devicesForReliability(ctx, ctx.companyId!, definition.assetId ?? null);
 
   const rows: ReportRow[] = [];
   for (const device of devices) {
@@ -449,7 +449,7 @@ async function runLeaderboard(
   const companyWide = ctx.isSuperadmin || can(ctx, PERMISSIONS.ANALYTICS_VIEW);
   const visibleUserIds = companyWide ? null : [ctx.userId, ...(await downlineUserIds(ctx.userId))];
 
-  const raw = await repo.leaderboardRows(ctx.companyId, from, to, visibleUserIds);
+  const raw = await repo.leaderboardRows(ctx, ctx.companyId, from, to, visibleUserIds);
   const byDept = definition.grouping === "department";
 
   // Collapse the (person, department) rows to the level we rank at.
@@ -553,7 +553,7 @@ async function runShiftChanges(
   await assertDepartmentReadable(ctx, departmentId);
 
   const dept = await getDepartment(departmentId, ctx.companyId);
-  const changes = await changesForReport(ctx.companyId, departmentId, from, to);
+  const changes = await changesForReport(ctx, ctx.companyId, departmentId, from, to);
   const rows: ReportRow[] = changes.map((c, i) => ({
     id: String(i),
     reportId: null,
@@ -761,6 +761,7 @@ async function runRoutineLog(ctx: AuthContext, from: Date, to: Date): Promise<So
     routines.map((r) => r.id),
     dayOf(from),
     dayOf(to),
+    ctx,
   );
   const rows: ReportRow[] = comps.map((c, i) => ({
     id: String(i),
@@ -788,7 +789,10 @@ async function runRoutineLog(ctx: AuthContext, from: Date, to: Date): Promise<So
 async function runRoutineCompliance(ctx: AuthContext, from: Date, to: Date): Promise<SourceResult> {
   const routines = (await managedRoutines(ctx)).filter((r) => r.status === "active");
   const [fromDate, toDate] = [dayOf(from), dayOf(to)];
-  const assigneeRows = await assigneesFor(routines.map((r) => r.id));
+  const assigneeRows = await assigneesFor(
+    routines.map((r) => r.id),
+    ctx,
+  );
   const assigneesByRoutine = new Map<string, { userId: string; name: string }[]>();
   for (const a of assigneeRows) {
     assigneesByRoutine.set(a.routineId, [...(assigneesByRoutine.get(a.routineId) ?? []), a]);
@@ -797,6 +801,7 @@ async function runRoutineCompliance(ctx: AuthContext, from: Date, to: Date): Pro
     routines.map((r) => r.id),
     fromDate,
     toDate,
+    ctx,
   );
   // routineId|date|userId -> completed on time?
   const completedByKey = new Map<string, boolean>();
@@ -1264,7 +1269,7 @@ export async function leaderboard(
   const companyWide = ctx.isSuperadmin || can(ctx, PERMISSIONS.ANALYTICS_VIEW);
   const visibleUserIds = companyWide ? null : [ctx.userId, ...(await downlineUserIds(ctx.userId))];
 
-  const raw = await repo.leaderboardRows(ctx.companyId, from, to, visibleUserIds);
+  const raw = await repo.leaderboardRows(ctx, ctx.companyId, from, to, visibleUserIds);
   const rows = query.departmentId ? raw.filter((r) => r.departmentId === query.departmentId) : raw;
 
   const tally = new Map<string, { userId: string; name: string; own: number; team: number }>();

@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import {
   ALL_PERMISSIONS,
   ALL_REPORT_VIEW_PERMISSIONS,
+  REPORT_SCOPE,
   REPORT_SOURCES,
   REPORT_VIEW_PERMISSION,
 } from "@reportly/shared";
@@ -25,6 +26,16 @@ import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serviceSource = readFileSync(resolve(here, "../service.ts"), "utf8");
+
+/** Every query a report reads its rows through — where the narrowing has to happen. */
+const repoSources = [
+  "../repo.ts",
+  "../parts-repo.ts",
+  "../../routines/completion-repo.ts",
+  "../../routines/repo.ts",
+  "../../shifts/schedule-repo.ts",
+  "../../shifts/change-log-repo.ts",
+].map((file) => readFileSync(resolve(here, file), "utf8"));
 
 describe("every report is granted and scoped", () => {
   it("gives each report its own permission", () => {
@@ -90,5 +101,30 @@ describe("every report is granted and scoped", () => {
       `These report runners never see the caller, so they cannot narrow their rows ` +
         `to that person's sites or reporting line:\n  ${blind.join("\n  ")}`,
     ).toEqual([]);
+  });
+
+  it("makes every source declare how it narrows, and honours the declaration", () => {
+    // The compiler already refuses a source missing from REPORT_SCOPE. What it
+    // cannot see is whether the declaration means anything, so: a `people` report
+    // must narrow by the reporting line somewhere in its path, and every report
+    // must narrow by site. Stated here because the next report will be written by
+    // somebody who has not read the plan, months from now.
+    for (const source of REPORT_SOURCES) {
+      expect(REPORT_SCOPE[source], `${source} declares no scope shape`).toMatch(/^(people|place)$/);
+    }
+
+    // The reporting line is only computed in one way; a people-shaped report that
+    // never reaches it is one showing somebody else's work.
+    expect(serviceSource).toContain("downlineUserIds");
+
+    // And the site narrowing, which is the half that was missing everywhere. Both
+    // helpers count: a row with a location column of its own uses one, and a row
+    // whose site comes from the person in it uses the other.
+    expect(
+      repoSources.some(
+        (src) => src.includes("withLocationsNullable(") || src.includes("withPersonLocations("),
+      ),
+      "no report query narrows its rows to the reader's sites",
+    ).toBe(true);
   });
 });

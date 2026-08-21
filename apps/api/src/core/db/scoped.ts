@@ -22,7 +22,10 @@
 // each repo could forget to call is exactly how SF-004 happened: a helper that
 // guards nothing looks identical to one that guards everything.
 import type { AuthContext } from "@reportly/shared";
-import { type AnyColumn, type SQL, inArray, isNull, or, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+
+import { db } from "@/core/db/index.js";
+import { departmentUserLocations } from "@/core/db/schema.js";
 
 /**
  * Constrain a **non-nullable** location column to the caller's allowed locations.
@@ -64,4 +67,35 @@ export function mayUseLocation(ctx: AuthContext, locationId: string | null): boo
   if (ctx.isSuperadmin) return true;
   if (ctx.locationIds === "all") return true;
   return ctx.locationIds.includes(locationId);
+}
+
+/**
+ * Constrain a **person** column to people who work at the caller's sites.
+ *
+ * The row has no location of its own — a points award, a routine completion, a
+ * day worked — so the site comes from the person in it, via their department
+ * memberships. Without this, every people-shaped report showed the whole company
+ * to somebody restricted to one plant: the permission decided which report opened,
+ * and nothing decided which rows it held.
+ *
+ * Somebody with no site recorded is visible to everybody, for the same reason an
+ * unplaced asset is: not yet placed is not the same as hidden. That also keeps this
+ * safe to switch on — an organisation that has not filled in memberships sees no
+ * change, rather than a set of empty reports.
+ */
+export function withPersonLocations(ctx: AuthContext, userColumn: AnyColumn): SQL | undefined {
+  if (ctx.isSuperadmin) return undefined;
+  if (ctx.locationIds === "all") return undefined;
+  if (ctx.locationIds.length === 0) return sql`false`;
+
+  const atMySites = db
+    .select({ userId: departmentUserLocations.userId })
+    .from(departmentUserLocations)
+    .where(inArray(departmentUserLocations.locationId, ctx.locationIds));
+
+  const placedAnywhere = db
+    .select({ userId: departmentUserLocations.userId })
+    .from(departmentUserLocations);
+
+  return or(inArray(userColumn, atMySites), notInArray(userColumn, placedAnywhere));
 }
