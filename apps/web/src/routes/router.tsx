@@ -217,6 +217,14 @@ const authedRoute = createRoute({
       throw redirect({ to: "/profile", search: { tab: "security" } });
     }
 
+    // Same again for a two-factor requirement that has run out of grace: the API is
+    // refusing everything else, and the enrolment lives on the security tab. Inside
+    // the grace period nothing is redirected — the banner in the shell does the
+    // asking, because taking somebody's work away a week early is not the deal.
+    if (session.twoFactor.overdue && location.pathname !== "/profile") {
+      throw redirect({ to: "/profile", search: { tab: "security" } });
+    }
+
     return { session };
   },
   component: AppShell,

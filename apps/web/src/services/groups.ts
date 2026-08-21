@@ -53,6 +53,11 @@ export function renameGroup(id: string, name: string): Promise<Group> {
   return http.patch<Group>(`/groups/${id}`, { name });
 }
 
+/** Turn the two-factor requirement on or off for everybody in this group. */
+export function setGroupTwoFactor(id: string, requiresTwoFactor: boolean): Promise<Group> {
+  return http.patch<Group>(`/groups/${id}`, { requiresTwoFactor });
+}
+
 /**
  * What deleting this group would revoke. A group holds no data of its own, so the
  * delete is not guarded — but it does take away its members' access, and the

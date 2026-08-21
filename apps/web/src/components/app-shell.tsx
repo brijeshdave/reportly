@@ -2,8 +2,8 @@
 // Authenticated layout: a white grouped sidebar with a pill active state, a topbar
 // with greeting / company switcher / user menu, and a full-width main area. Sidebar
 // and main scroll independently; on phones the sidebar becomes a drawer.
-import { THEME_MODES, type ThemeMode } from "@reportly/shared";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { THEME_MODES, formatDate, type ThemeMode } from "@reportly/shared";
+import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   BookOpen,
@@ -34,6 +34,7 @@ import {
 import { Spinner } from "@/components/ui/form.js";
 import { DOCS_URL } from "@/lib/docs-url.js";
 import { Badge, Button } from "@/components/ui/primitives.js";
+import { Alert } from "@/components/ui/form.js";
 import { cn } from "@/lib/cn.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { setActiveCompanyId } from "@/services/http.js";
@@ -442,6 +443,46 @@ function PageSpinner() {
   );
 }
 
+/**
+ * The nag during the grace period.
+ *
+ * Not a redirect: somebody a week away from the deadline is still doing their job,
+ * and taking the app off them early to make a point is not the deal. It says the
+ * date, and stops appearing the moment they enrol.
+ */
+function TwoFactorCountdown() {
+  const { data: session } = useQuery(sessionQuery);
+  const twoFactor = session?.twoFactor;
+  if (!twoFactor?.required || twoFactor.enrolled || twoFactor.overdue) return null;
+
+  const deadline = twoFactor.deadline ? new Date(twoFactor.deadline) : null;
+  const days = deadline
+    ? Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
+    : null;
+
+  return (
+    <div className="mb-4">
+      <Alert tone="warning">
+        <span className="flex flex-wrap items-center gap-2">
+          <span>
+            Two-factor authentication is required on your account
+            {deadline ? ` from ${formatDate(deadline.toISOString())}` : ""}
+            {days !== null ? ` — ${days} ${days === 1 ? "day" : "days"} left` : ""}. After that you
+            will be asked to set it up before you can carry on.
+          </span>
+          <Link
+            to="/profile"
+            search={{ tab: "security" }}
+            className="font-medium underline underline-offset-2"
+          >
+            Set it up now
+          </Link>
+        </span>
+      </Alert>
+    </div>
+  );
+}
+
 export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -483,6 +524,7 @@ export function AppShell() {
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar onOpenSidebar={() => setDrawerOpen(true)} />
           <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+            <TwoFactorCountdown />
             <ErrorBoundary boundary="app-shell">
               {/* Every page is fetched when its route is, so there is a moment before
                 one arrives. Inside the error boundary, not outside: a chunk that

@@ -484,6 +484,45 @@ export const SYSTEM_ROLES_SETTING: SettingDef<typeof systemRolesSchema> = {
     "turning them back on restores every grant.",
 };
 
+/**
+ * Whether two-factor is compulsory, and how long people get to enrol.
+ *
+ * A **floor, never a ceiling**: a group may require it where the installation does
+ * not, and a company may require it where neither does, but nothing waives a
+ * requirement somebody else imposed. Precedence rules that let one level cancel
+ * another end in an argument about which level won.
+ *
+ * `graceDays` is the part that stops this being cruel. Turning the requirement on
+ * with no grace locks out everybody who has not enrolled, mid-shift, at once. The
+ * countdown runs from when the requirement first applied **to that person**, not
+ * from when the switch was flipped — otherwise somebody added to a required group
+ * months later is locked out on their first day.
+ */
+export const twoFactorSettingsSchema = z.object({
+  /** `required` makes it compulsory for everybody in the installation. */
+  mode: z.enum(["optional", "required"]).default("optional"),
+  /**
+   * Superadmins hold every permission on the server, so "compulsory for everyone
+   * except the account that can do anything" is the wrong default. Its own flag
+   * rather than an implication, so the choice is visible.
+   */
+  requireForSuperadmins: z.boolean().default(false),
+  /** Days to enrol before the requirement bites. 0 = immediately. */
+  graceDays: z.number().int().min(0).max(90).default(7),
+});
+
+export const TWO_FACTOR_SETTINGS: SettingDef<typeof twoFactorSettingsSchema> = {
+  namespace: "auth",
+  key: "twoFactor",
+  schema: twoFactorSettingsSchema,
+  userOverridable: false,
+  // A company may raise the bar for its own people; the service refuses an attempt
+  // to lower one the installation has set.
+  companyOverridable: true,
+  description:
+    "Whether two-factor authentication is compulsory, for superadmins as well, and how many days people have to enrol before it is enforced",
+};
+
 export const PASSWORD_POLICY: SettingDef<typeof passwordPolicySchema> = {
   namespace: "auth",
   key: "passwordPolicy",
@@ -645,6 +684,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   UI_THEME,
   UI_TOASTS,
   SYSTEM_ROLES_SETTING,
+  TWO_FACTOR_SETTINGS,
 ];
 
 export function findSettingDef(namespace: string, key: string): SettingDef | undefined {

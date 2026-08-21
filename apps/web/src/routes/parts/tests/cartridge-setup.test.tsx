@@ -99,6 +99,7 @@ function session(): Session {
     queueAdmin: "off",
     modules: { parts: true },
     systemRoles: true,
+    twoFactor: { required: false, enrolled: false, deadline: null, overdue: false },
   };
 }
 

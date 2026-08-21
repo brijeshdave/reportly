@@ -329,6 +329,17 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     defaultChannels: DEFAULT_INAPP,
   },
 
+  {
+    type: "security.two-factor-required",
+    category: "system",
+    label: "Two-factor is now required of you",
+    description:
+      "Somebody made two-factor authentication compulsory for an account, a company or a group you are in. Says by when it must be set up.",
+    // The person who has to do something about it, and nobody else.
+    audience: "explicit",
+    defaultChannels: DEFAULT_INAPP,
+  },
+
   // --- downtime ---
   {
     type: "downtime.opened",

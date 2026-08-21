@@ -14,6 +14,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandl
 import { AUTH_BASE_PATH, getAuth } from "@/core/auth/auth.js";
 import { buildAuthContext, hasCompanyAccess } from "@/core/auth/context.js";
 import { isUserActive, mustChangePassword } from "@/core/auth/account-status.js";
+import { isSuperadmin } from "@/core/auth/context.js";
+import { twoFactorRequirement, type TwoFactorRequirement } from "@/core/auth/two-factor-policy.js";
 import { authAction, recordAuthEvent } from "@/core/auth/events.js";
 import { isPasswordExpired } from "@/core/auth/password-history.js";
 import { resolveDebug } from "@/core/debug/service.js";
@@ -63,11 +65,42 @@ async function enforcePasswordExpiry(request: FastifyRequest, userId: string): P
   );
 }
 
+/**
+ * Two-factor, when somebody has made it compulsory and this person has not enrolled.
+ *
+ * The same shape as password expiry, and for the same reason: everything closes
+ * except the way out of it. `/me` stays open so the web app can learn what is wrong,
+ * and the enrolment endpoints live under /auth/* which never passes through here —
+ * so a blocked person can always finish enrolling. **This is a forced enrolment, not
+ * a lockout**, and that distinction is the whole design.
+ *
+ * Only past the grace period. Inside it the request goes through and `/me` reports
+ * the deadline, which is what the banner counts down.
+ */
+async function enforceTwoFactor(request: FastifyRequest, userId: string): Promise<void> {
+  const requirement = await twoFactorRequirement({
+    userId,
+    companyId: null,
+    isSuperadmin: await isSuperadmin(userId),
+  });
+  request.twoFactor = requirement;
+  if (!requirement.overdue) return;
+  if (request.routeOptions.url === ME_ROUTE) return;
+
+  throw new AppError(
+    403,
+    ERROR_CODES.TWO_FACTOR_REQUIRED,
+    "Two-factor authentication is required on this account. Set it up to continue.",
+  );
+}
+
 declare module "fastify" {
   interface FastifyRequest {
     authUserId?: string;
     /** The caller's own session token, so a session listing can mark "this device". */
     sessionToken?: string;
+    /** Resolved two-factor requirement, for /me to report and the gate to enforce. */
+    twoFactor?: TwoFactorRequirement;
     ctx?: AuthContext;
     debugMode?: boolean;
     /** Set when the caller's password is past its expiry; only /me is reachable. */
@@ -161,6 +194,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     if (!request.debugMode) request.debugMode = await resolveDebug(session.user.id);
 
     await enforcePasswordExpiry(request, session.user.id);
+    await enforceTwoFactor(request, session.user.id);
   });
 
   app.decorate("companyContext", async function (request: FastifyRequest) {

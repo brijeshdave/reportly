@@ -163,6 +163,15 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
         // sidebar however their grants read.
         modules: { parts: parts?.enabled ?? false },
         systemRoles: systemRoles.enabled,
+        // What the banner counts down, and what sends somebody to the setup screen
+        // once it runs out. Reported rather than inferred from `twoFactorEnabled`,
+        // because "enrolled" and "must enrol" are different questions.
+        twoFactor: {
+          required: request.twoFactor?.required ?? false,
+          enrolled: request.twoFactor?.enrolled ?? user?.twoFactorEnabled ?? false,
+          deadline: request.twoFactor?.deadline?.toISOString() ?? null,
+          overdue: request.twoFactor?.overdue ?? false,
+        },
       };
     },
   );

@@ -10,6 +10,8 @@ export const groupSchema = z
     id: uuidSchema,
     name: nameSchema,
     isSystem: z.boolean(),
+    /** Everybody in this group must enrol in two-factor authentication. */
+    requiresTwoFactor: z.boolean(),
   })
   .merge(timestampsSchema);
 
@@ -17,6 +19,7 @@ export type Group = z.infer<typeof groupSchema>;
 
 export const createGroupSchema = z.object({
   name: nameSchema,
+  requiresTwoFactor: z.boolean().default(false),
 });
 
 export type CreateGroup = z.infer<typeof createGroupSchema>;

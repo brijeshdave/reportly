@@ -42,6 +42,7 @@ function session(passwordExpired: boolean): Session {
     queueAdmin: "off",
     modules: { parts: false },
     systemRoles: true,
+    twoFactor: { required: false, enrolled: false, deadline: null, overdue: false },
   };
 }
 

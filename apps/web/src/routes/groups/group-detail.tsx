@@ -17,7 +17,7 @@ import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { Spinner } from "@/components/ui/form.js";
 import { Alert } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { sessionQuery } from "@/lib/queries.js";
+import { queryKeys, sessionQuery } from "@/lib/queries.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import {
   UnsavedChangesNotice,
@@ -31,6 +31,7 @@ import {
   fetchGroupAssignments,
   fetchGroupImpact,
   setGroupAssignment,
+  setGroupTwoFactor,
   type AssignmentKind,
   type GroupAssignments,
 } from "@/services/groups.js";
@@ -191,6 +192,52 @@ function SystemGroupNotice() {
   );
 }
 
+/**
+ * The two-factor rule for everybody in this group.
+ *
+ * Sits with the members rather than the roles, because it is about the people in the
+ * group and not about what the group may do — and because the person ticking it
+ * wants to see who they are about to make enrol.
+ */
+function TwoFactorRule({ group }: { group: Group }) {
+  const queryClient = useQueryClient();
+  const canUpdate = usePermission(PERMISSIONS.GROUPS_UPDATE);
+  const save = useMutation({
+    mutationFn: (next: boolean) => setGroupTwoFactor(group.id, next),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["groups"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.session });
+    },
+  });
+
+  if (group.isSystem && !group.requiresTwoFactor) return null;
+
+  return (
+    <Card className="flex flex-col gap-2 p-6">
+      <label className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={group.requiresTwoFactor}
+          disabled={!canUpdate || group.isSystem || save.isPending}
+          onChange={(event) => save.mutate(event.target.checked)}
+        />
+        <span>
+          <span className="block text-sm font-medium">
+            Require two-factor authentication of everybody in this group
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            They keep working as normal while they set it up; the grace period is in Settings &rarr;
+            Authentication. Nobody is locked out — the enrolment screen stays open, and it is all
+            they will be able to reach once the grace period ends.
+          </span>
+        </span>
+      </label>
+      {save.error ? <ErrorAlert error={save.error} /> : null}
+    </Card>
+  );
+}
+
 function MembersTab({ group, assignments }: TabProps) {
   const canAssign = usePermission(PERMISSIONS.GROUPS_ASSIGN);
   const users = useOptions<User>("users", "/users");
@@ -209,16 +256,19 @@ function MembersTab({ group, assignments }: TabProps) {
   }));
 
   return (
-    <Card className="p-6">
-      <AssignmentPicker
-        options={options}
-        selectedIds={assignments.users}
-        onSave={(ids) => save.mutateAsync(ids)}
-        onDirtyChange={setDirty}
-        disabled={!canAssign}
-        emptyMessage="Invite a user first."
-      />
-    </Card>
+    <div className="flex flex-col gap-4">
+      <TwoFactorRule group={group} />
+      <Card className="p-6">
+        <AssignmentPicker
+          options={options}
+          selectedIds={assignments.users}
+          onSave={(ids) => save.mutateAsync(ids)}
+          onDirtyChange={setDirty}
+          disabled={!canAssign}
+          emptyMessage="Invite a user first."
+        />
+      </Card>
+    </div>
   );
 }
 

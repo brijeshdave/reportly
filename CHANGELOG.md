@@ -59,6 +59,18 @@ viewer`, …), so a shift lead can hold the rota reports without the cartridge
 
 ### Added
 
+- **Two-factor authentication can be made compulsory.** Tick it on a **group** —
+  "everybody in Admins enrols" — or require it installation-wide, per company, or
+  for superadmins specifically, in Settings → Authentication. The sources are ORed:
+  a floor, never a ceiling, so nothing waives a requirement somebody else imposed.
+  **It is a forced enrolment, not a lockout**: the enrolment screen stays open to a
+  blocked person, so the way out is always forward. A **grace period** (default
+  seven days, set in Settings) runs from when the requirement first applied _to that
+  person_, not from when the switch was flipped — otherwise somebody added to a
+  required group months later would be shut out on their first morning. During it the
+  app carries a banner counting down; after it, everything but the setup screen is
+  refused. Each person is notified when it starts applying to them.
+
 - **A `Viewer` system role** — Member without the filing: every read, no verb at all.
   For an auditor, a visiting manager, or a screen on a wall. It completes the broad
   ladder (Superadmin ⊇ Admin ⊇ Manager ⊇ Member ⊇ Viewer), which is now held in shape

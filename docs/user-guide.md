@@ -536,6 +536,30 @@ Editing a custom role changes what every group holding it may do, retroactively 
 the editor names those groups before you save. Deleting a role is refused while any
 group still holds it.
 
+### Make two-factor compulsory
+
+Three ways, and they add up rather than cancelling out — if any of them applies to
+somebody, they must enrol:
+
+| Where                                        | What it covers                                                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A group** (Groups → _the group_ → Members) | Everybody in that group. The usual choice: "everybody in Admins enrols".                                                                   |
+| **Settings → Authentication**                | The whole installation, and separately superadmins, who otherwise sit outside a rule that binds everyone else.                             |
+| **A company's own setting**                  | Everybody working in that company. A company can require it where the installation does not; it cannot waive one the installation has set. |
+
+**Nobody is locked out.** Somebody who has not enrolled keeps working normally until
+the grace period runs out — the app shows a banner counting down — and after that the
+only screen they can reach is the one that sets two-factor up. The way out is always
+forward.
+
+**The grace period** is in Settings → Authentication (seven days by default; zero
+makes it bite immediately). It counts from when the requirement first applied _to
+that person_, so somebody added to a required group later gets their own days rather
+than a deadline that expired before they arrived.
+
+If somebody loses their phone, an administrator with `users:manage-2fa` resets their
+enrolment from their user page; they are then asked to set it up again.
+
 ### Turn the shipped roles off
 
 **Settings → Access** (`settings:manage`). If you describe your access from

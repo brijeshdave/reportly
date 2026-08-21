@@ -27,7 +27,7 @@ import {
   listGroups as listGroupRows,
   setGroupRoles,
   setGroupUsers,
-  updateGroupNameRow,
+  updateGroupRow,
   upsertGroups,
 } from "@/features/groups/repo.js";
 import type { GroupExportRow, GroupParseResult } from "@/features/groups/import-parse.js";
@@ -37,6 +37,7 @@ function serialize(row: GroupRow): Group {
     id: row.id,
     name: row.name,
     isSystem: row.isSystem,
+    requiresTwoFactor: row.requiresTwoFactor,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -69,8 +70,8 @@ export async function getGroup(id: string): Promise<Group> {
   return serialize(await requireGroup(id));
 }
 
-export async function createGroup(name: string): Promise<Group> {
-  return serialize(await insertGroup(name));
+export async function createGroup(name: string, requiresTwoFactor = false): Promise<Group> {
+  return serialize(await insertGroup(name, requiresTwoFactor));
 }
 
 /**
@@ -108,9 +109,12 @@ export async function groupsForUser(userId: string): Promise<Group[]> {
   return (await getGroupsForUser(userId)).map(serialize);
 }
 
-export async function updateGroup(id: string, name: string): Promise<Group> {
+export async function updateGroup(
+  id: string,
+  fields: { name?: string; requiresTwoFactor?: boolean },
+): Promise<Group> {
   await requireEditable(id);
-  const row = await updateGroupNameRow(id, name);
+  const row = await updateGroupRow(id, fields);
   return serialize(row!);
 }
 

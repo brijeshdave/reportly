@@ -14,6 +14,12 @@ export const ERROR_CODES = {
   PASSWORD_EXPIRED: "PASSWORD_EXPIRED",
   /** The submitted password matches one the user has used recently. */
   PASSWORD_REUSED: "PASSWORD_REUSED",
+  /**
+   * Two-factor is compulsory for this caller and they have not enrolled. Like
+   * PASSWORD_EXPIRED it closes the app to everything but the way out of it — the
+   * enrolment routes stay open, so this is a forced enrolment and never a lockout.
+   */
+  TWO_FACTOR_REQUIRED: "TWO_FACTOR_REQUIRED",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

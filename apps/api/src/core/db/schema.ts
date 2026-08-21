@@ -102,6 +102,13 @@ export const users = pgTable("users", {
   // and their points are left out of the standings entirely.
   countsOnLeaderboard: boolean("counts_on_leaderboard").notNull().default(true),
   twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+  /**
+   * When two-factor first became compulsory for this person — what the grace period
+   * counts from. NULL while it does not apply. Per person rather than per setting
+   * change, so somebody added to a required group months later gets their own days
+   * to enrol rather than inheriting an expired deadline.
+   */
+  twoFactorRequiredSince: timestamp("two_factor_required_since", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -988,6 +995,11 @@ export const groups = pgTable("groups", {
   id: idPk(),
   name: text("name").notNull().unique(),
   isSystem: boolean("is_system").notNull().default(false),
+  /**
+   * Everybody in this group must enrol in two-factor. On the group, not the role:
+   * a role says what you may do, this says how you must prove who you are.
+   */
+  requiresTwoFactor: boolean("requires_two_factor").notNull().default(false),
   ...timestamps,
 });
 

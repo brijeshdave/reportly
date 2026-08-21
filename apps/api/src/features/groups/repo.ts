@@ -12,12 +12,18 @@ export interface GroupRow {
   id: string;
   name: string;
   isSystem: boolean;
+  requiresTwoFactor: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const listConfig: ListConfig = {
-  columns: { name: groups.name, isSystem: groups.isSystem, createdAt: groups.createdAt },
+  columns: {
+    name: groups.name,
+    isSystem: groups.isSystem,
+    requiresTwoFactor: groups.requiresTwoFactor,
+    createdAt: groups.createdAt,
+  },
   defaultSort: groups.name,
 };
 
@@ -44,15 +50,18 @@ export async function getGroupById(id: string): Promise<GroupRow | null> {
   return row ?? null;
 }
 
-export async function insertGroup(name: string): Promise<GroupRow> {
-  const [row] = await db.insert(groups).values({ name }).returning();
+export async function insertGroup(name: string, requiresTwoFactor = false): Promise<GroupRow> {
+  const [row] = await db.insert(groups).values({ name, requiresTwoFactor }).returning();
   return row!;
 }
 
-export async function updateGroupNameRow(id: string, name: string): Promise<GroupRow | null> {
+export async function updateGroupRow(
+  id: string,
+  fields: { name?: string; requiresTwoFactor?: boolean },
+): Promise<GroupRow | null> {
   const [row] = await db
     .update(groups)
-    .set({ name, updatedAt: new Date() })
+    .set({ ...fields, updatedAt: new Date() })
     .where(eq(groups.id, id))
     .returning();
   return row ?? null;
@@ -85,6 +94,7 @@ export async function getGroupsForUser(userId: string): Promise<GroupRow[]> {
       id: groups.id,
       name: groups.name,
       isSystem: groups.isSystem,
+      requiresTwoFactor: groups.requiresTwoFactor,
       createdAt: groups.createdAt,
       updatedAt: groups.updatedAt,
     })

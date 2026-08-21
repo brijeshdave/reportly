@@ -22,6 +22,19 @@ import { resolveListQuery } from "@/lib/resolve-list-query.js";
 
 const idParams = z.object({ id: z.guid() });
 const nameBody = z.object({ name: nameSchema });
+
+/**
+ * Create and edit both carry the two-factor flag. Optional on a patch, so renaming a
+ * group does not silently turn the requirement off.
+ */
+const groupBody = z.object({
+  name: nameSchema,
+  requiresTwoFactor: z.boolean().optional(),
+});
+const groupPatchBody = z.object({
+  name: nameSchema.optional(),
+  requiresTwoFactor: z.boolean().optional(),
+});
 const idsBody = z.object({ ids: z.array(z.guid()) });
 const assignedResponse = z.object({ assigned: z.array(z.guid()) });
 const assignmentsResponse = z.object({
@@ -117,12 +130,15 @@ export async function groupsRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         tags: ["Groups"],
         summary: "Create a group",
-        body: nameBody,
+        body: groupBody,
         response: { 201: groupSchema },
       },
     },
     async (request, reply) => {
-      const group = await groups.createGroup(request.body.name);
+      const group = await groups.createGroup(
+        request.body.name,
+        request.body.requiresTwoFactor ?? false,
+      );
       await audit(request, "group.create", { groupId: group.id });
       reply.status(201);
       return group;
@@ -149,15 +165,15 @@ export async function groupsRoutes(fastify: FastifyInstance): Promise<void> {
       preHandler: guard(PERMISSIONS.GROUPS_UPDATE),
       schema: {
         tags: ["Groups"],
-        summary: "Rename a group (system groups are immutable)",
+        summary: "Rename a group or change its two-factor rule (system groups are immutable)",
         params: idParams,
-        body: nameBody,
+        body: groupPatchBody,
         response: { 200: groupSchema },
       },
     },
     async (request) => {
       const before = await groups.getGroup(request.params.id);
-      const group = await groups.updateGroup(request.params.id, request.body.name);
+      const group = await groups.updateGroup(request.params.id, request.body);
       await audit(request, "group.update", { groupId: group.id });
       await trackChanges(request, request.ctx!, "groups", group.id, before, group);
       return group;

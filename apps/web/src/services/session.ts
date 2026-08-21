@@ -68,6 +68,19 @@ export interface Session {
    * does nothing is worse than one that says why it cannot.
    */
   systemRoles: boolean;
+  /**
+   * Whether this person must enrol in two-factor, and by when.
+   *
+   * `required` without `overdue` is the grace period: everything still works and the
+   * app nags. `overdue` means the API is refusing everything but `/me` and the
+   * enrolment endpoints, so the only screen worth drawing is the one that sets it up.
+   */
+  twoFactor: {
+    required: boolean;
+    enrolled: boolean;
+    deadline: string | null;
+    overdue: boolean;
+  };
 }
 
 export function fetchSession(): Promise<Session> {
