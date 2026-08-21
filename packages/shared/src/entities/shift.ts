@@ -44,7 +44,24 @@ export const shiftCodeSchema = z.string().trim().min(1).max(2);
  * the thing people scan for, and one dark red the eye can separate from a plain red
  * is worth more than another pastel.
  */
-export const SHIFT_COLORS = [
+/**
+ * The colours a shift — or a non-working state — can be given, as twelve hues in a
+ * light and a dark shade.
+ *
+ * Both shades exist because the two jobs are different. A pale cell with dark text is
+ * what a month of ordinary shifts should look like: legible for an hour at a time and
+ * quiet enough that the exceptions stand out. A dark cell with light text is for the
+ * exceptions themselves — leave, a public holiday, the one shift somebody is hunting
+ * for — where the point is that the eye lands on it.
+ *
+ * The bare name is the light shade, which is what the first ten shipped as, so no
+ * shift already coloured changes when this list grows.
+ *
+ * `LEGACY_SHIFT_COLORS` below are names that briefly existed and may sit in somebody's
+ * database. They still render — a stored value that fails to parse is a screen that
+ * will not load — but the picker does not offer them.
+ */
+export const SHIFT_HUES = [
   "slate",
   "red",
   "orange",
@@ -55,17 +72,31 @@ export const SHIFT_COLORS = [
   "indigo",
   "violet",
   "pink",
+  "cyan",
+  "purple",
+] as const;
+export type ShiftHue = (typeof SHIFT_HUES)[number];
+
+/** Names kept valid for data already written, and deliberately not offered again. */
+export const LEGACY_SHIFT_COLORS = [
   "dark-red",
   "maroon",
   "brown",
   "olive",
   "emerald",
-  "cyan",
-  "purple",
   "gray",
 ] as const;
+
+export const SHIFT_COLORS = [
+  ...SHIFT_HUES,
+  ...SHIFT_HUES.map((hue) => `${hue}-dark` as const),
+  ...LEGACY_SHIFT_COLORS,
+] as const;
+
 export type ShiftColor = (typeof SHIFT_COLORS)[number];
-export const shiftColorSchema = z.enum(SHIFT_COLORS);
+export const shiftColorSchema = z.enum(
+  SHIFT_COLORS as readonly [string, ...string[]],
+) as z.ZodType<ShiftColor>;
 
 export const shiftSchema = z
   .object({

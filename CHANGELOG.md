@@ -72,6 +72,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The calendar palette is twelve hues in a light and a dark shade**, and light is
+  the default. Ordinary shifts should be quiet enough to read for an hour; dark is for
+  what must be found at a glance — leave, a public holiday, the one shift somebody is
+  scanning for. An earlier build made every cell dark at once, which turned a month
+  into a wall of colour where nothing stood out because everything did. Colours
+  already chosen keep their look: the bare name is still the light shade.
+- **The day-off, leave and public-holiday colours can be set** — on Shifts →
+  Calendar colours, from the same palette as the shifts, with each code previewing
+  itself. They were hardcoded, which meant the three codes people scan a month for
+  hardest were the three nobody could change. Leave defaults to dark red.
+
 - **The schedule grid is readable.** Each day is now a **solid block of its shift's
   colour** rather than a pale pill inside a white cell — a month is read as a pattern
   before it is read as letters. The palette grows from ten colours to eighteen, all

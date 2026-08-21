@@ -15,30 +15,72 @@ import ExcelJS from "exceljs";
 import type { ScheduleGrid, ShiftColor } from "@reportly/shared";
 import { ENTRY_STATE_CODES } from "@reportly/shared";
 
-/** The palette as hex, matching what the grid draws on screen. */
+/**
+ * The palette as hex, matching what the grid draws on screen.
+ *
+ * Light shades are the pale 100s the calendar uses for ordinary shifts; the `-dark`
+ * twins are the strong 700s. A spreadsheet that reversed the two would be a different
+ * document from the one on screen, which defeats the point of exporting the rota
+ * rather than describing it.
+ */
 const COLOR_HEX: Record<ShiftColor, string> = {
-  slate: "FF475569",
-  red: "FFDC2626",
-  orange: "FFEA580C",
-  amber: "FFFBBF24",
-  green: "FF15803D",
-  teal: "FF0F766E",
-  blue: "FF1D4ED8",
-  indigo: "FF4338CA",
-  violet: "FF6D28D9",
-  pink: "FFDB2777",
+  // light — the quiet default
+  slate: "FFF1F5F9",
+  red: "FFFEE2E2",
+  orange: "FFFFEDD5",
+  amber: "FFFEF3C7",
+  green: "FFDCFCE7",
+  teal: "FFCCFBF1",
+  blue: "FFDBEAFE",
+  indigo: "FFE0E7FF",
+  violet: "FFEDE9FE",
+  pink: "FFFCE7F3",
+  cyan: "FFCFFAFE",
+  purple: "FFF3E8FF",
+  // dark — for what must be found at a glance
+  "slate-dark": "FF334155",
+  "red-dark": "FFB91C1C",
+  "orange-dark": "FFC2410C",
+  "amber-dark": "FFFBBF24",
+  "green-dark": "FF15803D",
+  "teal-dark": "FF0F766E",
+  "blue-dark": "FF1D4ED8",
+  "indigo-dark": "FF4338CA",
+  "violet-dark": "FF6D28D9",
+  "pink-dark": "FFBE185D",
+  "cyan-dark": "FF0E7490",
+  "purple-dark": "FF7E22CE",
+  // retired names, still drawn so an old shift's colour survives an export
   "dark-red": "FF7F1D1D",
   maroon: "FF881337",
   brown: "FF713F12",
   olive: "FF3F6212",
   emerald: "FF065F46",
-  cyan: "FF155E75",
-  purple: "FF6B21A8",
   gray: "FF374151",
 };
 
-/** Amber is the one fill dark text must sit on; the rest take white. */
-const DARK_TEXT: ReadonlySet<ShiftColor> = new Set<ShiftColor>(["amber"]);
+/**
+ * Which fills need dark text on them.
+ *
+ * Every light shade, obviously — and amber's dark shade too, which is the one strong
+ * colour white cannot sit on. Listing it by name rather than by rule is the point:
+ * "dark background means white text" is the assumption that produces unreadable amber.
+ */
+const DARK_TEXT: ReadonlySet<ShiftColor> = new Set<ShiftColor>([
+  "slate",
+  "red",
+  "orange",
+  "amber",
+  "green",
+  "teal",
+  "blue",
+  "indigo",
+  "violet",
+  "pink",
+  "cyan",
+  "purple",
+  "amber-dark",
+]);
 
 const MONTHS = [
   "January",

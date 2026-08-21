@@ -5,7 +5,6 @@
 // out so it never looks like a mistake.
 import {
   PERMISSIONS,
-  SHIFT_COLORS,
   formatMinutesOfDay,
   parseMinutesOfDay,
   shiftDurationMinutes,
@@ -23,7 +22,7 @@ import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { useToast } from "@/components/toaster.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
-import { SHIFT_COLOR_CLASSES, SHIFT_COLOR_LABELS } from "@/routes/shifts/shift-colors.js";
+import { ColorPicker } from "@/routes/shifts/color-picker.js";
 
 /** Sunday first, matching the calendar header and `Date.getDay()`. */
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -179,24 +178,12 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
 
           <div>
             <span className="mb-1.5 block text-sm font-medium">Colour</span>
-            <div className="flex flex-wrap gap-1.5">
-              {SHIFT_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={SHIFT_COLOR_LABELS[c]}
-                  title={SHIFT_COLOR_LABELS[c]}
-                  aria-pressed={color === c}
-                  disabled={save.isPending}
-                  onClick={() => setColor(c)}
-                  className={cn(
-                    "h-7 w-7 rounded-full ring-offset-2 ring-offset-background transition",
-                    SHIFT_COLOR_CLASSES[c].swatch,
-                    color === c ? "ring-2 ring-foreground" : "hover:scale-110",
-                  )}
-                />
-              ))}
-            </div>
+            <ColorPicker
+              label="Shift colour"
+              value={color}
+              onChange={setColor}
+              disabled={save.isPending}
+            />
           </div>
 
           <div>

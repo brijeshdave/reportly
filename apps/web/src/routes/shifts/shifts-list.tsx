@@ -12,10 +12,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Clock, Plus } from "lucide-react";
 
-import { Can } from "@/components/can.js";
+import { Can, usePermission } from "@/components/can.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Spinner } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
+import { StateColorsCard } from "@/routes/shifts/state-colors-card.js";
 import { cn } from "@/lib/cn.js";
 import { SHIFT_COLOR_CLASSES } from "@/routes/shifts/shift-colors.js";
 import { fetchShifts } from "@/services/shifts.js";
@@ -31,6 +33,10 @@ function windowLabel(shift: Shift): string {
 export function ShiftsListPage() {
   const navigate = useNavigate();
   const shifts = useQuery({ queryKey: ["shifts"], queryFn: fetchShifts });
+  const { data: session } = useQuery(sessionQuery);
+  // Company settings are written with `companies:update`, so the card appears for
+  // whoever may actually save it rather than offering a button that would 403.
+  const canSetColors = usePermission(PERMISSIONS.COMPANIES_UPDATE);
 
   return (
     <>
@@ -46,6 +52,12 @@ export function ShiftsListPage() {
           </Can>
         }
       />
+
+      {canSetColors && session?.companyId ? (
+        <div className="pb-4">
+          <StateColorsCard companyId={session.companyId} />
+        </div>
+      ) : null}
 
       {shifts.isLoading ? (
         <Spinner />

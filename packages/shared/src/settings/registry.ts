@@ -537,9 +537,14 @@ export const TWO_FACTOR_SETTINGS: SettingDef<typeof twoFactorSettingsSchema> = {
 export const scheduleStateColorsSchema = z.object({
   /** A day off should read as "nothing happening", not as an event. */
   off: shiftColorSchema.default("slate"),
-  /** Dark red by default: leave is what a manager scans a month for. */
-  leave: shiftColorSchema.default("dark-red"),
-  holiday: shiftColorSchema.default("teal"),
+  /**
+   * Dark by default for both, and light for a day off — which is the whole point of
+   * having two shades. A month is mostly ordinary shifts in pale colours; leave and a
+   * public holiday are the exceptions somebody scans for, so they are the ones that
+   * should stop the eye.
+   */
+  leave: shiftColorSchema.default("red-dark"),
+  holiday: shiftColorSchema.default("teal-dark"),
 });
 
 export type ScheduleStateColors = z.infer<typeof scheduleStateColorsSchema>;
