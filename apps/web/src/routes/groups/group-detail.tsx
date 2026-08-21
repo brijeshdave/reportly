@@ -253,9 +253,9 @@ function RolesTab({ group, assignments }: TabProps) {
     <Card className="flex flex-col gap-4 p-6">
       {shippedRolesOff ? (
         <Alert tone="warning">
-          The shipped roles are switched off in Settings &rarr; Roles &amp; access, so they grant
-          nothing and cannot be assigned. What a group already holds is kept, and comes back the
-          moment they are switched on again.
+          The shipped roles are switched off in Settings &rarr; Access, so they grant nothing and
+          cannot be assigned. What a group already holds is kept, and comes back the moment they are
+          switched on again.
         </Alert>
       ) : null}
       <AssignmentPicker

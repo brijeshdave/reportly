@@ -538,7 +538,7 @@ group still holds it.
 
 ### Turn the shipped roles off
 
-**Settings → Roles & access** (`settings:manage`). If you describe your access from
+**Settings → Access** (`settings:manage`). If you describe your access from
 scratch, the fifty roles that ship with Reportly are noise. Switching them off hides
 them from the pickers and stops them granting anything.
 

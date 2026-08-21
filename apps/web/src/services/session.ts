@@ -61,7 +61,7 @@ export interface Session {
    */
   modules: { parts: boolean };
   /**
-   * Whether the shipped system roles grant anything (Settings → Roles & access).
+   * Whether the shipped system roles grant anything (Settings → Access).
    *
    * Not a permission: with them switched off a system role still exists and can
    * still be ticked, and would confer nothing. A picker that offers a choice which

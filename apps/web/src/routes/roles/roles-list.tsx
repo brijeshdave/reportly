@@ -7,7 +7,7 @@
 // A permission set belongs to a role, so it is shown on the role, not spread
 // across a column.
 import { PERMISSIONS, type Role } from "@reportly/shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Copy, Download, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
@@ -17,7 +17,9 @@ import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { ImportDialog } from "@/components/import-dialog.js";
+import { Alert } from "@/components/ui/form.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { deleteRole, downloadRoleTemplate, exportRoles, importRoles } from "@/services/roles.js";
 
@@ -30,6 +32,11 @@ const filterDefs: FilterDef[] = [
 export function RolesListPage() {
   const [deleting, setDeleting] = useState<Role | null>(null);
   const navigate = useNavigate();
+  const { data: session } = useQuery(sessionQuery);
+  // Switched off system-wide, a shipped role still lists its permissions and grants
+  // none of them. Saying "19 granted" about a role that grants nothing is the same
+  // lie the group picker used to tell.
+  const shippedRolesOff = session?.systemRoles === false;
 
   const canUpdate = usePermission(PERMISSIONS.ROLES_UPDATE);
   const canDelete = usePermission(PERMISSIONS.ROLES_DELETE);
@@ -73,7 +80,17 @@ export function RolesListPage() {
       accessorKey: "isSystem",
       header: "Type",
       cell: ({ row }) =>
-        row.original.isSystem ? <Badge tone="brand">System</Badge> : <Badge>Custom</Badge>,
+        row.original.isSystem ? (
+          shippedRolesOff ? (
+            <Badge tone="neutral" title="Switched off in Settings → Access">
+              System · off
+            </Badge>
+          ) : (
+            <Badge tone="brand">System</Badge>
+          )
+        ) : (
+          <Badge>Custom</Badge>
+        ),
     },
     {
       id: "permissions",
@@ -163,6 +180,13 @@ export function RolesListPage() {
           </div>
         }
       />
+
+      {shippedRolesOff ? (
+        <Alert tone="warning">
+          The shipped roles are switched off in Settings &rarr; Access. They are listed here, and
+          they grant nothing until they are switched back on — no assignment has been changed.
+        </Alert>
+      ) : null}
 
       {importOpen ? (
         <ImportDialog

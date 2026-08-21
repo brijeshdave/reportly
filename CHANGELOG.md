@@ -50,13 +50,15 @@ viewer`, …), so a shift lead can hold the rota reports without the cartridge
   leaderboard, the reports — are deliberately not in it: each has a role of its own,
   so handing them out stays a decision.
 
-- **A switch to turn the shipped roles off** (Settings → Roles & access). An
+- **A switch to turn the shipped roles off** (Settings → Access). An
   installation that describes its own access from scratch can stop the fifty system
   roles cluttering every picker: switched off they are not offered, are marked as such
   where a group already holds one, and **stop conferring permissions**. Nothing is
   deleted — every group keeps the roles it holds — so switching them back on restores
   every grant exactly. The panel says how many people would lose all access before you
-  flick it, and superadmins are unaffected, so it can always be undone.
+  flick it, and superadmins are unaffected, so it can always be undone. With them off,
+  the Roles list and the group role picker both say so rather than listing permissions
+  a role is not granting.
 
 - **A group's effective permissions**, as a tab: the union of its roles, grouped the
   way the role editor groups them, with the role each permission came from on hover.

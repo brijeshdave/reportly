@@ -45,7 +45,7 @@ const NAMESPACE_LABELS: Record<string, string> = {
   logging: "Logging",
   debug: "Debug",
   ui: "Appearance",
-  access: "Roles & access",
+  access: "Access",
 };
 
 /**
