@@ -66,4 +66,29 @@ describe("carryForward", () => {
       { date: "2026-09-01", userId: "ravi", shiftId: "morning", state: "working" },
     ]);
   });
+
+  it("does not call a shift uncovered on a day it does not run", () => {
+    // Reported from a real rota: the general shift is off on Sundays, so every Sunday
+    // was flagged "uncovered G" for ever. A warning that is always wrong is one people
+    // learn to scroll past, which costs the warnings that are right.
+    const general = {
+      id: "general",
+      startMinute: 540,
+      endMinute: 1020,
+      runsOnDays: [1, 2, 3, 4, 5, 6],
+    };
+    // 2026-08-02 is a Sunday; 2026-08-03 is the Monday after it.
+    const result = coverageFor(["2026-08-02", "2026-08-03"], ["ravi"], [general], []);
+
+    expect(result.uncovered).toEqual([{ date: "2026-08-03", shiftId: "general" }]);
+  });
+
+  it("still flags every day for a shift that runs all week", () => {
+    // The other half: leaving `runsOnDays` off must mean "every day", or the column's
+    // default would quietly narrow coverage for every shift that already exists.
+    const roundTheClock = { id: "night", startMinute: 1320, endMinute: 360 };
+    const result = coverageFor(["2026-08-02", "2026-08-03"], ["ravi"], [roundTheClock], []);
+
+    expect(result.uncovered.map((u) => u.date)).toEqual(["2026-08-02", "2026-08-03"]);
+  });
 });

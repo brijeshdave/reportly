@@ -5,6 +5,31 @@ runs the roster, then changed by the people working it.
 
 ---
 
+## Reading the calendar
+
+Each day is a solid block of its shift's colour, so a month reads as a pattern before
+it reads as letters. **Grid size** (Compact / Comfortable / Large) sits beside the
+month and is remembered for you — a full month fits across the screen at every size,
+and Compact is there for a department with many people.
+
+`W/O`, `L` and `PH` take their colours from a company setting (`shifts.stateColors`),
+defaulting to slate, **dark red** and teal. The brush toolbar paints in the same
+colours, so it doubles as the legend.
+
+## Days a shift does not run
+
+A shift says which weekdays it runs, on **Shifts → _the shift_ → Runs on**. Coverage
+only calls a shift uncovered on a day it actually runs, so a general shift that is off
+on Sundays is not reported missing every Sunday. New shifts run every day until you
+say otherwise.
+
+## Taking the roster out of the app
+
+**Excel** gives one row per person, one column per day, with the colours and a legend
+sheet. **Print / PDF** opens an A4 **landscape** page built for printing — use your
+browser's "Save as PDF" for a file. Both are stamped with when they were exported and
+by whom, which is what answers "is this the current one?" a fortnight later.
+
 ## The three pieces
 
 |                  | What it is                                                               |

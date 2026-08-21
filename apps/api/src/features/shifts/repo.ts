@@ -14,6 +14,7 @@ export interface ShiftRow {
   color: string;
   startMinute: number;
   endMinute: number;
+  runsOnDays: number[];
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -26,6 +27,7 @@ const cols = {
   color: shifts.color,
   startMinute: shifts.startMinute,
   endMinute: shifts.endMinute,
+  runsOnDays: shifts.runsOnDays,
   status: shifts.status,
   createdAt: shifts.createdAt,
   updatedAt: shifts.updatedAt,
@@ -63,6 +65,7 @@ export interface NewShift {
   color: string;
   startMinute: number;
   endMinute: number;
+  runsOnDays: number[];
   status: string;
 }
 
@@ -75,7 +78,10 @@ export async function updateShiftRow(
   id: string,
   companyId: string,
   fields: Partial<
-    Pick<ShiftRow, "name" | "code" | "color" | "startMinute" | "endMinute" | "status">
+    Pick<
+      ShiftRow,
+      "name" | "code" | "color" | "startMinute" | "endMinute" | "runsOnDays" | "status"
+    >
   >,
 ): Promise<ShiftRow | null> {
   const [row] = await db

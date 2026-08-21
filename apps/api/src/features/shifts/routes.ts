@@ -28,8 +28,10 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 
 import { recordAudit } from "@/core/audit.js";
+import { sendXlsx } from "@/core/spreadsheet/http.js";
 import { AppError } from "@/core/errors.js";
 import { trackChanges } from "@/core/history.js";
+import { scheduleToHtml, scheduleToXlsx } from "@/features/shifts/export.js";
 import * as schedule from "@/features/shifts/schedule-service.js";
 import * as shifts from "@/features/shifts/service.js";
 import * as swaps from "@/features/shifts/swap-service.js";
@@ -164,6 +166,43 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) =>
       schedule.getGrid(request.ctx!, activeCompany(request.ctx!.companyId), request.query),
+  );
+
+  // The same month, out of the app. Static path, before "/schedules/:id".
+  //
+  // `shifts:read` and no more: whoever may look at a rota may take a copy of it, and
+  // a roster that can be read on screen but not printed is a roster people photograph
+  // instead.
+  app.get(
+    "/schedules/export",
+    {
+      preHandler: guard(PERMISSIONS.SHIFTS_READ),
+      schema: {
+        tags: ["Shifts"],
+        summary: "The month roster as a spreadsheet or a printable A4 landscape page",
+        querystring: scheduleQuerySchema.extend({
+          format: z.enum(["xlsx", "html"]).default("xlsx"),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const companyId = activeCompany(request.ctx!.companyId);
+      const grid = await schedule.getGrid(request.ctx!, companyId, request.query);
+      const stamp = {
+        at: new Date(),
+        by: await schedule.exporterName(request.ctx!.userId),
+      };
+      const base = `roster-${grid.year}-${String(grid.month).padStart(2, "0")}`;
+
+      if (request.query.format === "html") {
+        return reply
+          .header("content-type", "text/html; charset=utf-8")
+          .header("content-disposition", `attachment; filename="${base}.html"`)
+          .header("cache-control", "no-store")
+          .send(scheduleToHtml(grid, stamp));
+      }
+      return sendXlsx(reply, await scheduleToXlsx(grid, stamp), `${base}.xlsx`);
+    },
   );
 
   // Static path, so it is declared before "/schedules/:id" can swallow it.

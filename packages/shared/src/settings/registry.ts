@@ -6,6 +6,7 @@
 import { z } from "zod";
 
 import { notificationMatrixSchema } from "@/entities/notification.js";
+import { shiftColorSchema } from "@/entities/shift.js";
 import { DEFAULT_PAGE_SIZE, pageSizeSchema } from "@/http/pagination.js";
 
 export const SETTING_SCOPES = ["system", "company", "user"] as const;
@@ -523,6 +524,35 @@ export const TWO_FACTOR_SETTINGS: SettingDef<typeof twoFactorSettingsSchema> = {
     "Whether two-factor authentication is compulsory, for superadmins as well, and how many days people have to enrol before it is enforced",
 };
 
+/**
+ * What colour a day off, a leave day and a public holiday are on the calendar.
+ *
+ * Hardcoded until now, which meant the three codes people scan for hardest were the
+ * three nobody could change. They take the same palette as the shifts, so a month is
+ * one visual language rather than "shifts have colours and states have opinions".
+ *
+ * Company-overridable: which colour means leave is a local convention, and two
+ * companies on one server may reasonably disagree.
+ */
+export const scheduleStateColorsSchema = z.object({
+  /** A day off should read as "nothing happening", not as an event. */
+  off: shiftColorSchema.default("slate"),
+  /** Dark red by default: leave is what a manager scans a month for. */
+  leave: shiftColorSchema.default("dark-red"),
+  holiday: shiftColorSchema.default("teal"),
+});
+
+export type ScheduleStateColors = z.infer<typeof scheduleStateColorsSchema>;
+
+export const SCHEDULE_STATE_COLORS: SettingDef<typeof scheduleStateColorsSchema> = {
+  namespace: "shifts",
+  key: "stateColors",
+  schema: scheduleStateColorsSchema,
+  userOverridable: false,
+  companyOverridable: true,
+  description: "The calendar colours for a day off (W/O), leave (L) and a public holiday (PH)",
+};
+
 export const PASSWORD_POLICY: SettingDef<typeof passwordPolicySchema> = {
   namespace: "auth",
   key: "passwordPolicy",
@@ -685,6 +715,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   UI_TOASTS,
   SYSTEM_ROLES_SETTING,
   TWO_FACTOR_SETTINGS,
+  SCHEDULE_STATE_COLORS,
 ];
 
 export function findSettingDef(namespace: string, key: string): SettingDef | undefined {

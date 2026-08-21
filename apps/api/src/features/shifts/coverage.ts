@@ -25,6 +25,8 @@ export interface CoverageShift {
   id: string;
   startMinute: number;
   endMinute: number;
+  /** Weekdays it runs, 0 = Sunday. Absent means every day, as it did before. */
+  runsOnDays?: number[];
 }
 export interface CoverageEntry {
   date: string;
@@ -39,6 +41,11 @@ export interface CoverageEntry {
  *   - `gaps`: a member with no cell at all on a day (an explicit Off/Leave is not a gap).
  * Both are advisory — the schedule still saves; the UI just highlights them.
  */
+/** Day of week for a YYYY-MM-DD, 0 = Sunday. Parsed as UTC so it never slips a day. */
+function weekdayOf(date: string): number {
+  return new Date(`${date}T00:00:00Z`).getUTCDay();
+}
+
 export function coverageFor(
   dates: string[],
   memberIds: string[],
@@ -64,7 +71,13 @@ export function coverageFor(
   const gaps: { date: string; userId: string }[] = [];
   for (const date of dates) {
     const byShift = worked.get(date);
+    const weekday = weekdayOf(date);
     for (const shift of activeShifts) {
+      // A shift that does not run today cannot be short-staffed today. Without this,
+      // a general shift that is off on Sundays was reported uncovered every Sunday —
+      // a warning that is always wrong, which teaches people to ignore the ones that
+      // are not.
+      if (shift.runsOnDays && !shift.runsOnDays.includes(weekday)) continue;
       if (!byShift?.get(shift.id)) uncovered.push({ date, shiftId: shift.id });
     }
     const here = present.get(date);

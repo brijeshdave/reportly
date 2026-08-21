@@ -8,6 +8,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`W/O` split across two lines** in a narrow calendar cell, stacking "W/" above
+  "O".
+
 - **A cancelled e2e run no longer breaks every run after it.** Playwright starts the
   API through pnpm, and killing the run took the shell while leaving the server
   listening, so the next `test:e2e` died on "port 3100 is already used". The suite
@@ -57,6 +60,36 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stays an administrator's grant). Restored on upgrade.
 
 ### Changed
+
+- **The schedule grid is readable.** Each day is now a **solid block of its shift's
+  colour** rather than a pale pill inside a white cell — a month is read as a pattern
+  before it is read as letters. The palette grows from ten colours to eighteen, all
+  with dark variants and including **dark red**; the text on each is chosen per hue
+  for contrast rather than fixed to white, because white on amber is unreadable. Type
+  goes from 10px to 13px, and a **Grid size** control (Compact / Comfortable / Large)
+  sits beside the month, remembered per person — a full month still fits across the
+  screen at every size.
+- **W/O, Leave and Public holiday take their colours from a company setting**
+  (`shifts.stateColors`), defaulting to slate, dark red and teal. They were hardcoded,
+  which meant the three codes people scan for hardest were the three nobody could
+  change. The brush toolbar paints them in the same colours, so the toolbar reads as
+  the legend.
+- **Every shift is a button in the brush toolbar**, in its own colour, instead of
+  hiding behind a "Set shift…" dropdown — the thing a scheduler reaches for all day
+  was two clicks away while W/O, L and PH sat in the open beside it.
+
+### Added
+
+- **The month roster exports** to Excel or a printable A4 **landscape** page — which
+  is also how a PDF is made: open it and print to PDF, rather than carrying a headless
+  browser in the server image. Both carry the shift colours and are stamped
+  **"Exported 21 Aug 2026 14:32 by <name>"**, because a printed rota is argued with a
+  fortnight later and "is this the current one?" is the first question.
+- **A shift can say which weekdays it runs.** Coverage only calls a shift uncovered on
+  a day it actually runs, so a general shift that is off on Sundays stops being
+  reported missing every Sunday for ever — a warning that is always wrong is one
+  people learn to ignore, which costs the warnings that are right. Defaults to all
+  seven days, so nothing changes until somebody says otherwise.
 
 - **Tags have their own screen, under System.** They were a tab on Journal setup,
   grouped by where the words are used; `tags:manage` is a permission in its own

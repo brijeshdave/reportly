@@ -17,7 +17,7 @@ import type {
   UpdateShift,
 } from "@reportly/shared";
 
-import { http } from "@/services/http.js";
+import { download, http } from "@/services/http.js";
 
 export function fetchShifts(): Promise<Shift[]> {
   return http.get<Shift[]>("/shifts");
@@ -121,4 +121,19 @@ export function decideSwap(
 /** Withdraw your own pending request. */
 export function cancelSwap(swapId: string): Promise<SwapRequest> {
   return http.post<SwapRequest>(`/swaps/${swapId}/cancel`, {});
+}
+
+/**
+ * The month roster as a file. `xlsx` for a spreadsheet, `html` for the printable A4
+ * landscape page — which is also how a PDF is made here: open it and print to PDF,
+ * rather than carrying a headless browser in the server image to do it for you.
+ */
+export function exportSchedule(
+  query: { departmentId: string; locationId?: string; year: number; month: number },
+  format: "xlsx" | "html",
+): Promise<void> {
+  const stamp = `${query.year}-${String(query.month).padStart(2, "0")}`;
+  return download(`/schedules/export`, `roster-${stamp}.${format}`, {
+    query: { ...query, format },
+  });
 }

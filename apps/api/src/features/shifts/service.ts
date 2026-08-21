@@ -28,6 +28,9 @@ function serialize(row: ShiftRow): Shift {
     color: asColor(row.color),
     startMinute: row.startMinute,
     endMinute: row.endMinute,
+    // Sorted on the way out so the editor's seven toggles read left to right whatever
+    // order they were ticked in.
+    runsOnDays: [...(row.runsOnDays ?? [0, 1, 2, 3, 4, 5, 6])].sort((a, b) => a - b),
     status: row.status === "disabled" ? "disabled" : "active",
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -56,6 +59,7 @@ export async function createShift(companyId: string, input: CreateShift): Promis
     color: input.color,
     startMinute: input.startMinute,
     endMinute: input.endMinute,
+    runsOnDays: input.runsOnDays,
     status: input.status,
   });
   return serialize(row);
@@ -78,6 +82,7 @@ export async function updateShift(
     ...(input.color !== undefined ? { color: input.color } : {}),
     ...(input.startMinute !== undefined ? { startMinute: input.startMinute } : {}),
     ...(input.endMinute !== undefined ? { endMinute: input.endMinute } : {}),
+    ...(input.runsOnDays !== undefined ? { runsOnDays: input.runsOnDays } : {}),
     ...(input.status !== undefined ? { status: input.status } : {}),
   });
   return serialize(row!);

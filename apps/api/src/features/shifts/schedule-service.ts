@@ -7,6 +7,7 @@
 // hold shifts:manage (a scheduler, company-wide). Coverage and gap flags come from
 // the pure `coverage` helpers so the maths is the same one the tests pin down.
 import {
+  SCHEDULE_STATE_COLORS,
   ERROR_CODES,
   PERMISSIONS,
   SHIFT_COLORS,
@@ -25,7 +26,12 @@ import {
   type ScheduleQuery,
 } from "@reportly/shared";
 
+import { eq } from "drizzle-orm";
+
+import { db } from "@/core/db/index.js";
+import { users } from "@/core/db/schema.js";
 import { AppError } from "@/core/errors.js";
+import { getEffectiveSetting } from "@/core/settings/service.js";
 import { notify } from "@/core/queue/notifications.js";
 import { avatarVersions } from "@/features/avatars/repo.js";
 import * as changeLog from "@/features/shifts/change-log-repo.js";
@@ -159,6 +165,15 @@ async function requireDepartment(
   return { name: dept.name };
 }
 
+/**
+ * The name to stamp an export with. Falls back to "a user" rather than throwing: a
+ * missing display name is not a reason to refuse somebody their roster.
+ */
+export async function exporterName(userId: string): Promise<string> {
+  const [row] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId));
+  return row?.name ?? "a user";
+}
+
 export async function getGrid(
   ctx: AuthContext,
   companyId: string,
@@ -201,6 +216,7 @@ export async function getGrid(
     id: s.id,
     startMinute: s.startMinute,
     endMinute: s.endMinute,
+    runsOnDays: s.runsOnDays,
   }));
   const coverage = coverageFor(
     days,
@@ -209,7 +225,11 @@ export async function getGrid(
     entries.map((e) => ({ date: e.date, userId: e.userId, shiftId: e.shiftId, state: e.state })),
   );
 
+  // The company's own answer where it has one, the shipped defaults otherwise.
+  const stateColors = await getEffectiveSetting(SCHEDULE_STATE_COLORS, { companyId });
+
   return {
+    stateColors,
     departmentId: query.departmentId,
     departmentName: dept.name,
     locationId: query.locationId ?? null,
@@ -229,6 +249,7 @@ export async function getGrid(
         : "slate",
       startMinute: s.startMinute,
       endMinute: s.endMinute,
+      runsOnDays: [...(s.runsOnDays ?? [0, 1, 2, 3, 4, 5, 6])].sort((a, b) => a - b),
       status: s.status === "disabled" ? "disabled" : "active",
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),

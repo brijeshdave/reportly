@@ -13,6 +13,7 @@ import {
   type EntryState,
   type ScheduleEntry,
   type ScheduleGrid,
+  type ScheduleStateColors,
   type Shift,
 } from "@reportly/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,10 +23,51 @@ import { useState, type MouseEvent, type ReactNode } from "react";
 import { Avatar } from "@/components/avatar.js";
 import { MultiSelect } from "@/components/multi-select.js";
 import { cn } from "@/lib/cn.js";
-import { SHIFT_COLOR_CLASSES, STATE_CHIP } from "@/routes/shifts/shift-colors.js";
+import { cellClasses } from "@/routes/shifts/shift-colors.js";
 import { bulkAssign } from "@/services/shifts.js";
 
 export type ScheduleView = "actual" | "scheduled" | "changes";
+
+/**
+ * How large the grid is drawn.
+ *
+ * A month is 31 columns however you set it, so the size that fits is a trade between
+ * legibility and how many people you see without scrolling. That is a judgement about
+ * one department on one screen, not something this file can decide — so it is a
+ * control on the page, remembered per person, rather than a constant.
+ *
+ * `compact` is exactly the density this grid had before the type grew, so nobody who
+ * was happy with it loses anything.
+ */
+export const GRID_DENSITIES = ["compact", "comfortable", "large"] as const;
+export type GridDensity = (typeof GRID_DENSITIES)[number];
+
+export const DENSITY_LABELS: Record<GridDensity, string> = {
+  compact: "Compact",
+  comfortable: "Comfortable",
+  large: "Large",
+};
+
+const DENSITY: Record<GridDensity, { code: string; row: string; head: string; name: string }> = {
+  compact: {
+    code: "text-[11px] leading-4",
+    row: "min-h-[1.7rem]",
+    head: "text-[11px]",
+    name: "text-[11px]",
+  },
+  comfortable: {
+    code: "text-[13px] leading-5",
+    row: "min-h-[2.1rem]",
+    head: "text-xs",
+    name: "text-[13px]",
+  },
+  large: {
+    code: "text-[15px] leading-6",
+    row: "min-h-[2.5rem]",
+    head: "text-sm",
+    name: "text-sm",
+  },
+};
 
 /** Which days of one person are currently painted, and the anchor a Shift-range grows from. */
 interface Selection {
@@ -85,19 +127,36 @@ function siteInitials(options: { id: string; name: string }[], id: string): stri
   return initials.slice(0, 3) || "?";
 }
 
+/**
+ * One day, drawn as a solid block of its colour.
+ *
+ * `whitespace-nowrap` is load-bearing, not tidiness: without it a narrow column breaks
+ * "W/O" at the slash and stacks "W/" above "O", which is what a month of days off
+ * looked like on a laptop.
+ */
 function Chip({
   shiftId,
   state,
   shifts,
+  stateColors,
+  density,
 }: {
   shiftId: string | null;
   state: EntryState;
   shifts: Shift[];
+  stateColors: ScheduleStateColors;
+  density: GridDensity;
 }) {
+  const size = DENSITY[density];
+
   if (state !== "working") {
     return (
       <span
-        className={cn("rounded px-1 text-[10px] font-semibold leading-4", STATE_CHIP[state])}
+        className={cn(
+          "w-full whitespace-nowrap rounded px-1 text-center font-semibold",
+          size.code,
+          cellClasses(stateColors[state]),
+        )}
         title={ENTRY_STATE_LABELS[state]}
       >
         {ENTRY_STATE_CODES[state]}
@@ -109,8 +168,9 @@ function Chip({
   return (
     <span
       className={cn(
-        "min-w-[1.4rem] rounded px-1 text-center text-[10px] font-bold leading-4",
-        SHIFT_COLOR_CLASSES[shift.color].chip,
+        "w-full whitespace-nowrap rounded px-1 text-center font-bold",
+        size.code,
+        cellClasses(shift.color),
       )}
       title={`${shift.name} · ${formatMinutesOfDay(shift.startMinute)}–${formatMinutesOfDay(shift.endMinute)}`}
     >
@@ -124,12 +184,16 @@ export function ScheduleGridView({
   view,
   canManage,
   onChanged,
+  density,
 }: {
   grid: ScheduleGrid;
   view: ScheduleView;
   canManage: boolean;
   onChanged: () => void;
+  /** Chosen on the page above, and remembered there. */
+  density: GridDensity;
 }) {
+  const size = DENSITY[density];
   const scheduleId = grid.schedule?.id ?? null;
   const editable = canManage && view === "actual" && scheduleId !== null;
   const published = grid.schedule?.status === "published";
@@ -213,6 +277,7 @@ export function ScheduleGridView({
           selection={selection}
           memberName={grid.members.find((m) => m.userId === selection.userId)?.name ?? ""}
           shifts={grid.shifts}
+          stateColors={grid.stateColors}
           siteOptions={grid.locationOptions}
           onAddWeekday={addWeekday}
           onDone={() => setSelection(null)}
@@ -224,7 +289,15 @@ export function ScheduleGridView({
         <table className="border-collapse text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 min-w-[9rem] border-b border-r border-border bg-card px-3 py-2 text-left text-xs font-semibold">
+              <th
+                className={cn(
+                  // 7rem, not 9: every millimetre here is a millimetre the 31 day
+                  // columns do not get, and a truncated name with the full one on
+                  // hover costs less than a month that does not fit across.
+                  "sticky left-0 z-10 min-w-[7rem] max-w-[9rem] border-b border-r border-border bg-card px-2 py-2 text-left font-semibold",
+                  size.head,
+                )}
+              >
                 {grid.members.length} {grid.members.length === 1 ? "person" : "people"}
               </th>
               {grid.days.map((date) => {
@@ -236,7 +309,8 @@ export function ScheduleGridView({
                     style={{ width: "1.9rem" }}
                     title={uncovered ? `Uncovered: ${uncovered.join(", ")}` : undefined}
                     className={cn(
-                      "border-b border-border px-0 py-1 text-center text-[11px] font-medium",
+                      "border-b border-border px-0 py-1 text-center font-medium",
+                      size.head,
                       d === 0
                         ? "bg-rose-50 dark:bg-rose-950/30"
                         : isWeekend(date)
@@ -277,7 +351,9 @@ export function ScheduleGridView({
                       version={member.avatarVersion}
                       size="sm"
                     />
-                    <span className="truncate text-xs font-medium">{member.name}</span>
+                    <span className={cn("truncate font-medium", size.name)} title={member.name}>
+                      {member.name}
+                    </span>
                   </span>
                 </th>
                 {grid.days.map((date) => {
@@ -323,7 +399,8 @@ export function ScheduleGridView({
                           (editable && isGap ? "No shift assigned (gap)" : undefined)
                         }
                         className={cn(
-                          "flex min-h-[1.9rem] w-full items-center justify-center px-0.5",
+                          "flex w-full items-center justify-center px-0.5",
+                          size.row,
                           editable ? "cursor-pointer hover:bg-muted/70" : "cursor-default",
                           dim ? "opacity-30" : "",
                         )}
@@ -342,7 +419,7 @@ export function ScheduleGridView({
                         {cells.length === 0 ? (
                           <span
                             className={cn(
-                              "text-[10px]",
+                              size.code,
                               isGap && editable ? "text-border" : "text-transparent",
                             )}
                           >
@@ -358,12 +435,16 @@ export function ScheduleGridView({
                                       shiftId={entry.plannedShiftId}
                                       state={entry.plannedState ?? "off"}
                                       shifts={grid.shifts}
+                                      stateColors={grid.stateColors}
+                                      density={density}
                                     />
                                   </span>
                                   <Chip
                                     shiftId={entry.shiftId}
                                     state={entry.state}
                                     shifts={grid.shifts}
+                                    stateColors={grid.stateColors}
+                                    density={density}
                                   />
                                 </span>
                               ) : (
@@ -372,6 +453,8 @@ export function ScheduleGridView({
                                   shiftId={entry.shiftId}
                                   state={entry.state}
                                   shifts={grid.shifts}
+                                  stateColors={grid.stateColors}
+                                  density={density}
                                 />
                               ),
                             )}
@@ -382,7 +465,13 @@ export function ScheduleGridView({
                               const v = cellView(entry, view);
                               return (
                                 <span key={entry.id} className="flex flex-col items-center">
-                                  <Chip shiftId={v.shiftId} state={v.state} shifts={grid.shifts} />
+                                  <Chip
+                                    shiftId={v.shiftId}
+                                    state={v.state}
+                                    shifts={grid.shifts}
+                                    stateColors={grid.stateColors}
+                                    density={density}
+                                  />
                                   {/* Where a travelling person spent the day. Initials
                                       only — the cell is 1.9rem wide — with the full
                                       names on the cell's tooltip. */}
@@ -417,6 +506,7 @@ function SelectionToolbar({
   selection,
   memberName,
   shifts,
+  stateColors,
   siteOptions,
   onAddWeekday,
   onDone,
@@ -426,6 +516,7 @@ function SelectionToolbar({
   selection: Selection;
   memberName: string;
   shifts: Shift[];
+  stateColors: ScheduleStateColors;
   /** The sites a day may be tagged with. Empty on a site rota, which needs no tag. */
   siteOptions: { id: string; name: string }[];
   onAddWeekday: (match: "weekend" | number) => void;
@@ -476,22 +567,25 @@ function SelectionToolbar({
         <option value="6">All Saturdays</option>
         <option value="weekend">All weekends</option>
       </select>
-      <select
-        aria-label="Set shift"
-        className="h-8 rounded-md border border-border bg-background px-2 text-sm"
-        value=""
-        disabled={busy}
-        onChange={(e) =>
-          e.target.value && apply.mutate({ shiftId: e.target.value, state: "working" })
-        }
-      >
-        <option value="">Set shift…</option>
-        {shifts.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.code} · {s.name}
-          </option>
-        ))}
-      </select>
+      {/* The shifts as buttons, in their own colours — one click to paint, and the
+          toolbar doubles as the legend. They were behind a "Set shift…" dropdown,
+          which put the thing a scheduler reaches for all day two clicks away while
+          W/O, L and PH sat in the open beside it. */}
+      {shifts.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          disabled={busy}
+          onClick={() => apply.mutate({ shiftId: s.id, state: "working" })}
+          title={`${s.name} · ${formatMinutesOfDay(s.startMinute)}–${formatMinutesOfDay(s.endMinute)}`}
+          className={cn(
+            "h-8 min-w-[2.2rem] rounded-md px-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-50",
+            cellClasses(s.color),
+          )}
+        >
+          {s.code}
+        </button>
+      ))}
       {siteOptions.length > 0 ? (
         <span className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground">Where</span>
@@ -505,10 +599,22 @@ function SelectionToolbar({
           />
         </span>
       ) : null}
+      {/* The same shape for the three states, in the colours the calendar uses for
+          them, so the toolbar and the grid never disagree about what leave looks like. */}
       {(["off", "leave", "holiday"] as const).map((st) => (
-        <Button key={st} disabled={busy} onClick={() => apply.mutate({ shiftId: null, state: st })}>
+        <button
+          key={st}
+          type="button"
+          disabled={busy}
+          onClick={() => apply.mutate({ shiftId: null, state: st })}
+          title={ENTRY_STATE_LABELS[st]}
+          className={cn(
+            "h-8 min-w-[2.6rem] whitespace-nowrap rounded-md px-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-50",
+            cellClasses(stateColors[st]),
+          )}
+        >
           {ENTRY_STATE_CODES[st]}
-        </Button>
+        </button>
       ))}
       <Button disabled={busy} onClick={() => apply.mutate(null)}>
         Clear

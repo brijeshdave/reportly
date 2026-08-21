@@ -1229,6 +1229,14 @@ export const shifts = pgTable(
     color: text("color").notNull().default("slate"),
     startMinute: integer("start_minute").notNull(),
     endMinute: integer("end_minute").notNull(),
+    /**
+     * The weekdays this shift is expected to be staffed, 0 = Sunday.
+     *
+     * Coverage only calls a shift uncovered on a day it actually runs. A general
+     * shift that is off on Sundays was otherwise reported missing every Sunday for
+     * ever, and a warning that is always wrong is one nobody reads.
+     */
+    runsOnDays: integer("runs_on_days").array().notNull().default([0, 1, 2, 3, 4, 5, 6]),
     status: text("status").notNull().default("active"),
     ...timestamps,
   },

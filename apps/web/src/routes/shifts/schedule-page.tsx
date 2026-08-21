@@ -21,6 +21,8 @@ import {
   LockOpen,
   Trophy,
   Building2,
+  Download,
+  Printer,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -35,12 +37,20 @@ import { fetchDepartments, fetchUserDepartments } from "@/services/departments.j
 import { fetchLocations } from "@/services/locations.js";
 import {
   createSchedule,
+  exportSchedule,
   fetchSchedule,
   lockSchedule,
   publishSchedule,
   unlockSchedule,
 } from "@/services/shifts.js";
-import { ScheduleGridView, type ScheduleView } from "@/routes/shifts/schedule-grid.js";
+import {
+  DENSITY_LABELS,
+  GRID_DENSITIES,
+  ScheduleGridView,
+  type GridDensity,
+  type ScheduleView,
+} from "@/routes/shifts/schedule-grid.js";
+import { useLocalPreference } from "@/hooks/use-local-preference.js";
 
 export function SchedulePage() {
   const { data: session } = useSuspenseQuery(sessionQuery);
@@ -66,6 +76,15 @@ export function SchedulePage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [view, setView] = useState<ScheduleView>("actual");
+  // Kept in the browser rather than on the server: it is a preference about this
+  // screen on this display, and the same person on a laptop and a wall monitor wants
+  // different answers. `useLocalPreference` falls back cleanly where storage is
+  // blocked, so a private window simply gets the default.
+  const [density, setDensity] = useLocalPreference<GridDensity>(
+    "schedule.density",
+    "comfortable",
+    (value): value is GridDensity => (GRID_DENSITIES as readonly string[]).includes(value),
+  );
 
   // Open on the viewer's own rota rather than on two empty pickers.
   //
@@ -228,6 +247,21 @@ export function SchedulePage() {
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
+            {/* Size lives here, beside the month and the view, because choosing it is
+                part of looking at the calendar — not a trip to a settings screen and
+                back. Remembered per person, so it is chosen once. */}
+            <Select
+              aria-label="Grid size"
+              value={density}
+              onChange={(e) => setDensity(e.target.value as GridDensity)}
+              className="w-36"
+            >
+              {GRID_DENSITIES.map((option) => (
+                <option key={option} value={option}>
+                  {DENSITY_LABELS[option]}
+                </option>
+              ))}
+            </Select>
             {published ? (
               <Select
                 aria-label="View"
@@ -316,6 +350,46 @@ export function SchedulePage() {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              {/* Out of the app. Both carry the date, time and who took them, because a
+                  printed roster is argued with a fortnight later and "is this the
+                  current one?" is the first question. */}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  void exportSchedule(
+                    {
+                      departmentId: effectiveDept!,
+                      ...(effectiveSite === "" ? {} : { locationId: effectiveSite }),
+                      year,
+                      month,
+                    },
+                    "xlsx",
+                  )
+                }
+              >
+                <Download className="h-4 w-4" />
+                Excel
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                title="An A4 landscape page — print it, or choose Save as PDF"
+                onClick={() =>
+                  void exportSchedule(
+                    {
+                      departmentId: effectiveDept!,
+                      ...(effectiveSite === "" ? {} : { locationId: effectiveSite }),
+                      year,
+                      month,
+                    },
+                    "html",
+                  )
+                }
+              >
+                <Printer className="h-4 w-4" />
+                Print / PDF
+              </Button>
               {/* Lock is a scheduler's act; unlock is the HOD's alone. */}
               {locked ? (
                 <Button
@@ -384,6 +458,7 @@ export function SchedulePage() {
             view={view}
             canManage={canEdit}
             onChanged={invalidate}
+            density={density}
           />
 
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

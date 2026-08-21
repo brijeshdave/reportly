@@ -32,6 +32,18 @@ export const shiftCodeSchema = z.string().trim().min(1).max(2);
  * apart at a glance. Keys, not CSS — the web maps each to a swatch, the same way both
  * light and dark themes do.
  */
+/**
+ * The colours a shift (or a non-working state) can be given.
+ *
+ * The first ten shipped first and are kept in place, so nothing already coloured
+ * changes. The eight after them exist because a month is read as a *pattern* of
+ * colour before it is read as letters, and ten hues run out on a department with
+ * several shifts, a leave code, a holiday code and a day off to tell apart.
+ *
+ * `dark-red` is deliberately its own entry rather than a shade of `red`: leave is
+ * the thing people scan for, and one dark red the eye can separate from a plain red
+ * is worth more than another pastel.
+ */
 export const SHIFT_COLORS = [
   "slate",
   "red",
@@ -43,6 +55,14 @@ export const SHIFT_COLORS = [
   "indigo",
   "violet",
   "pink",
+  "dark-red",
+  "maroon",
+  "brown",
+  "olive",
+  "emerald",
+  "cyan",
+  "purple",
+  "gray",
 ] as const;
 export type ShiftColor = (typeof SHIFT_COLORS)[number];
 export const shiftColorSchema = z.enum(SHIFT_COLORS);
@@ -57,6 +77,14 @@ export const shiftSchema = z
     /** Start and end as minutes from local midnight. Equal start/end is rejected on write. */
     startMinute: minuteOfDaySchema,
     endMinute: minuteOfDaySchema,
+    /**
+     * The weekdays this shift runs, 0 = Sunday, sorted. All seven by default.
+     *
+     * It exists so coverage can tell "nobody is on the general shift today" from "the
+     * general shift does not run on Sundays" — the second is not a gap, and reporting
+     * it as one every week is how a warning stops being read.
+     */
+    runsOnDays: z.array(z.number().int().min(0).max(6)),
     status: shiftStatusSchema,
   })
   .merge(timestampsSchema);
@@ -84,6 +112,11 @@ export const createShiftSchema = z
     color: shiftColorSchema.default("slate"),
     startMinute: minuteOfDaySchema,
     endMinute: minuteOfDaySchema,
+    /** Defaults to every day, which is how every shift behaved before this existed. */
+    runsOnDays: z
+      .array(z.number().int().min(0).max(6))
+      .default([0, 1, 2, 3, 4, 5, 6])
+      .transform((days) => [...new Set(days)].sort((a, b) => a - b)),
     status: shiftStatusSchema.default("active"),
   })
   // A zero-length shift is a typo, not a shift; an overnight wrap (end < start) is fine.
@@ -101,6 +134,11 @@ export const updateShiftSchema = z
     color: shiftColorSchema.optional(),
     startMinute: minuteOfDaySchema.optional(),
     endMinute: minuteOfDaySchema.optional(),
+    runsOnDays: z
+      .array(z.number().int().min(0).max(6))
+      .min(1, "A shift has to run on at least one day")
+      .optional()
+      .transform((days) => (days ? [...new Set(days)].sort((a, b) => a - b) : days)),
     status: shiftStatusSchema.optional(),
   })
   .refine(
@@ -227,6 +265,19 @@ export const scheduleGridSchema = z.object({
   days: z.array(dateOnlySchema),
   /** Active shifts, for chips and the cell picker. */
   shifts: z.array(shiftSchema),
+  /**
+   * The colours for W/O, L and PH, resolved for this company.
+   *
+   * Sent with the grid rather than read from the settings API by the page: a
+   * scheduler paints rotas all day and has no reason to hold `settings:read`, and a
+   * calendar whose colours depend on a permission would be a calendar that renders
+   * differently for the person who built it.
+   */
+  stateColors: z.object({
+    off: shiftColorSchema,
+    leave: shiftColorSchema,
+    holiday: shiftColorSchema,
+  }),
   members: z.array(scheduleMemberSchema),
   entries: z.array(scheduleEntrySchema),
   coverage: coverageSchema,

@@ -23,7 +23,10 @@ import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { useToast } from "@/components/toaster.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
-import { SHIFT_COLOR_CLASSES } from "@/routes/shifts/shift-colors.js";
+import { SHIFT_COLOR_CLASSES, SHIFT_COLOR_LABELS } from "@/routes/shifts/shift-colors.js";
+
+/** Sunday first, matching the calendar header and `Date.getDay()`. */
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 import { createShift, deleteShift, fetchShift, updateShift } from "@/services/shifts.js";
 
 export type ShiftEditorMode = "create" | "edit";
@@ -49,6 +52,9 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
   const [name, setName] = useState(shift?.name ?? "");
   const [code, setCode] = useState(shift?.code ?? "");
   const [color, setColor] = useState<ShiftColor>(shift?.color ?? "blue");
+  const [runsOnDays, setRunsOnDays] = useState<number[]>(
+    shift?.runsOnDays ?? [0, 1, 2, 3, 4, 5, 6],
+  );
   const [start, setStart] = useState(formatMinutesOfDay(shift?.startMinute ?? 9 * 60));
   const [end, setEnd] = useState(formatMinutesOfDay(shift?.endMinute ?? 17 * 60));
   const [active, setActive] = useState((shift?.status ?? "active") === "active");
@@ -84,6 +90,7 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
         name: name.trim(),
         code: code.trim().toUpperCase(),
         color,
+        runsOnDays,
         startMinute: startMinute!,
         endMinute: endMinute!,
         status: active ? ("active" as const) : ("disabled" as const),
@@ -177,7 +184,8 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
                 <button
                   key={c}
                   type="button"
-                  aria-label={c}
+                  aria-label={SHIFT_COLOR_LABELS[c]}
+                  title={SHIFT_COLOR_LABELS[c]}
                   aria-pressed={color === c}
                   disabled={save.isPending}
                   onClick={() => setColor(c)}
@@ -189,6 +197,43 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
                 />
               ))}
             </div>
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-sm font-medium">Runs on</span>
+            <div className="flex flex-wrap gap-1.5">
+              {WEEKDAYS.map((label, index) => {
+                const on = runsOnDays.includes(index);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={label}
+                    disabled={save.isPending}
+                    onClick={() =>
+                      setRunsOnDays((current) =>
+                        current.includes(index)
+                          ? current.filter((day) => day !== index)
+                          : [...current, index].sort((a, b) => a - b),
+                      )
+                    }
+                    className={cn(
+                      "h-8 w-11 rounded-lg border text-xs font-medium transition",
+                      on
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {label.slice(0, 2)}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              The days this shift is expected to be staffed. A day left off is not counted as
+              uncovered — which is what stops a general shift being reported missing every Sunday.
+            </p>
           </div>
 
           <div className="flex gap-4">
