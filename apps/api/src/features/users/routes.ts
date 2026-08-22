@@ -466,6 +466,34 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   /**
+   * Let somebody back in after the login throttle has shut the door on them.
+   *
+   * The same permission as clearing a second factor, and for the same reason: both
+   * mean "help a person who cannot get in", and neither is a profile edit. Audited —
+   * releasing a lock is the shape of a favour and the shape of an attack alike.
+   */
+  app.post(
+    "/users/:id/unlock",
+    {
+      preHandler: guard(PERMISSIONS.USERS_MANAGE_2FA),
+      schema: {
+        tags: ["Users"],
+        summary: "Clear the sign-in throttle for a user who has locked themselves out",
+        params: idParams,
+        response: { 200: z.object({ cleared: z.number().int() }) },
+      },
+    },
+    async (request) => {
+      const cleared = await users.releaseLogin(request.params.id);
+      await recordAudit(request, request.ctx!, {
+        action: "user.login.released",
+        details: { userId: request.params.id, cleared },
+      });
+      return { cleared };
+    },
+  );
+
+  /**
    * Set a new password on someone else's account. Its own permission rather than
    * users:update — whoever holds it can take over any account — and audited, but the
    * password itself is never recorded. The account is forced to change it at next

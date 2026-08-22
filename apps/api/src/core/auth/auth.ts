@@ -116,20 +116,12 @@ function createAuth(oauthConfigs: OAuthConfigs, settings: AuthSettings) {
       storage: "secondary-storage",
       window: 60,
       max: 100,
+      // The credential doors are **not** here any more: sign-in, forgot-password and
+      // TOTP are counted by `core/auth/login-throttle.ts`, which keys on the account
+      // as well as the address. Two limiters on one path would double-count, and this
+      // one cannot see a username — which is the whole problem it was causing.
       customRules: {
-        "/sign-in/email": {
-          window: settings.rateLimit.signInWindowSeconds,
-          max: settings.rateLimit.signInMax,
-        },
-        // Same credential, a different door. Without this the username plugin
-        // would be an unthrottled way to guess passwords.
-        "/sign-in/username": {
-          window: settings.rateLimit.signInWindowSeconds,
-          max: settings.rateLimit.signInMax,
-        },
         "/sign-up/email": { window: 60, max: 5 },
-        "/forget-password": { window: 60, max: 3 },
-        "/two-factor/verify-totp": { window: 60, max: 5 },
       },
     },
     // Link SSO logins to an existing account when the verified email matches.

@@ -31,6 +31,7 @@ import { revokeAllSessions, revokeSession } from "@/core/auth/account-status.js"
 import { resetTwoFactor } from "@/core/auth/two-factor.js";
 import { AppError } from "@/core/errors.js";
 import { twoFactorResetEmail } from "@/core/mail/templates.js";
+import { release } from "@/core/auth/login-throttle.js";
 import { enqueueEmail } from "@/core/queue/email.js";
 import { notify } from "@/core/queue/notifications.js";
 import { getSystemSetting } from "@/core/settings/service.js";
@@ -149,6 +150,21 @@ async function assertIdentifiersFree(
   if (byUsername && byUsername.id !== exceptUserId) {
     throw new AppError(409, ERROR_CODES.CONFLICT, "That username is taken");
   }
+}
+
+/**
+ * Clear the sign-in throttle for one person.
+ *
+ * Both identifiers, because the limiter buckets by whichever the caller typed: a
+ * person who tried their email three times and their username twice is behind two
+ * counters and would otherwise be released from only one.
+ */
+export async function releaseLogin(userId: string): Promise<number> {
+  const row = await getUserById(userId);
+  if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "User not found");
+  const cleared = await release(row.email);
+  const alsoCleared = row.username ? await release(row.username) : 0;
+  return cleared + alsoCleared;
 }
 
 /** Send the set-password link an invited (or password-less) user signs in with. */

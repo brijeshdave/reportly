@@ -1230,13 +1230,26 @@ export async function seedDatabase(database: Database = db): Promise<void> {
       .values({ id: DEMO_COMPANY_ID, name: "Acme Corp" })
       .onConflictDoNothing({ target: companies.id });
 
-    await tx
-      .insert(locations)
-      .values([
-        { companyId: DEMO_COMPANY_ID, name: "Remote", isRemote: true },
-        { companyId: DEMO_COMPANY_ID, name: "Headquarters", isRemote: false },
-      ])
-      .onConflictDoNothing({ target: [locations.companyId, locations.name] });
+    // Only into a company with no sites at all.
+    //
+    // Seeded by name, this fought the administrator exactly as the statuses did:
+    // "Headquarters" renamed to "HO" no longer matched the conflict target, so every
+    // migrate put "Headquarters" back beside it. A company that has named its own
+    // sites has answered this question, and the seed has nothing to add.
+    const siteRows = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(locations)
+      .where(eq(locations.companyId, DEMO_COMPANY_ID));
+
+    if ((siteRows[0]?.n ?? 0) === 0) {
+      await tx
+        .insert(locations)
+        .values([
+          { companyId: DEMO_COMPANY_ID, name: "Remote", isRemote: true },
+          { companyId: DEMO_COMPANY_ID, name: "Headquarters", isRemote: false },
+        ])
+        .onConflictDoNothing({ target: [locations.companyId, locations.name] });
+    }
 
     // A small demo department tree so the org view has something to show:
     // Engineering › Backend, and a sibling Sales.

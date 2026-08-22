@@ -43,6 +43,22 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **One person's failed sign-ins no longer lock out their colleagues.** The throttle
+  keyed on IP alone, so everybody behind one office NAT — or one reverse proxy —
+  shared a single allowance of five attempts a minute, and correct passwords were then
+  refused for the whole floor with nothing to explain why. It now keys on **account
+  and address together**, so an account's own mistakes cost that account. The address
+  stays in the key: without it, knowing a username would be enough to lock somebody out
+  from anywhere.
+- **A throttled attempt is now recorded** (`auth.rate-limited`), so "why could I not
+  sign in at 09:40?" has an answer in the audit trail.
+- **Somebody locked out can be let back in** — `cli unlock <username|email|ip>` for an
+  operator, and `POST /users/:id/unlock` for an administrator holding `users:manage-2fa`,
+  the permission that already means "help a person who cannot get in". Both audited.
+- **Upgrading no longer recreates a renamed site.** "Headquarters" renamed to "HO" came
+  back on every migration, because the demo company's sites were seeded by name. They
+  are seeded only into a company with no sites at all.
+
 - **A service kind could not say "this uses no parts".** Setting every consumable to a
   maximum of zero — a repair that fits nothing — was refused with "Request validation
   failed" and no field to point at, because the maximum had to be positive. Zero is

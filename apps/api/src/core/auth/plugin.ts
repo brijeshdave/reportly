@@ -14,9 +14,15 @@ import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandl
 import { AUTH_BASE_PATH, getAuth } from "@/core/auth/auth.js";
 import { buildAuthContext, hasCompanyAccess } from "@/core/auth/context.js";
 import { isUserActive, mustChangePassword } from "@/core/auth/account-status.js";
+import {
+  THROTTLED_PATHS,
+  clearOnSuccess,
+  consumeLoginAttempt,
+} from "@/core/auth/login-throttle.js";
 import { isSuperadmin } from "@/core/auth/context.js";
 import { twoFactorRequirement, type TwoFactorRequirement } from "@/core/auth/two-factor-policy.js";
 import { authAction, recordAuthEvent } from "@/core/auth/events.js";
+import { env } from "@/core/env.js";
 import { isPasswordExpired } from "@/core/auth/password-history.js";
 import { resolveDebug } from "@/core/debug/service.js";
 import { AppError } from "@/core/errors.js";
@@ -113,6 +119,21 @@ declare module "fastify" {
   }
 }
 
+/**
+ * The username or email an attempt is for, so the throttle counts per account.
+ *
+ * Read from the body because that is where better-auth's sign-in payloads carry it.
+ * Unrecognised shapes fall back to null, which buckets by address alone — the old
+ * behaviour, and the right floor for an endpoint that names nobody.
+ */
+function identityFrom(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null;
+  const shape = body as { email?: unknown; username?: unknown };
+  if (typeof shape.username === "string" && shape.username.trim() !== "") return shape.username;
+  if (typeof shape.email === "string" && shape.email.trim() !== "") return shape.email;
+  return null;
+}
+
 /** Build a WHATWG Headers object from Fastify's incoming headers. */
 function toHeaders(raw: FastifyRequest["headers"]): Headers {
   const headers = new Headers();
@@ -154,8 +175,29 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     method: ["GET", "POST"],
     url: `${AUTH_BASE_PATH}/*`,
     handler: async (request: FastifyRequest, reply: FastifyReply) => {
+      // Throttle the credential doors ourselves, keyed by username *and* address —
+      // see core/auth/login-throttle.ts for why better-auth's IP-only bucket was
+      // refusing correct passwords for everybody behind one office NAT.
+      const path = request.url.slice(AUTH_BASE_PATH.length).split("?")[0] ?? "";
+      const door = THROTTLED_PATHS[path];
+      const identity = identityFrom(request.body);
+      if (door && env.NODE_ENV !== "test") {
+        try {
+          await consumeLoginAttempt(identity, request.ip, door);
+        } catch (error) {
+          // Recorded before it is refused, so "why could I not sign in?" has an
+          // answer in the audit trail rather than only in somebody's memory.
+          void recordAuthEvent(request, "auth.rate-limited");
+          throw error;
+        }
+      }
+
       const response = await getAuth().handler(toWebRequest(request));
       const body = await response.text();
+
+      // Proving who you are ends the count: a success is not an attack, and the next
+      // person on that machine should not inherit somebody else's failures.
+      if (door && response.status < 400) void clearOnSuccess(identity, request.ip);
 
       // Record auth activity with full request context (never blocks the response).
       const subPath = request.url.slice(AUTH_BASE_PATH.length).split("?")[0] ?? "";

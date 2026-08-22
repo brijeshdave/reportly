@@ -14,6 +14,7 @@
 import { eq } from "drizzle-orm";
 
 import { runDoctor } from "@/cli/doctor.js";
+import { release } from "@/core/auth/login-throttle.js";
 import { restoreDev } from "@/cli/restore-dev.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { migrateStorage } from "@/core/storage/migrate.js";
@@ -36,7 +37,7 @@ const command = process.argv[2];
 
 const USAGE =
   "Usage: cli <migrate|seed|reset-superadmin [--password-stdin]|reset-2fa <email>|" +
-  "storage:migrate [--dry-run]|doctor|backup:database|" +
+  "storage:migrate [--dry-run]|doctor|backup:database|unlock <username|email|ip>|" +
   "restore:dev --file <dump> [--logs <dump>] --confirm <phrase>|" +
   "seed:demo|seed:demo-cartridges [companyId]|" +
   "seed:activity [--from YYYY-MM-DD --to YYYY-MM-DD | --months N] " +
@@ -225,6 +226,23 @@ async function main(): Promise<void> {
             "  DELETE FROM parts WHERE identifier LIKE 'DEMO-%';\n",
         );
       }
+      break;
+    }
+    case "unlock": {
+      // The operator's way in when nobody can reach the admin screen — which is
+      // exactly the situation a lockout creates.
+      const who = process.argv[3];
+      if (!who) {
+        console.error("Usage: cli unlock <username|email|ip>");
+        process.exitCode = 1;
+        break;
+      }
+      const cleared = await release(who);
+      console.log(
+        cleared === 0
+          ? `Nothing was throttling ${who}.`
+          : `Released ${who} — cleared ${cleared} counter(s).`,
+      );
       break;
     }
     case "doctor":
