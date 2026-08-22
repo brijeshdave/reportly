@@ -611,12 +611,75 @@ export const AUTH_RATE_LIMIT: SettingDef<typeof authRateLimitSchema> = {
   description: "Rate limits applied to credential endpoints",
 };
 
+/**
+ * Whether people may reset their own password.
+ *
+ * This governs the **flow**, not the email. Switching off only the message would
+ * leave somebody pressing a button, being told to check their inbox, and waiting
+ * for something that was never sent — worse than a plain refusal.
+ *
+ * So with it off: the endpoint refuses and says who to ask, the "Forgot password?"
+ * link is not drawn, and the attempt is audited.
+ *
+ * It does **not** stop invitations. An invitation is issued through the same
+ * mechanism (`sendSetPasswordLink` calls better-auth's requestPasswordReset), so
+ * this is enforced on the public self-service route only — otherwise turning it
+ * off would silently stop new people being able to join.
+ */
+export const passwordResetSchema = z.object({
+  allowSelfService: z.boolean().default(true),
+});
+export type PasswordResetSettings = z.infer<typeof passwordResetSchema>;
+
+export const PASSWORD_RESET: SettingDef<typeof passwordResetSchema> = {
+  namespace: "auth",
+  key: "passwordReset",
+  schema: passwordResetSchema,
+  userOverridable: false,
+  description: "Whether people may reset their own password from the login screen",
+};
+
 export const INVITE_SETTINGS: SettingDef<typeof inviteSettingsSchema> = {
   namespace: "auth",
   key: "invite",
   schema: inviteSettingsSchema,
   userOverridable: false,
   description: "How long a user invitation stays valid",
+};
+
+/**
+ * A master tap per kind of transactional message, above everything else.
+ *
+ * There are only five, which is why "every type" is achievable rather than a
+ * slogan. All default **on**, so nothing changes until somebody turns something
+ * off, and each says plainly what switching it off costs:
+ *
+ *   passwordReset    — see `auth.allowPasswordReset`: the switch that matters is
+ *                      the flow, not the message. This one only silences the mail,
+ *                      which on its own would leave somebody waiting for an email
+ *                      that was never sent.
+ *   invite           — invitations must then be handed over in person.
+ *   twoFactorReset   — clearing somebody's second factor happens silently.
+ *   verificationCode — a channel cannot be verified, so it cannot be used.
+ *   notification     — the bell still works; email and messaging stop. This sits
+ *                      *above* the notification matrix, for an installation that
+ *                      wants Reportly to send nothing at all.
+ */
+export const transactionalMessagesSchema = z.object({
+  passwordReset: z.boolean().default(true),
+  invite: z.boolean().default(true),
+  twoFactorReset: z.boolean().default(true),
+  verificationCode: z.boolean().default(true),
+  notification: z.boolean().default(true),
+});
+export type TransactionalMessages = z.infer<typeof transactionalMessagesSchema>;
+
+export const TRANSACTIONAL_MESSAGES: SettingDef<typeof transactionalMessagesSchema> = {
+  namespace: "channels",
+  key: "transactional",
+  schema: transactionalMessagesSchema,
+  userOverridable: false,
+  description: "Which kinds of message Reportly is allowed to send at all",
 };
 
 export const CHANNEL_PROVIDERS: SettingDef<typeof channelProvidersSchema> = {
@@ -727,6 +790,8 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   PASSWORD_POLICY,
   SESSION_SETTINGS,
   AUTH_RATE_LIMIT,
+  PASSWORD_RESET,
+  TRANSACTIONAL_MESSAGES,
   INVITE_SETTINGS,
   CHANNEL_PROVIDERS,
   CHANNEL_VERIFICATION,

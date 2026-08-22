@@ -226,6 +226,35 @@ production's, your development box is still holding production secrets and point
 at production's SMTP. And it restores the database only: attachments live in the
 file store, so downloads will 404 unless you restore that separately.
 
+## Controlling what Reportly sends
+
+**Settings → Channels → Transactional** carries one switch per kind of message,
+all on by default. Each costs something to turn off, so each says what:
+
+| Switch            | Off means                                                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Password reset    | The email stops. **This is not the switch you want** — see below.                                                                             |
+| Invite            | Invitations must be handed over in person.                                                                                                    |
+| Two-factor reset  | Clearing somebody's second factor happens silently.                                                                                           |
+| Verification code | A channel cannot be verified, so it cannot be used.                                                                                           |
+| Notification      | The bell still works; email and messaging stop. This sits above the notification matrix, for an installation that should send nothing at all. |
+
+### Forgot password is a flow, not an email
+
+**Settings → Authentication → Password reset** decides whether people may reset
+their own password. Switching it off refuses the request outright — "Password reset
+is handled by your administrator" — leaves the **Forgot your password?** link off
+the login screen, and audits the attempt.
+
+That is deliberately different from silencing the email. Dropping only the message
+leaves somebody pressing a button, being told to check their inbox, and waiting for
+something that was never sent.
+
+It does **not** stop invitations, even though an invitation is issued through the
+same underlying mechanism. The rule applies to the public self-service endpoints
+only — both spellings of them — so turning it off can never quietly prevent new
+people joining. A test pins exactly that.
+
 ## The message log
 
 **System → Messages** (`logs:view`) records every email, SMS, WhatsApp, Telegram

@@ -10,6 +10,7 @@
 import type { Channel, ChannelProviders } from "@reportly/shared";
 
 import { logger } from "@/core/logger.js";
+import { maySend } from "@/core/messages/allowed.js";
 import { markFailed, markSent, recordQueued, type MessageRecord } from "@/core/messages/record.js";
 import { notificationEmail, verificationCodeEmail } from "@/core/mail/templates.js";
 import { enqueueEmail } from "@/core/queue/email.js";
@@ -204,6 +205,16 @@ async function deliver(
  * swallowed it would take that decision away.
  */
 async function recorded(record: MessageRecord, send: () => Promise<void>): Promise<void> {
+  // The same gate the email queue applies, so a switched-off kind is off on every
+  // channel rather than only the one somebody remembered.
+  if (!(await maySend(record.kind))) {
+    logger.info(
+      { kind: record.kind, channel: record.channel },
+      "Not sending: this kind of message is switched off",
+    );
+    return;
+  }
+
   const id = await recordQueued(record);
   try {
     await send();

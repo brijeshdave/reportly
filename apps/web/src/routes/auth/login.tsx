@@ -155,14 +155,19 @@ function CredentialsStep({
             disabled={busy}
           />
 
-          <div className="text-right">
-            <Link
-              to="/forgot-password"
-              className="text-xs font-medium text-muted-foreground hover:text-foreground"
-            >
-              Forgot your password?
-            </Link>
-          </div>
+          {/* Not drawn at all when an administrator handles resets: a link that
+              answers 403 is the same fault as saying "check your inbox" and
+              sending nothing. */}
+          {authConfig?.passwordResetEnabled !== false ? (
+            <div className="text-right">
+              <Link
+                to="/forgot-password"
+                className="text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                Forgot your password?
+              </Link>
+            </div>
+          ) : null}
 
           <Button type="submit" disabled={busy}>
             {busy ? <Spinner /> : null}

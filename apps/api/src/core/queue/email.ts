@@ -7,6 +7,7 @@ import type { MessageKind } from "@reportly/shared";
 import { Queue, Worker, type Job } from "bullmq";
 
 import { logger } from "@/core/logger.js";
+import { maySend } from "@/core/messages/allowed.js";
 import { markFailed, markSent, recordQueued } from "@/core/messages/record.js";
 import { type OutgoingEmail, sendEmail } from "@/core/mail/mailer.js";
 import { queueConnection } from "@/core/queue/connection.js";
@@ -52,6 +53,13 @@ export function getEmailQueue(): Queue<EmailJob> {
  * it was asked for. Losing the job silently is precisely what used to happen.
  */
 export async function enqueueEmail(email: OutgoingEmail, meta: EmailMeta): Promise<void> {
+  // An administrator may switch off a whole kind of message. Checked here rather
+  // than at each call site, so a kind that is off cannot leave by another door.
+  if (!(await maySend(meta.kind))) {
+    logger.info({ kind: meta.kind }, "Not sending: this kind of message is switched off");
+    return;
+  }
+
   const messageId = await recordQueued({
     channel: "email",
     kind: meta.kind,

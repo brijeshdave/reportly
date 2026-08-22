@@ -5,6 +5,7 @@ import {
   ALL_SETTING_DEFS,
   ERROR_CODES,
   PASSWORD_POLICY,
+  PASSWORD_RESET,
   PERMISSIONS,
   findSettingDef,
   passwordRulesSchema,
@@ -97,10 +98,21 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         tags: ["Settings"],
         summary: "Public auth configuration for the login and register screens",
-        response: { 200: z.object({ registrationEnabled: z.boolean() }) },
+        response: {
+          200: z.object({
+            registrationEnabled: z.boolean(),
+            // So the login screen can leave the "Forgot password?" link out
+            // altogether. Offering a link that answers 403 is the same fault as
+            // sending nothing after saying "check your inbox".
+            passwordResetEnabled: z.boolean(),
+          }),
+        },
       },
     },
-    async () => ({ registrationEnabled: env.ALLOW_REGISTRATION }),
+    async () => ({
+      registrationEnabled: env.ALLOW_REGISTRATION,
+      passwordResetEnabled: (await getSystemSetting(PASSWORD_RESET)).allowSelfService,
+    }),
   );
 
   app.get(

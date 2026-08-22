@@ -39,6 +39,7 @@ const NAMESPACE_LABELS: Record<string, string> = {
   auth: "Authentication",
   notifications: "Notifications",
   channels: "Channels",
+  messages: "Messages",
   reports: "Reports",
   backups: "Backups",
   storage: "Storage",

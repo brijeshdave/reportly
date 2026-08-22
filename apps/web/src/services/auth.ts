@@ -150,8 +150,14 @@ export function fetchEnabledSsoProviders(): Promise<PublicSsoProvider[]> {
 }
 
 /** Whether public self-service sign-up is offered. Public; no session needed. */
-export function fetchAuthConfig(): Promise<{ registrationEnabled: boolean }> {
-  return http.get<{ registrationEnabled: boolean }>("/auth-config");
+export interface AuthConfig {
+  registrationEnabled: boolean;
+  /** False when an administrator handles password resets themselves. */
+  passwordResetEnabled: boolean;
+}
+
+export function fetchAuthConfig(): Promise<AuthConfig> {
+  return http.get<AuthConfig>("/auth-config");
 }
 
 /**

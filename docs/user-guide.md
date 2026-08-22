@@ -630,6 +630,17 @@ password. Nothing is deleted, and you can reactivate them later.
 
 The last active superadmin cannot be deactivated — the API refuses, and says so.
 
+### Stop people resetting their own password
+
+**Settings → Authentication → Password reset** (`settings:write`).
+
+With it off, the **Forgot your password?** link is not drawn, the endpoint refuses
+and says to ask an administrator, and every attempt is audited. You then set
+passwords yourself from **Users → _the user_ → Security → Set a password**.
+
+Turning it off does not stop you inviting people, even though an invitation uses
+the same machinery underneath.
+
 ### Let somebody back in after too many failed sign-ins
 
 **Users → _the user_ → Security → Release** (`users:manage-2fa`).

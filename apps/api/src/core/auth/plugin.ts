@@ -6,6 +6,7 @@ import {
   type AuthContext,
   ERROR_CODES,
   PASSWORD_POLICY,
+  PASSWORD_RESET,
   type Permission,
   can,
 } from "@reportly/shared";
@@ -111,6 +112,24 @@ async function enforceTwoFactor(request: FastifyRequest, userId: string): Promis
 
 /** Anything that could add to, change or remove data. */
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * The public "I forgot my password" doors, by both names better-auth answers on.
+ *
+ * The web app calls `/request-password-reset`; `/forget-password` is the older
+ * spelling and is just as reachable, so a rule that named only one would be a rule
+ * anybody could walk around.
+ */
+const SELF_SERVICE_RESET_PATHS = new Set(["/request-password-reset", "/forget-password"]);
+
+/** Whether people may reset their own password. Fails open, like every other gate here. */
+async function selfServiceResetAllowed(): Promise<boolean> {
+  try {
+    return (await getSystemSetting(PASSWORD_RESET)).allowSelfService;
+  } catch {
+    return true;
+  }
+}
 
 /**
  * A deactivated company is closed for business, not merely labelled.
@@ -239,6 +258,23 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
           void recordAuthEvent(request, "auth.rate-limited");
           throw error;
         }
+      }
+
+      // Self-service password reset can be switched off entirely. Refused here,
+      // before better-auth sees it, because the alternative — letting the flow run
+      // and dropping the email — leaves somebody watching an inbox for a message
+      // that was never sent.
+      //
+      // The two public spellings only. An invitation is issued through the very
+      // same mechanism (`sendSetPasswordLink` calls requestPasswordReset), and
+      // stopping that would silently prevent anybody new from joining.
+      if (SELF_SERVICE_RESET_PATHS.has(path) && !(await selfServiceResetAllowed())) {
+        void recordAuthEvent(request, "auth.password.reset_refused");
+        throw new AppError(
+          403,
+          ERROR_CODES.FORBIDDEN,
+          "Password reset is handled by your administrator. Ask them to set a new password for you.",
+        );
       }
 
       const response = await getAuth().handler(toWebRequest(request));
