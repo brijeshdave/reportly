@@ -187,6 +187,10 @@ describe("company scoping is actually wired up", () => {
       "keyed by the owning record; the owner's own read is what scopes it, and an " +
       "attachment id is server-generated and unguessable",
     "me/repo.ts": "reads the caller's own row, which is the scope",
+    "journal/work-log-repo.ts":
+      "every entry point resolves the parent entry through requireReport(reportId, ctx) " +
+      "first, which scopes by company and visibility; a work log has no company of its " +
+      "own and belongs to whichever entry owns it",
   };
 
   it("finds the company-owned tables it is meant to be checking", () => {

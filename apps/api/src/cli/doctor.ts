@@ -108,6 +108,44 @@ async function checkMail(): Promise<Check> {
 }
 
 /**
+ * The sender address, which `verify()` cannot judge.
+ *
+ * A relay accepts the *connection* on credentials alone and then refuses every
+ * *message* whose sender it has not been told to allow — which is how a deployment
+ * ends up with a green smtp line, an empty dashboard at the provider, and a queue
+ * quietly filling with failures. Every hosted provider works this way: Resend,
+ * SendGrid, Postmark, SES all require a verified domain.
+ *
+ * So this reads the address rather than the connection, and says which part is wrong.
+ */
+function checkMailFrom(): Check {
+  const from = env.MAIL_FROM;
+  const address = /<([^>]+)>/.exec(from)?.[1] ?? from;
+  const domain = address.split("@")[1]?.toLowerCase() ?? "";
+  const relay = env.SMTP_HOST.toLowerCase();
+  const localRelay =
+    relay === "localhost" || relay === "127.0.0.1" || relay.includes("mailpit") || relay === "mail";
+
+  if (domain === "") {
+    return fail("mail sender", `MAIL_FROM has no address in it: ${from}`);
+  }
+  // Mailpit swallows anything, so an unroutable sender is correct in development.
+  if (localRelay) return ok("mail sender", `${address} (local capture)`);
+
+  const unroutable = [".local", ".localhost", ".invalid", ".test", ".example"];
+  if (unroutable.some((suffix) => domain.endsWith(suffix)) || domain === "example.com") {
+    return fail(
+      "mail sender",
+      `MAIL_FROM is ${address}, which no hosted relay will send for. ` +
+        `${env.SMTP_HOST} will accept the connection and refuse every message — the queue ` +
+        "fills with failures and the provider's dashboard stays empty. Set MAIL_FROM to an " +
+        "address on a domain verified with your provider.",
+    );
+  }
+  return ok("mail sender", `${address} — verify this domain with ${env.SMTP_HOST}`);
+}
+
+/**
  * Storage is checked by writing, reading back and deleting a probe object, not by
  * looking at configuration. A directory that exists but is read-only — the usual
  * result of a missing volume mount — passes every check except this one.
@@ -299,6 +337,7 @@ export async function runDoctor(): Promise<boolean> {
     ...(await checkDatabases()),
     await checkRedis(),
     await checkMail(),
+    checkMailFrom(),
     await checkStorage(),
     checkPasswordCharacters(),
     ...(await checkBackupTools()),

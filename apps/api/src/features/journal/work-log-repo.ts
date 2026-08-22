@@ -5,7 +5,7 @@
 // exports and saved report-views carry on reading one field. That roll-up is written
 // **here**, by the code that owns the timeline, and never typed into by hand — two
 // places writing the same column is how it drifts.
-import { and, asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import { journalEntries, journalWorkLogs, users } from "@/core/db/schema.js";
@@ -115,14 +115,4 @@ export async function refreshWorkRollup(reportId: string): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(journalEntries.id, reportId));
-}
-
-/** Whether this person already has an item on this entry — used by the tests and the UI. */
-export async function hasWorkLog(reportId: string, userId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: journalWorkLogs.id })
-    .from(journalWorkLogs)
-    .where(and(eq(journalWorkLogs.reportId, reportId), eq(journalWorkLogs.userId, userId)))
-    .limit(1);
-  return row !== undefined;
 }
