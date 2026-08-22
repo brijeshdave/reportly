@@ -12,6 +12,18 @@ name: ${PROJECT_NAME:-reportly}
 # Every service that runs application code needs the same environment. Declared
 # once: `migrate` and `api` must agree, or migrations run against one database
 # while the app serves another.
+# **Derived values only.** Everything an operator sets lives in `.env` and reaches the
+# container through `env_file:` on the services below — so a new setting works the day
+# it is added, without this file having to know about it.
+#
+# This block was an allow-list until 2026-08-22, and sixteen of thirty-five variables
+# had quietly fallen out of it. A missing one produces no error: the schema default
+# applies and the feature is simply off, which is how somebody can set QUEUE_ADMIN,
+# restart, and find the screen still missing with nothing to explain it. What stays
+# here is only what compose itself computes — a connection string assembled from the
+# Postgres parts, a path inside the container, a value fixed by the image.
+#
+# `environment:` wins over `env_file:`, which is what makes these authoritative.
 x-app-env: &app-env
   PROJECT_NAME: ${PROJECT_NAME:-reportly}
   NODE_ENV: production
@@ -26,26 +38,15 @@ x-app-env: &app-env
   # them at a real hostname and the API requires https, because the session
   # cookie would otherwise lose its Secure flag and travel in clear text. Set
   # ALLOW_INSECURE_HTTP=true to run plain http on a trusted private network.
-  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8080}
-  WEB_URL: ${WEB_URL:-http://localhost:8080}
-  CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
-  ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-false}
   # Attachments and stored backups. Both live on the mounted volume below; the
   # value must stay inside it or a redeploy loses the files.
-  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
   STORAGE_LOCAL_DIR: /data/uploads
-  STORAGE_MAX_UPLOAD_MB: ${STORAGE_MAX_UPLOAD_MB:-50}
   LOG_DIR: /data/logs
   # Outbound mail. Without a reachable relay, invitations and password resets
   # are queued and never delivered.
+  # Kept here only to fail the stack fast when it is unset: without a relay, every
+  # invitation and password reset is queued and never delivered.
   SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
-  SMTP_PORT: ${SMTP_PORT:-587}
-  SMTP_SECURE: ${SMTP_SECURE:-true}
-  SMTP_USER: ${SMTP_USER:-}
-  SMTP_PASS: ${SMTP_PASS:-}
-  MAIL_FROM: ${MAIL_FROM:-Reportly <no-reply@reportly.local>}
-  SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-admin@reportly.local}
-  SUPERADMIN_NAME: ${SUPERADMIN_NAME:-Super Admin}
 
 # Docker's default json-file driver grows without limit. A chatty API fills a
 # disk in weeks, and a full disk stops Postgres.
@@ -115,6 +116,8 @@ services:
       dockerfile: deploy/docker/api.Dockerfile
     restart: "no"
     logging: *logging
+    # Everything the operator set, then the derived values on top.
+    env_file: [.env]
     environment: *app-env
     command: ["node", "dist/cli/index.js", "migrate"]
     depends_on:
@@ -128,6 +131,9 @@ services:
     hostname: ${PROJECT_NAME:-reportly}-api
     restart: always
     logging: *logging
+    # `.env` first, so any setting the API understands works without this file
+    # naming it; `environment:` then overrides with what compose computes.
+    env_file: [.env]
     environment:
       <<: *app-env
       HOST: 0.0.0.0

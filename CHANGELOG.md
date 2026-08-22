@@ -43,6 +43,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Settings in `.env` that the container never saw.** `compose.prod.yaml` listed the
+  variables it passed, and sixteen of thirty-eight had fallen out of that list —
+  including `TRUST_PROXY` and `QUEUE_ADMIN`. Setting one produced no error: the
+  schema's default applied and the feature was simply off. Both app services now take
+  `env_file: [.env]`, so anything the API understands works the day it is added, and
+  the compose file holds only what compose itself computes. The root `.env.example`
+  documents every operator-settable variable, and a test fails the build when a new
+  one is added without being documented.
+
 - **One person's failed sign-ins no longer lock out their colleagues.** The throttle
   keyed on IP alone, so everybody behind one office NAT — or one reverse proxy —
   shared a single allowance of five attempts a minute, and correct passwords were then
