@@ -1,7 +1,7 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // User repository — the only code touching the users table for profile/admin
 // operations (better-auth owns auth-table writes). Services call these.
-import { and, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import {
@@ -125,6 +125,29 @@ export async function getUserByEmail(email: string): Promise<UserRow | null> {
 export async function getUserByUsername(username: string): Promise<UserRow | null> {
   const [row] = await withDesignation().where(eq(users.username, username));
   return row ?? null;
+}
+
+/**
+ * Match people to the identities somebody typed at a login form.
+ *
+ * Both columns, and case-insensitively, because a login accepts either and does not
+ * care about capitalisation — so `Banti.Patel` at the form must find the row that
+ * stores `banti.patel`, or the lockout badge lands on nobody.
+ */
+export async function usersByIdentities(
+  identities: string[],
+): Promise<{ id: string; email: string; username: string | null }[]> {
+  if (identities.length === 0) return [];
+  const wanted = identities.map((identity) => identity.toLowerCase());
+  return db
+    .select({ id: users.id, email: users.email, username: users.username })
+    .from(users)
+    .where(
+      or(
+        inArray(sql`lower(${users.email})`, wanted),
+        inArray(sql`lower(${users.username})`, wanted),
+      ),
+    );
 }
 
 /** The profile fields a user is created with. A credential account, if any, is

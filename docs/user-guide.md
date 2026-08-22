@@ -613,6 +613,23 @@ password. Nothing is deleted, and you can reactivate them later.
 
 The last active superadmin cannot be deactivated — the API refuses, and says so.
 
+### Let somebody back in after too many failed sign-ins
+
+**Users → _the user_ → Security → Release** (`users:manage-2fa`).
+
+Too many failed sign-ins in a row and the account is held for a few minutes. The
+count is per person **and** per address, and only failures count — so a colleague
+fumbling their password on the same office connection cannot refuse your correct
+one, and signing in successfully clears it.
+
+The **Users** list shows a **Locked out** badge in the _Sign-in_ column, so you can
+see who is stuck without opening anybody. Both the badge and the card read the live
+counter, so they are never a stale copy of a lock that has already expired.
+
+Releasing is written to the audit trail. Treat it the way you treat a two-factor
+reset: somebody who talks you into it has bought themselves another run of guesses
+at that account.
+
 ### Remove someone's two-factor
 
 **Users → _the user_ → Security → Remove** (`users:manage-2fa`).

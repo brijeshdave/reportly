@@ -81,6 +81,39 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
       sendXlsx(reply, await buildExport(await users.exportUsers()), "users.xlsx"),
   );
 
+  /**
+   * Who the sign-in throttle is holding out, right now.
+   *
+   * A static path, and deliberately before `/users/:id` — "locked-out" is not a
+   * uuid, but the router would try it as one and answer 400 instead of this.
+   *
+   * The same permission as unlocking: whoever may release somebody is whoever may
+   * know they are stuck. It is not part of `users:read`, because "this person has
+   * been failing their password" is a fact about a colleague that a directory
+   * listing has no business handing to everybody.
+   */
+  app.get(
+    "/users/locked-out",
+    {
+      preHandler: guard(PERMISSIONS.USERS_MANAGE_2FA),
+      schema: {
+        tags: ["Users"],
+        summary: "List the users the sign-in throttle is currently locking out",
+        response: {
+          200: z.array(
+            z.object({
+              userId: z.guid(),
+              attempts: z.number().int(),
+              max: z.number().int(),
+              retryAfterSeconds: z.number().int().nullable(),
+            }),
+          ),
+        },
+      },
+    },
+    async () => users.lockedOutUsers(),
+  );
+
   app.get(
     "/users/import/template",
     {

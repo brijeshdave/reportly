@@ -20,7 +20,14 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { KeyRound, MonitorSmartphone, Network, ShieldOff, UsersRound } from "lucide-react";
+import {
+  KeyRound,
+  LockOpen,
+  MonitorSmartphone,
+  Network,
+  ShieldOff,
+  UsersRound,
+} from "lucide-react";
 import { useState } from "react";
 
 import { Avatar } from "@/components/avatar.js";
@@ -47,12 +54,14 @@ import { fetchCompanyLocations } from "@/services/locations.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { RolePermissionMatrix } from "@/routes/roles/role-permissions.js";
 import {
+  fetchLockedOutUsers,
   fetchUser,
   fetchUserGroups,
   fetchUserSessions,
   resetUserPassword,
   resetUserTwoFactor,
   revokeUserSession,
+  unlockUser,
   setUserStatus,
   updateUser,
   fetchAllCompanies,
@@ -579,6 +588,78 @@ function DepartmentsTab({ userId }: { userId: string }) {
  * Removing a factor leaves the account on its password alone, so it is deliberately
  * a confirmed, audited step that emails the person, not a quiet toggle.
  */
+/**
+ * The sign-in lockout, and the way out of it.
+ *
+ * Read from the live counter, not from a column: a lockout lasts minutes and a
+ * stored copy of it would be stale the moment the window expired. So this card
+ * refetches rather than trusting what it drew a minute ago.
+ *
+ * Releasing is not a profile edit and is audited, because it is the shape of a
+ * favour and the shape of an attack alike — somebody who can talk an administrator
+ * into clearing the counter has bought themselves another run of guesses.
+ */
+function LockoutCard({ user }: { user: User }) {
+  const queryClient = useQueryClient();
+  const locked = useQuery({
+    queryKey: ["users", "locked-out"],
+    queryFn: fetchLockedOutUsers,
+    // The window is measured in minutes, so an answer from ten minutes ago is
+    // fiction. Cheap to ask: one Redis scan, and only for people who may act on it.
+    staleTime: 15_000,
+  });
+  const state = locked.data?.find((row) => row.userId === user.id);
+
+  const release = useMutation({
+    mutationFn: () => unlockUser(user.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["users", "locked-out"] });
+    },
+  });
+
+  return (
+    <Card className="flex items-center justify-between gap-3 p-6">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold">Sign-in lockout</h2>
+          {state ? <Badge tone="danger">Locked out</Badge> : <Badge tone="neutral">Clear</Badge>}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {state
+            ? `${state.attempts} failed sign-ins out of ${state.max}. ${
+                state.retryAfterSeconds
+                  ? `Clears on its own in ${Math.ceil(state.retryAfterSeconds / 60)} min.`
+                  : "Clears on its own shortly."
+              } Releasing lets them try again now.`
+            : "Nothing is holding this account back. Too many failed sign-ins in a row would show here, with a way to release them."}
+        </p>
+        {release.error ? (
+          <div className="mt-3">
+            <ErrorAlert error={release.error} />
+          </div>
+        ) : null}
+        {release.isSuccess ? (
+          <p className="mt-2 text-xs text-success">
+            {release.data.cleared === 0
+              ? "There was nothing left to clear — the window had already expired."
+              : "Released. They can sign in again straight away."}
+          </p>
+        ) : null}
+      </div>
+
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={!state || release.isPending}
+        onClick={() => release.mutate()}
+      >
+        <LockOpen className="h-4 w-4" />
+        Release
+      </Button>
+    </Card>
+  );
+}
+
 function SecurityTab({ user }: { user: User }) {
   const canManage = usePermission(PERMISSIONS.USERS_MANAGE_2FA);
   const canResetPassword = usePermission(PERMISSIONS.USERS_RESET_PASSWORD);
@@ -659,6 +740,8 @@ function SecurityTab({ user }: { user: User }) {
             : "This account had no two-factor enrolled, so there was nothing to remove."}
         </Alert>
       ) : null}
+
+      {canManage ? <LockoutCard user={user} /> : null}
 
       <Card className="flex items-center justify-between gap-3 p-6">
         <div className="min-w-0">

@@ -123,6 +123,52 @@ export async function release(identityOrIp: string): Promise<number> {
 }
 
 /**
+ * Everybody the limiter is currently holding out, keyed by the identity they typed.
+ *
+ * One SCAN for the whole page rather than a lookup per row: a users table asking
+ * Redis twenty times to draw twenty badges is a table that gets slower the more
+ * people you have. The identity is whatever was typed at the login form — an email
+ * or a username — and matching it to a person is the caller's job, because only the
+ * caller knows which of those it stores.
+ *
+ * Locked entries only. A counter at one attempt out of five is not a state anybody
+ * needs told about, and showing it would make the badge meaningless.
+ */
+export async function lockedIdentities(): Promise<Map<string, ThrottleState>> {
+  const { signInMax } = await getSystemSetting(AUTH_RATE_LIMIT);
+  const locked = new Map<string, ThrottleState>();
+
+  try {
+    for (const key of await scanKeys(`${PREFIX}:sign-in:*`)) {
+      // `prefix:door:identity:ip` — and an identity may itself contain a colon in
+      // theory, so take the address off the end rather than splitting from the left.
+      const parts = key.split(":");
+      const identity = parts.slice(2, -1).join(":");
+      if (!identity) continue;
+
+      const attempts = Number((await redis.get(key)) ?? 0);
+      if (attempts < signInMax) continue;
+
+      const ttl = await redis.ttl(key);
+      const worst = locked.get(identity);
+      if (worst && worst.attempts >= attempts) continue;
+      locked.set(identity, {
+        attempts,
+        max: signInMax,
+        retryAfterSeconds: ttl > 0 ? ttl : null,
+        locked: true,
+      });
+    }
+  } catch (error) {
+    // The same reasoning as everywhere else here: a cache that cannot answer must
+    // not take the screen down with it. An empty map draws no badges.
+    logger.warn({ err: error }, "Could not read the login throttle");
+  }
+
+  return locked;
+}
+
+/**
  * Refuse the attempt when the allowance is already spent — **without counting it**.
  *
  * Only *failures* are counted (see `recordFailure`), because a lockout is a defence
@@ -139,7 +185,7 @@ export async function assertNotLockedOut(
   const { signInMax, signInWindowSeconds } = await getSystemSetting(AUTH_RATE_LIMIT);
   const key = throttleKey(identity, ip, door);
 
-  let attempts = 0;
+  let attempts: number;
   let ttl = signInWindowSeconds;
   try {
     attempts = Number((await redis.get(key)) ?? 0);

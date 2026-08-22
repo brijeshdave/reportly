@@ -87,6 +87,34 @@ export function resetUserTwoFactor(id: string): Promise<{ user: User; wasEnabled
   return http.post<{ user: User; wasEnabled: boolean }>(`/users/${id}/two-factor/reset`);
 }
 
+export interface LockedOutUser {
+  userId: string;
+  attempts: number;
+  max: number;
+  retryAfterSeconds: number | null;
+}
+
+/**
+ * Who the sign-in throttle is currently holding out.
+ *
+ * One call for a whole page of people rather than one per row — the answer comes
+ * from a live counter, so it is a list of the few who are stuck, not a field on
+ * everybody.
+ */
+export function fetchLockedOutUsers(): Promise<LockedOutUser[]> {
+  return http.get<LockedOutUser[]>("/users/locked-out");
+}
+
+/**
+ * Let somebody back in after too many failed sign-ins.
+ *
+ * Clears the counters behind both their email and their username, because the
+ * limiter buckets by whichever they typed and a person who tried both is behind two.
+ */
+export function unlockUser(id: string): Promise<{ cleared: number }> {
+  return http.post<{ cleared: number }>(`/users/${id}/unlock`);
+}
+
 /** Set a new password on a user's account (admin only). Forces a change at next sign-in. */
 export function resetUserPassword(id: string, password: string): Promise<User> {
   return http.post<User>(`/users/${id}/reset-password`, { password });

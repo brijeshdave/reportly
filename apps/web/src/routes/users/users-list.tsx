@@ -19,9 +19,15 @@ import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { fetchDesignationOptions } from "@/services/designations.js";
-import { downloadUserTemplate, exportUsers, importUsers, inviteUser } from "@/services/users.js";
+import {
+  downloadUserTemplate,
+  exportUsers,
+  fetchLockedOutUsers,
+  importUsers,
+  inviteUser,
+} from "@/services/users.js";
 
-const columns: TableColumn<User>[] = [
+const baseColumns: TableColumn<User>[] = [
   {
     id: "name",
     accessorKey: "name",
@@ -68,8 +74,45 @@ export function UsersListPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const canImport = usePermission(PERMISSIONS.USERS_IMPORT);
+  // Whoever may release somebody is whoever may know they are stuck. Without this
+  // permission the column is not drawn at all — "this person keeps failing their
+  // password" is not a fact a directory listing should hand to every colleague.
+  const canSeeLockouts = usePermission(PERMISSIONS.USERS_MANAGE_2FA);
   const navigate = useNavigate();
   const list = useListResource<User>({ resource: "users", path: "/users" });
+
+  // One request for the whole page, not one per row: the lockouts are a short list
+  // of people the counter is holding out, so the table asks once and matches.
+  const lockedOut = useQuery({
+    queryKey: ["users", "locked-out"],
+    queryFn: fetchLockedOutUsers,
+    enabled: canSeeLockouts,
+    // A lockout window is minutes long, so a cached answer goes stale quickly.
+    staleTime: 15_000,
+  });
+
+  const columns = useMemo<TableColumn<User>[]>(() => {
+    if (!canSeeLockouts) return baseColumns;
+    const locked = new Set((lockedOut.data ?? []).map((row) => row.userId));
+    return [
+      ...baseColumns,
+      {
+        id: "lockout",
+        header: "Sign-in",
+        // Not sortable or filterable: it lives in Redis, not in the query the
+        // server sorts, and a column that sorts by nothing is a promise it breaks.
+        enableSorting: false,
+        cell: ({ row }) =>
+          locked.has(row.original.id) ? (
+            <Badge tone="danger" className="whitespace-nowrap">
+              Locked out
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+    ];
+  }, [canSeeLockouts, lockedOut.data]);
 
   // Designations are a fixed catalogue, so the filter picks from them rather than
   // guessing the spelling — searchable, since an org can have plenty.

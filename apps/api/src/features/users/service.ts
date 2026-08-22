@@ -31,7 +31,7 @@ import { revokeAllSessions, revokeSession } from "@/core/auth/account-status.js"
 import { resetTwoFactor } from "@/core/auth/two-factor.js";
 import { AppError } from "@/core/errors.js";
 import { twoFactorResetEmail } from "@/core/mail/templates.js";
-import { release } from "@/core/auth/login-throttle.js";
+import { lockedIdentities, release } from "@/core/auth/login-throttle.js";
 import { enqueueEmail } from "@/core/queue/email.js";
 import { notify } from "@/core/queue/notifications.js";
 import { getSystemSetting } from "@/core/settings/service.js";
@@ -68,6 +68,7 @@ import {
   setUserLocations,
   updateUserRow,
   userIdForSessionToken,
+  usersByIdentities,
 } from "@/features/users/repo.js";
 import type { UserExportRow, UserParseResult } from "@/features/users/import-parse.js";
 
@@ -165,6 +166,49 @@ export async function releaseLogin(userId: string): Promise<number> {
   const cleared = await release(row.email);
   const alsoCleared = row.username ? await release(row.username) : 0;
   return cleared + alsoCleared;
+}
+
+export interface LockedOutUser {
+  userId: string;
+  attempts: number;
+  max: number;
+  retryAfterSeconds: number | null;
+}
+
+/**
+ * Who the sign-in throttle is currently holding out.
+ *
+ * Resolved from the live counter rather than a column, because there is no column:
+ * a lockout is a fact about the last few minutes, and a stored copy of it would be
+ * wrong the moment the window expired. An identity that matches nobody — somebody
+ * guessing at an address that does not exist — is simply dropped; the users table
+ * has no row to hang it on, and it is not a fact about any of these people.
+ */
+export async function lockedOutUsers(): Promise<LockedOutUser[]> {
+  const locked = await lockedIdentities();
+  if (locked.size === 0) return [];
+
+  const rows = await usersByIdentities([...locked.keys()]);
+  const found: LockedOutUser[] = [];
+
+  for (const row of rows) {
+    // One person can be behind two counters — they tried their email, then their
+    // username. Report the worse of the two, which is the one keeping them out.
+    const states = [row.email, row.username]
+      .filter((identity): identity is string => Boolean(identity))
+      .map((identity) => locked.get(identity.toLowerCase()))
+      .filter((state) => state !== undefined);
+    const worst = states.sort((a, b) => b.attempts - a.attempts)[0];
+    if (!worst) continue;
+    found.push({
+      userId: row.id,
+      attempts: worst.attempts,
+      max: worst.max,
+      retryAfterSeconds: worst.retryAfterSeconds,
+    });
+  }
+
+  return found;
 }
 
 /** Send the set-password link an invited (or password-less) user signs in with. */

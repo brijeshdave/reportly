@@ -477,8 +477,18 @@ is retried, so nothing is lost — but nothing is delivered either.
 
 ### Someone cannot sign in
 
-- **Wrong password five times?** The sign-in rate limit is per IP. Wait for the
-  window (default 60 seconds).
+- **Wrong password five times?** They are throttled. The limit counts **failed**
+  sign-ins for that account from that address — so one person's mistakes never
+  refuse a colleague's correct password, even on the same office connection, and a
+  sign-in that succeeds clears the count.
+  - **See who is stuck:** **Users** shows a **Locked out** badge in the _Sign-in_
+    column, for anybody holding `users:manage-2fa`.
+  - **Let them back in:** **Users → _the user_ → Security → Release**. Audited.
+  - **From the command line**, when nobody can reach the screen:
+    `pnpm --filter @reportly/api cli unlock <username|email|ip>` — the IP form
+    releases a whole site behind one gateway.
+  - Or wait: the window clears on its own (default 60 seconds).
+  - The ceiling and window are **Settings → Authentication**.
 - **Two-factor lost?** They can use a recovery code on the challenge screen. If
   those are gone too, an administrator cannot help — the account needs a password
   reset, which also clears the pending two-factor challenge.
