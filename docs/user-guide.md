@@ -518,6 +518,10 @@ Open it (**Companies → _name_**).
   sits at the top of every screen while it is the active company.
 - Its locations and every group scoped to it are untouched; nothing is deleted.
 
+Everybody holding `companies:update` is notified that it was closed — it changes
+what other people can do, so it is not a private administrative act. Reactivating is
+not announced: it restores the normal state of affairs.
+
 **Reactivate** puts it straight back. That is deliberately _not_ one of the things
 deactivation blocks — otherwise a company could never be turned back on.
 
@@ -635,8 +639,10 @@ count is per person **and** per address, and only failures count — so a collea
 fumbling their password on the same office connection cannot refuse your correct
 one, and signing in successfully clears it.
 
-The **Users** list shows a **Locked out** badge in the _Sign-in_ column, so you can
-see who is stuck without opening anybody. Both the badge and the card read the live
+You are told without having to look: anybody holding `users:manage-2fa` is notified
+the moment an account is held out — once, on the attempt that closes the door, not
+once per wrong password. The **Users** list also shows a **Locked out** badge in the
+_Sign-in_ column, so you can see who is stuck without opening anybody. Both the badge and the card read the live
 counter, so they are never a stale copy of a lock that has already expired.
 
 Releasing is written to the audit trail. Treat it the way you treat a two-factor

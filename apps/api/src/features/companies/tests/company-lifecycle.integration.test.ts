@@ -5,10 +5,12 @@
 //
 // Groups are the counterpoint: a group holds no data of its own, so deleting one
 // revokes access and destroys nothing. It is deliberately not guarded.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
+import * as queue from "@/core/queue/notifications.js";
+import type { NotificationRequest } from "@/features/notifications/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
 
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -55,6 +57,20 @@ function inject(
     headers,
     payload: payload as object,
   });
+}
+
+/** Run something and collect the events it emitted, instead of queueing them. */
+async function captureNotifications(run: () => Promise<unknown>): Promise<NotificationRequest[]> {
+  const events: NotificationRequest[] = [];
+  const spy = vi.spyOn(queue, "notify").mockImplementation(async (event) => {
+    events.push(event as NotificationRequest);
+  });
+  try {
+    await run();
+  } finally {
+    spy.mockRestore();
+  }
+  return events;
 }
 
 const newCompany = async (cookie: string, name = "Initech") =>
@@ -140,6 +156,28 @@ describe("company status", () => {
     expect(
       (await inject("POST", "/locations", cookie, { name: "Depot" }, open.id)).statusCode,
     ).toBe(201);
+  });
+
+  it("tells the other administrators it was closed, and says nothing when reopened", async () => {
+    // Closing a company changes what everybody else can do in it, so it is not a
+    // private administrative act. Reopening restores the normal state of affairs,
+    // and a bell that reports both halves of a toggle is one people stop reading.
+    const cookie = await superadmin();
+    const company = await newCompany(cookie);
+
+    const closing = await captureNotifications(() =>
+      inject("POST", `/companies/${company.id}/deactivate`, cookie),
+    );
+    expect(closing.map((event) => event.type)).toEqual(["company.deactivated"]);
+    expect(closing[0]).toMatchObject({
+      companyId: null,
+      title: expect.stringMatching(/was deactivated/i),
+    });
+
+    const opening = await captureNotifications(() =>
+      inject("POST", `/companies/${company.id}/reactivate`, cookie),
+    );
+    expect(opening).toEqual([]);
   });
 
   it("deactivates and reactivates without touching its locations", async () => {

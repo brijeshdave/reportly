@@ -158,7 +158,7 @@ export async function companiesRoutes(fastify: FastifyInstance): Promise<void> {
       },
       async (request) => {
         const before = await companies.getCompany(request.params.id);
-        const company = await companies.setStatus(request.params.id, status);
+        const company = await companies.setStatus(request.params.id, status, request.ctx!.userId);
         await recordAudit(request, request.ctx!, {
           action: `company.${action}`,
           companyId: company.id,

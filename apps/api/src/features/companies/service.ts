@@ -11,6 +11,7 @@ import {
 } from "@reportly/shared";
 
 import { AppError } from "@/core/errors.js";
+import { notify } from "@/core/queue/notifications.js";
 import { forgetCompanyStatus } from "@/features/companies/active.js";
 import {
   type CompanyRow,
@@ -74,11 +75,32 @@ async function requireCompany(id: string): Promise<CompanyRow> {
  * cached, so the cached answer is dropped here: a status change nobody can see for
  * half a minute reads as a button that did nothing.
  */
-export async function setStatus(id: string, status: EntityStatus): Promise<Company> {
+export async function setStatus(
+  id: string,
+  status: EntityStatus,
+  actorUserId: string | null = null,
+): Promise<Company> {
   await requireCompany(id);
   const row = await updateCompanyStatus(id, status);
   await forgetCompanyStatus(id);
-  return serialize(row!);
+  const company = serialize(row!);
+
+  // Only the closing. Reactivating restores the normal state of affairs, and a
+  // bell that reports both halves of a toggle is a bell people stop reading.
+  if (status === "inactive") {
+    await notify({
+      type: "company.deactivated",
+      companyId: null,
+      actorUserId,
+      title: `${company.name} was deactivated`,
+      body: "Nothing new can be filed into it and nothing in it can be changed until it is reactivated. Everything already there stays readable.",
+      link: `/companies/${company.id}`,
+      entityKind: "company",
+      entityId: company.id,
+    });
+  }
+
+  return company;
 }
 
 export interface CompanyReferences {

@@ -211,6 +211,35 @@ export async function lockedOutUsers(): Promise<LockedOutUser[]> {
   return found;
 }
 
+/**
+ * Tell the people who can help that somebody is locked out.
+ *
+ * Called once, on the attempt that closes the door — not on the ones after it, or
+ * an account being hammered would empty itself into everybody's bell.
+ *
+ * Not sent to the locked-out person: they know, and they cannot reach their bell
+ * to read it. An identity matching nobody is dropped, because a stranger guessing
+ * at addresses is not an event about any of these people — it is what the rate
+ * limit is *for*, and it belongs in the audit trail, where it already is.
+ */
+export async function announceLockout(identity: string | null, ip: string): Promise<void> {
+  if (!identity) return;
+  const [row] = await usersByIdentities([identity]);
+  if (!row) return;
+
+  await notify({
+    type: "security.account-locked",
+    companyId: null,
+    actorUserId: null,
+    subjectUserId: row.id,
+    title: `${row.name} is locked out of sign-in`,
+    body: `Too many failed attempts from ${ip}. The lock clears on its own; you can release it sooner from their Security tab.`,
+    link: `/users/${row.id}?tab=security`,
+    entityKind: "user",
+    entityId: row.id,
+  });
+}
+
 /** Send the set-password link an invited (or password-less) user signs in with. */
 async function sendSetPasswordLink(email: string): Promise<void> {
   await getAuth().api.requestPasswordReset({

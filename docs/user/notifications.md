@@ -73,7 +73,7 @@ unticked is a decision that sticks.
 | Shifts   | a colleague asks to swap with you; your swap is approved or refused; your department's roster is published                                                                            |
 | Routines | a routine of yours is due tomorrow; one has gone past its date unlogged; month-end routine points are awarded to you                                                                  |
 | Downtime | downtime is opened or closed on your department's equipment                                                                                                                           |
-| System   | a backup fails; background jobs are failing; somebody is invited (administrators only)                                                                                                |
+| System   | a backup fails; background jobs are failing; somebody is invited; somebody is locked out of sign-in; a company is deactivated (administrators only)                                   |
 
 You are never notified about something you did yourself.
 

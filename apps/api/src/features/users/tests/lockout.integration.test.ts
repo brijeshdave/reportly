@@ -6,10 +6,13 @@
 // back in — which is the part that was missing when this was reported: correct
 // passwords refused, and nothing to do but wait.
 import { AUTH_RATE_LIMIT } from "@reportly/shared";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { recordFailure } from "@/core/auth/login-throttle.js";
+import { announceLockout } from "@/features/users/service.js";
+import * as queue from "@/core/queue/notifications.js";
+import { dispatch, type NotificationRequest } from "@/features/notifications/service.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { setSystemSetting } from "@/core/settings/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
@@ -63,6 +66,25 @@ async function lockOut(identity: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await recordFailure(identity, IP, "sign-in");
   }
+}
+
+/** Run something and collect the events it emitted, instead of queueing them. */
+async function capture(run: () => Promise<void>): Promise<NotificationRequest[]> {
+  const events: NotificationRequest[] = [];
+  const spy = vi.spyOn(queue, "notify").mockImplementation(async (event) => {
+    events.push(event as NotificationRequest);
+  });
+  try {
+    await run();
+  } finally {
+    spy.mockRestore();
+  }
+  return events;
+}
+
+async function unreadCount(cookie: string): Promise<number> {
+  const res = await get("/me/notifications/unread-count", cookie);
+  return (res.json() as { unread: number }).unread;
 }
 
 function get(url: string, cookie: string) {
@@ -124,5 +146,56 @@ describe("the lockout list", () => {
     expect(released.json().cleared).toBeGreaterThan(0);
 
     expect((await get("/users/locked-out", admin)).json()).toEqual([]);
+  });
+});
+
+describe("telling somebody a person is stuck", () => {
+  it("reaches the people who can release them, and not the person locked out", async () => {
+    // The complaint underneath this whole feature was that nobody *knew*: a badge
+    // only helps somebody who is already looking at the roster.
+    //
+    // `notify` enqueues, and no worker runs in a test — so the event is captured
+    // as the emitter produced it and then dispatched for real. That way this
+    // covers both halves: what the emitter says, and who actually receives it.
+    const admin = await superadmin();
+    const target = await member();
+    await lockOut(MEMBER_EMAIL);
+
+    const events = await capture(() => announceLockout(MEMBER_EMAIL, IP));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "security.account-locked",
+      companyId: null,
+      subjectUserId: target.id,
+      title: expect.stringMatching(/locked out of sign-in/i),
+    });
+
+    await dispatch(events[0]!);
+
+    // The superadmin holds users:manage-2fa, so they are an operator here.
+    expect(await unreadCount(admin)).toBeGreaterThan(0);
+    // Not the locked-out person: they know, and they cannot reach their bell.
+    expect(await unreadCount(target.cookie)).toBe(0);
+  });
+
+  it("says nothing when the identity matches nobody", async () => {
+    // A stranger guessing at addresses is what the limit is for; it belongs in the
+    // audit trail, not in an administrator's inbox.
+    await member();
+    await lockOut("nobody@reportly.test");
+
+    expect(await capture(() => announceLockout("nobody@reportly.test", IP))).toEqual([]);
+  });
+
+  it("is announced once, by the attempt that closes the door", async () => {
+    // An account being hammered would otherwise empty itself into every operator's
+    // bell — one message per wrong password, for as long as it went on.
+    await member();
+    let announced = 0;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const state = await recordFailure(MEMBER_EMAIL, IP, "sign-in");
+      if (state.locked && state.attempts === state.max) announced += 1;
+    }
+    expect(announced).toBe(1);
   });
 });

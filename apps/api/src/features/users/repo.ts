@@ -136,11 +136,11 @@ export async function getUserByUsername(username: string): Promise<UserRow | nul
  */
 export async function usersByIdentities(
   identities: string[],
-): Promise<{ id: string; email: string; username: string | null }[]> {
+): Promise<{ id: string; name: string; email: string; username: string | null }[]> {
   if (identities.length === 0) return [];
   const wanted = identities.map((identity) => identity.toLowerCase());
   return db
-    .select({ id: users.id, email: users.email, username: users.username })
+    .select({ id: users.id, name: users.name, email: users.email, username: users.username })
     .from(users)
     .where(
       or(

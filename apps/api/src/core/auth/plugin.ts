@@ -27,6 +27,7 @@ import { env } from "@/core/env.js";
 import { isPasswordExpired } from "@/core/auth/password-history.js";
 import { resolveDebug } from "@/core/debug/service.js";
 import { isCompanyActive } from "@/features/companies/active.js";
+import { announceLockout } from "@/features/users/service.js";
 import { isCompanyOwnedPath } from "@/features/companies/scoped-routes.js";
 import { AppError } from "@/core/errors.js";
 import { setRequestActor } from "@/core/request-context.js";
@@ -248,7 +249,16 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
           // Only a refusal counts. A lockout defends against guessing, and a correct
           // password is not a guess — counting every attempt locked people out while
           // they were typing the right one.
-          void recordFailure(identity, request.ip, door!);
+          //
+          // The attempt that closes the door is also the one worth telling somebody
+          // about. Only that one: the failures after it are the same fact repeated,
+          // and an account being hammered would empty itself into every operator's
+          // bell.
+          void recordFailure(identity, request.ip, door!).then((state) =>
+            state.locked && state.attempts === state.max
+              ? announceLockout(identity, request.ip)
+              : undefined,
+          );
         } else {
           // Proving who you are ends the count, so yesterday's typos do not follow
           // somebody into today.

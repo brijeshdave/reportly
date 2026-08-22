@@ -330,6 +330,36 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   },
 
   {
+    type: "security.account-locked",
+    category: "system",
+    label: "Somebody is locked out of sign-in",
+    description:
+      "An account has failed sign-in enough times to be held out. Says who, and from where. The lock clears on its own; whoever holds users:manage-2fa can release it sooner.",
+    // The people who can actually do something about it. Not the locked-out person:
+    // they already know, and they cannot reach their bell to read it.
+    audience: "operators",
+    permission: "users:manage-2fa",
+    // A lockout belongs to a person, not to a tenant — and the administrator who
+    // can release them may well be looking at a different company.
+    systemWide: true,
+    defaultChannels: DEFAULT_INAPP,
+  },
+
+  {
+    type: "company.deactivated",
+    category: "system",
+    label: "A company was deactivated",
+    description:
+      "A company was closed for new work: nothing can be added to it or changed in it until it is reactivated. Everything in it stays readable.",
+    audience: "operators",
+    permission: "companies:update",
+    systemWide: true,
+    // The person who pressed it needs it least, but an installation where two
+    // people administer companies is exactly where this matters.
+    defaultChannels: DEFAULT_INAPP,
+  },
+
+  {
     type: "security.two-factor-required",
     category: "system",
     label: "Two-factor is now required of you",
