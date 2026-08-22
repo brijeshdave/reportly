@@ -84,12 +84,22 @@ export const CONSUMABLE_UNIT_LABELS: Record<ConsumableUnit, string> = {
  * `min` of 1 makes the consumable required — a refill that used no toner did not
  * happen. `max` caps it, so a slipped decimal point is refused rather than
  * recorded. Null max means no ceiling.
+ *
+ * **`max` of 0 is allowed, and means "not this one".** It used to be `positive()`,
+ * which refused zero — so a repair that fits no parts at all could not be described:
+ * the form was rejected with nothing to say which field was wrong. An empty consumable
+ * list cannot express it either, because empty means *unrestricted* rather than none.
  */
-export const serviceKindConsumableSchema = z.object({
-  consumableId: uuidSchema,
-  minQuantity: z.number().min(0).max(1_000_000).default(0),
-  maxQuantity: z.number().positive().max(1_000_000).nullable().default(null),
-});
+export const serviceKindConsumableSchema = z
+  .object({
+    consumableId: uuidSchema,
+    minQuantity: z.number().min(0).max(1_000_000).default(0),
+    maxQuantity: z.number().min(0).max(1_000_000).nullable().default(null),
+  })
+  .refine((value) => value.maxQuantity === null || value.maxQuantity >= value.minQuantity, {
+    message: "The most cannot be less than the least",
+    path: ["maxQuantity"],
+  });
 export type ServiceKindConsumable = z.infer<typeof serviceKindConsumableSchema>;
 
 /**

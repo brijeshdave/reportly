@@ -211,6 +211,45 @@ describe("what a kind may consume", () => {
   const service = (partId: string, kindId: string, lines: unknown[]) =>
     inject("POST", `/parts/${partId}/services`, { serviceKindId: kindId, consumptions: lines });
 
+  it("accepts a maximum of zero — a repair that fits no parts at all", async () => {
+    // Reported from production: setting every consumable to min 0 / max 0, to say
+    // "this repair uses nothing", was refused with "Request validation failed" and
+    // nothing to point at. `maxQuantity` was `positive()`, so zero could not be said.
+    // An empty consumable list cannot say it either: empty means *unrestricted*.
+    const base = await setUp();
+    const kind = await inject("POST", "/part-service-kinds", {
+      name: "Adjustment",
+      defaultPoints: 2,
+      consumables: [{ consumableId: base.toner.id, minQuantity: 0, maxQuantity: 0 }],
+    });
+    expect(kind.statusCode).toBe(201);
+    expect(kind.json().consumables[0]).toMatchObject({ minQuantity: 0, maxQuantity: 0 });
+
+    // And it means what it says: nothing may be consumed under that kind.
+    const withToner = await inject(`POST`, `/parts/${base.part.id}/services`, {
+      serviceKindId: kind.json().id,
+      consumptions: [{ consumableId: base.toner.id, quantity: 1 }],
+    });
+    expect(withToner.statusCode).toBe(400);
+
+    // The service itself records fine with no consumption at all.
+    const bare = await inject("POST", `/parts/${base.part.id}/services`, {
+      serviceKindId: kind.json().id,
+      consumptions: [],
+    });
+    expect(bare.statusCode).toBe(201);
+  });
+
+  it("refuses a maximum below the minimum", async () => {
+    const base = await setUp();
+    const bad = await inject("POST", "/part-service-kinds", {
+      name: "Nonsense",
+      defaultPoints: 0,
+      consumables: [{ consumableId: base.toner.id, minQuantity: 3, maxQuantity: 1 }],
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
   it("refuses a consumable the kind does not use", async () => {
     // A drum fitted during a refill is a record that is not true, and the form
     // does not offer it — but a stale tab or a second client would not know.

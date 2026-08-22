@@ -43,6 +43,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A service kind could not say "this uses no parts".** Setting every consumable to a
+  maximum of zero — a repair that fits nothing — was refused with "Request validation
+  failed" and no field to point at, because the maximum had to be positive. Zero is
+  now allowed and means what it says, and a maximum below the minimum is refused with
+  a message that names the field.
+- **Upgrading no longer resurrects statuses somebody deleted**, or add a second copy of
+  one renamed to a different capitalisation ("On hold" → "on hold" used to arrive
+  beside it). The starter vocabularies — severities, statuses, asset types — are
+  seeded **only into an empty table**: they are a starting point for a new install, not
+  a set the seed maintains against the wishes of whoever owns the workflow.
+
 - **A handover could only go to yourself or somebody below you**, so anybody without
   subordinates could hand a report to exactly one person: themselves. That is not a
   handover. Work now passes to **a colleague in one of your departments** as well —

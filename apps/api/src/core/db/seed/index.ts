@@ -19,7 +19,7 @@ import {
   REPORT_VIEW_PERMISSION,
   type ReportSource,
 } from "@reportly/shared";
-import { and, eq, notInArray } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 
 import { db, type Database } from "@/core/db/index.js";
 import {
@@ -1293,58 +1293,70 @@ export async function seedDatabase(database: Database = db): Promise<void> {
     }
 
     // 8. Reports config: a generous severity ladder and the status workflow. All
-    // editable later; seeded by name so a re-run adds nothing that already exists.
-    await tx
-      .insert(severities)
-      .values([
-        { name: "Informational", orderIndex: 0 },
-        { name: "Minor", orderIndex: 1 },
-        { name: "Moderate", orderIndex: 2 },
-        { name: "Major", orderIndex: 3 },
-        { name: "Critical", orderIndex: 4 },
-      ])
-      .onConflictDoNothing({ target: severities.name });
+    // 8. The starter vocabularies — severities, statuses, asset types.
+    //
+    // **Seeded only into an empty table.** They used to be inserted by name with
+    // `onConflictDoNothing`, which quietly fought the administrator: a status deleted
+    // because the organisation does not use it came back on the next upgrade, and one
+    // renamed with different capitalisation ("On hold" -> "on hold") missed the
+    // conflict target and arrived as a second row beside it. Neither is the seed's
+    // decision to make. These are a starting point for an empty install, not a set
+    // this file maintains — the same rule the shipped roles now follow.
+    const isEmpty = async (table: typeof severities | typeof journalStatuses | typeof assetTypes) =>
+      ((await tx.select({ n: sql<number>`count(*)::int` }).from(table))[0]?.n ?? 0) === 0;
 
-    await tx
-      .insert(journalStatuses)
-      .values([
-        // Four working states, one finished state, three ways a report ends
-        // without being fixed. Deliberately short: every extra status is a choice
-        // somebody has to make correctly, and the old ladder carried three
-        // different "done" states with no rule for picking between them.
-        { name: "Open", group: "open", isTerminal: false, orderIndex: 0 },
-        { name: "Acknowledged", group: "open", isTerminal: false, orderIndex: 1 },
-        { name: "In progress", group: "open", isTerminal: false, orderIndex: 2 },
-        { name: "On hold", group: "open", isTerminal: false, orderIndex: 3 },
-        { name: "Resolved", group: "resolved", isTerminal: true, orderIndex: 4 },
-        { name: "Duplicate", group: "rejected", isTerminal: true, orderIndex: 5 },
-        // "Not an issue" rather than "False complaint": the old name blamed the
-        // person who reported it, which discourages the reporting the whole app
-        // exists to encourage.
-        { name: "Not an issue", group: "rejected", isTerminal: true, orderIndex: 6 },
-        { name: "Cancelled", group: "rejected", isTerminal: true, orderIndex: 7 },
-      ])
-      .onConflictDoNothing({ target: journalStatuses.name });
+    if (await isEmpty(severities)) {
+      await tx
+        .insert(severities)
+        .values([
+          { name: "Informational", orderIndex: 0 },
+          { name: "Minor", orderIndex: 1 },
+          { name: "Moderate", orderIndex: 2 },
+          { name: "Major", orderIndex: 3 },
+          { name: "Critical", orderIndex: 4 },
+        ])
+        .onConflictDoNothing({ target: severities.name });
+    }
+
+    if (await isEmpty(journalStatuses)) {
+      await tx
+        .insert(journalStatuses)
+        .values([
+          // Four working states, one finished state, three ways a report ends
+          // without being fixed. Deliberately short: every extra status is a choice
+          // somebody has to make correctly, and the old ladder carried three
+          // different "done" states with no rule for picking between them.
+          { name: "Open", group: "open", isTerminal: false, orderIndex: 0 },
+          { name: "Acknowledged", group: "open", isTerminal: false, orderIndex: 1 },
+          { name: "In progress", group: "open", isTerminal: false, orderIndex: 2 },
+          { name: "On hold", group: "open", isTerminal: false, orderIndex: 3 },
+          { name: "Resolved", group: "resolved", isTerminal: true, orderIndex: 4 },
+          { name: "Duplicate", group: "rejected", isTerminal: true, orderIndex: 5 },
+          // "Not an issue" rather than "False complaint": the old name blamed the
+          // person who reported it, which discourages the reporting the whole app
+          // exists to encourage.
+          { name: "Not an issue", group: "rejected", isTerminal: true, orderIndex: 6 },
+          { name: "Cancelled", group: "rejected", isTerminal: true, orderIndex: 7 },
+        ])
+        .onConflictDoNothing({ target: journalStatuses.name });
+    }
 
     // 9. Asset types — the vocabulary the asset tree is built from. These are a
     // manufacturing plant's, because that is the first thing Reportly is used for;
     // they are data, not code, so a hospital renames them to Ward/Bed and the tree
     // means what it says there too.
-    await tx
-      .insert(assetTypes)
-      .values([
-        { name: "Plant", orderIndex: 0 },
-        { name: "Building", orderIndex: 1 },
-        { name: "Area", orderIndex: 2 },
-        { name: "Line", orderIndex: 3 },
-        { name: "Station", orderIndex: 4 },
-      ])
-      // A re-seed restores the base vocabulary — re-activating one retired in the UI —
-      // so the standard types are always there to build the tree from.
-      .onConflictDoUpdate({
-        target: assetTypes.name,
-        set: { status: "active", updatedAt: new Date() },
-      });
+    if (await isEmpty(assetTypes)) {
+      await tx
+        .insert(assetTypes)
+        .values([
+          { name: "Plant", orderIndex: 0 },
+          { name: "Building", orderIndex: 1 },
+          { name: "Area", orderIndex: 2 },
+          { name: "Line", orderIndex: 3 },
+          { name: "Station", orderIndex: 4 },
+        ])
+        .onConflictDoNothing({ target: assetTypes.name });
+    }
 
     // 10. System report views — shipped report shapes, global (null company/owner)
     // and shown in every company. `company` access, so everyone holding reports:view
