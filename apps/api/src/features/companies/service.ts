@@ -11,6 +11,7 @@ import {
 } from "@reportly/shared";
 
 import { AppError } from "@/core/errors.js";
+import { forgetCompanyStatus } from "@/features/companies/active.js";
 import {
   type CompanyRow,
   createCompanyWithRemote,
@@ -66,10 +67,17 @@ async function requireCompany(id: string): Promise<CompanyRow> {
   return row;
 }
 
-/** Retires a company without destroying its locations or any group's scope. */
+/**
+ * Retires a company without destroying its locations or any group's scope.
+ *
+ * A retired company also stops accepting writes — see `active.ts`. That check is
+ * cached, so the cached answer is dropped here: a status change nobody can see for
+ * half a minute reads as a button that did nothing.
+ */
 export async function setStatus(id: string, status: EntityStatus): Promise<Company> {
   await requireCompany(id);
   const row = await updateCompanyStatus(id, status);
+  await forgetCompanyStatus(id);
   return serialize(row!);
 }
 

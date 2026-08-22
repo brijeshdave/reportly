@@ -26,11 +26,18 @@ import { authAction, recordAuthEvent } from "@/core/auth/events.js";
 import { env } from "@/core/env.js";
 import { isPasswordExpired } from "@/core/auth/password-history.js";
 import { resolveDebug } from "@/core/debug/service.js";
+import { isCompanyActive } from "@/features/companies/active.js";
+import { isCompanyOwnedPath } from "@/features/companies/scoped-routes.js";
 import { AppError } from "@/core/errors.js";
 import { setRequestActor } from "@/core/request-context.js";
 import { getSystemSetting } from "@/core/settings/service.js";
 
 const COMPANY_HEADER = "x-company-id";
+
+// Spelled out rather than imported from `core/app.ts`: that module registers this
+// plugin, and importing back the other way makes a cycle. It is derived from the
+// auth base path, so the two cannot drift apart unnoticed.
+const VERSION_PREFIX = AUTH_BASE_PATH.replace(/\/auth$/, "");
 
 /**
  * The one authenticated route an expired caller may still reach, so the web app
@@ -98,6 +105,45 @@ async function enforceTwoFactor(request: FastifyRequest, userId: string): Promis
     403,
     ERROR_CODES.TWO_FACTOR_REQUIRED,
     "Two-factor authentication is required on this account. Set it up to continue.",
+  );
+}
+
+/** Anything that could add to, change or remove data. */
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * A deactivated company is closed for business, not merely labelled.
+ *
+ * Every company-scoped write takes its company from `ctx.companyId`, which is set
+ * here — so this one place closes the door on all of them at once, rather than each
+ * feature remembering to ask. Reads are untouched: the point of deactivating a
+ * company is to stop it accruing new work, not to hide the years of work already in
+ * it, which people still need to read, export and report on.
+ *
+ * Not exempt for superadmins. An exemption would make the flag mean "inactive
+ * unless somebody important is typing", which is not a state anybody can reason
+ * about. Reactivating stays possible because `/companies` is not in the list of
+ * company-owned paths — the web app sends the company header on every request, so
+ * without that distinction a deactivated company could never be turned back on.
+ *
+ * 409 rather than 403 — permission is not the problem. Whoever is doing this may
+ * well be allowed to; the company is simply shut.
+ */
+async function assertCompanyOpen(request: FastifyRequest, companyId: string): Promise<void> {
+  if (!WRITE_METHODS.has(request.method)) return;
+
+  // Only the company's own work, not everything a request happens to carry the
+  // header on — see `companies/scoped-routes.ts` for why that distinction is the
+  // difference between a guard and a locked-in administrator.
+  const url = request.routeOptions.url ?? request.url;
+  if (!isCompanyOwnedPath(url.slice(VERSION_PREFIX.length).split("?")[0] ?? "")) return;
+
+  if (await isCompanyActive(companyId)) return;
+
+  throw new AppError(
+    409,
+    ERROR_CODES.CONFLICT,
+    "This company is deactivated, so nothing new can be added to it or changed in it. Reactivate it first.",
   );
 }
 
@@ -260,6 +306,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     if (companyId && !(await hasCompanyAccess(userId, companyId))) {
       throw new AppError(403, ERROR_CODES.FORBIDDEN, "No access to the requested company");
     }
+    if (companyId) await assertCompanyOpen(request, companyId);
     request.ctx = await buildAuthContext(userId, companyId, request.debugMode ?? false);
   });
 

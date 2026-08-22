@@ -66,6 +66,82 @@ describe("company status", () => {
     expect((await newCompany(cookie)).status).toBe("active");
   });
 
+  it("refuses new masters and new transactions once it is deactivated", async () => {
+    // The report this exists for: deactivating a company changed a label and
+    // nothing else, so people carried on filing work into a company that was
+    // supposed to be closed.
+    const cookie = await superadmin();
+    const company = await newCompany(cookie);
+
+    const madeWhileOpen = await inject(
+      "POST",
+      "/locations",
+      cookie,
+      { name: "Warehouse" },
+      company.id,
+    );
+    expect(madeWhileOpen.statusCode).toBe(201);
+
+    await inject("POST", `/companies/${company.id}/deactivate`, cookie);
+
+    const refused = await inject("POST", "/locations", cookie, { name: "Annexe" }, company.id);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.message).toMatch(/deactivated/i);
+
+    // Editing what is already there is refused too — "closed" means closed, not
+    // "closed to new things only".
+    const edited = await inject(
+      "PATCH",
+      `/locations/${madeWhileOpen.json().id}`,
+      cookie,
+      { name: "Old warehouse" },
+      company.id,
+    );
+    expect(edited.statusCode).toBe(409);
+  });
+
+  it("still lets everybody read what the company already holds", async () => {
+    // Deactivating stops it accruing work. It does not hide the years of work in
+    // it, which people still need to read, export and report on.
+    const cookie = await superadmin();
+    const company = await newCompany(cookie);
+    await inject("POST", `/companies/${company.id}/deactivate`, cookie);
+
+    const listed = await inject("GET", "/locations", cookie, undefined, company.id);
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toHaveLength(1);
+  });
+
+  it("opens for business again the moment it is reactivated", async () => {
+    // And the way back must not itself be blocked by the block — reactivating is
+    // not company-scoped, so it never carries the header the guard reads.
+    const cookie = await superadmin();
+    const company = await newCompany(cookie);
+    await inject("POST", `/companies/${company.id}/deactivate`, cookie);
+    expect(
+      (await inject("POST", "/locations", cookie, { name: "Annexe" }, company.id)).statusCode,
+    ).toBe(409);
+
+    const on = await inject("POST", `/companies/${company.id}/reactivate`, cookie);
+    expect(on.statusCode).toBe(200);
+
+    // No waiting for a cache to expire: the change is visible on the next request.
+    expect(
+      (await inject("POST", "/locations", cookie, { name: "Annexe" }, company.id)).statusCode,
+    ).toBe(201);
+  });
+
+  it("leaves another company alone", async () => {
+    const cookie = await superadmin();
+    const closed = await newCompany(cookie, "Closed Co");
+    const open = await newCompany(cookie, "Open Co");
+    await inject("POST", `/companies/${closed.id}/deactivate`, cookie);
+
+    expect(
+      (await inject("POST", "/locations", cookie, { name: "Depot" }, open.id)).statusCode,
+    ).toBe(201);
+  });
+
   it("deactivates and reactivates without touching its locations", async () => {
     const cookie = await superadmin();
     const company = await newCompany(cookie);

@@ -505,8 +505,21 @@ Then add **Members**.
 
 Open it (**Companies → _name_**).
 
-**Deactivate** (`companies:update`) retires it. Its locations and every group
-scoped to it are untouched; nothing is deleted, and it can be undone.
+**Deactivate** (`companies:update`) closes it for business. From that moment:
+
+- **Nothing new can be filed into it and nothing in it can be changed** — journal
+  entries, tasks, assets, devices, downtime, routines, shifts, locations,
+  departments, categories, tags, parts. The API refuses the write and says why, for
+  everybody including a superadmin. An exemption would make "deactivated" mean
+  "deactivated unless somebody important is typing".
+- **Everything stays readable.** Lists, exports, analytics and reports carry on. The
+  point is to stop the company accruing work, not to hide the work already in it.
+- **The app says so.** The company switcher labels it _(deactivated)_, and a banner
+  sits at the top of every screen while it is the active company.
+- Its locations and every group scoped to it are untouched; nothing is deleted.
+
+**Reactivate** puts it straight back. That is deliberately _not_ one of the things
+deactivation blocks — otherwise a company could never be turned back on.
 
 **Delete** (`companies:delete`) destroys its locations, and every group scoped to
 it loses that scope — which changes what their members can see. Reportly refuses

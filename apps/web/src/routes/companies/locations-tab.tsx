@@ -29,7 +29,12 @@ import {
   updateLocation,
 } from "@/services/locations.js";
 
-export function LocationsTab({ companyId }: { companyId: string }) {
+/**
+ * `closed` is passed rather than looked up: a deactivated company refuses every
+ * write, so offering buttons that can only fail is a trap. Export stays — reading
+ * and exporting is exactly what a closed company is still for.
+ */
+export function LocationsTab({ companyId, closed }: { companyId: string; closed?: boolean }) {
   const [adding, setAdding] = useState(false);
   const [renaming, setRenaming] = useState<Location | null>(null);
   const [deleting, setDeleting] = useState<Location | null>(null);
@@ -71,12 +76,23 @@ export function LocationsTab({ companyId }: { companyId: string }) {
           <Download className="h-4 w-4" /> Export
         </Button>
         {canImport ? (
-          <Button size="sm" variant="secondary" onClick={() => setImportOpen(true)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setImportOpen(true)}
+            disabled={closed}
+            title={closed ? "This company is deactivated" : undefined}
+          >
             <Upload className="h-4 w-4" /> Import
           </Button>
         ) : null}
         <Can permission={PERMISSIONS.LOCATIONS_CREATE}>
-          <Button size="sm" onClick={() => setAdding(true)}>
+          <Button
+            size="sm"
+            onClick={() => setAdding(true)}
+            disabled={closed}
+            title={closed ? "This company is deactivated" : undefined}
+          >
             <Plus className="h-4 w-4" />
             Add location
           </Button>

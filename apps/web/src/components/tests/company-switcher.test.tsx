@@ -28,8 +28,8 @@ function session(over: Partial<Session>): Session {
     isSuperadmin: false,
     groups: [],
     companies: [
-      { id: "c1", name: "Plant Co" },
-      { id: "c2", name: "Other Co" },
+      { id: "c1", name: "Plant Co", status: "active" as const },
+      { id: "c2", name: "Other Co", status: "active" as const },
     ],
     locationIds: [],
     permissions: [],

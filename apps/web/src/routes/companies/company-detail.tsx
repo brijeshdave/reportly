@@ -17,6 +17,7 @@ import {
 } from "@/components/unsaved-changes.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { LocationsTab } from "@/routes/companies/locations-tab.js";
 import { ModulesTab } from "@/routes/companies/modules-tab.js";
@@ -49,7 +50,13 @@ export function CompanyDetailPage({ companyId, tab }: { companyId: string; tab: 
 
   const toggle = useMutation({
     mutationFn: (status: "active" | "inactive") => setCompanyStatus(companyId, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["companies"] }),
+    // The session too, not only the list: the company switcher and the banner at the
+    // top of every screen are drawn from /me, so without this the app carries on
+    // showing a company as open until something else happens to refetch it.
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["companies"] });
+      await queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey });
+    },
   });
 
   if (company.isLoading) return <Spinner />;
@@ -94,7 +101,7 @@ export function CompanyDetailPage({ companyId, tab }: { companyId: string; tab: 
 
       <div className="pt-6">
         <TabPanel id="locations" active={activeTab}>
-          <LocationsTab companyId={companyId} />
+          <LocationsTab companyId={companyId} closed={company.data.status === "inactive"} />
         </TabPanel>
         <TabPanel id="modules" active={activeTab}>
           <ModulesTab companyId={companyId} />
@@ -117,7 +124,7 @@ export function CompanyDetailPage({ companyId, tab }: { companyId: string; tab: 
         }
         description={
           company.data.status === "active"
-            ? "It stops being offered for new work. Its locations and every group scoped to it are unchanged, and nothing is deleted."
+            ? "It closes for new work: nothing can be added to it and nothing in it can be changed, by anybody. Everything already there stays readable and exportable. Its locations and every group scoped to it are unchanged, and nothing is deleted."
             : "It becomes available again."
         }
         confirmLabel={company.data.status === "active" ? "Deactivate" : "Reactivate"}

@@ -475,6 +475,15 @@ is retried, so nothing is lost — but nothing is delivered either.
 2. **Logs → Search**, filter `feature` = `email`.
 3. If Redis was down, queued jobs are gone. Re-send the invitation.
 
+### Writes are being refused with 409 in one company
+
+Check whether that company is deactivated (**Companies → _name_**). A deactivated
+company refuses every write to its own data — the guarded paths are listed in
+`features/companies/scoped-routes.ts` — while leaving reads, exports and the app's
+own administration (users, settings, groups, roles, and reactivating the company)
+working. **Reactivate** lifts it immediately; the status is cached for 30 seconds,
+and that cache is dropped the moment the status changes.
+
 ### Someone cannot sign in
 
 - **Wrong password five times?** They are throttled. The limit counts **failed**

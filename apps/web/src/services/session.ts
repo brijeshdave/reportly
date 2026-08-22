@@ -8,6 +8,8 @@ import { http } from "@/services/http.js";
 export interface SessionCompany {
   id: string;
   name: string;
+  /** A deactivated company can be read, but refuses every write. */
+  status: "active" | "inactive";
 }
 
 export interface SessionGroup {

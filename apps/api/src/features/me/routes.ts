@@ -143,11 +143,16 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(groupUsers.userId, ctx.userId));
 
       // Companies the user can act in: all when superadmin, else via group links.
+      // The status travels with the name: a deactivated company refuses every write,
+      // and somebody should be told that when they switch into it rather than when
+      // they press Save on a form they have already filled in.
       const accessibleCompanies = ctx.isSuperadmin
-        ? await db.select({ id: companies.id, name: companies.name }).from(companies)
+        ? await db
+            .select({ id: companies.id, name: companies.name, status: companies.status })
+            .from(companies)
         : await db
             // Companies belong to the person now, not to their groups.
-            .selectDistinct({ id: companies.id, name: companies.name })
+            .selectDistinct({ id: companies.id, name: companies.name, status: companies.status })
             .from(userCompanies)
             .innerJoin(companies, eq(companies.id, userCompanies.companyId))
             .where(eq(userCompanies.userId, ctx.userId));

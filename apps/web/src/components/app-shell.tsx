@@ -398,6 +398,7 @@ export function CompanySwitcher() {
         {session.companies.map((company) => (
           <option key={company.id} value={company.id}>
             {company.name}
+            {company.status === "inactive" ? " (deactivated)" : ""}
           </option>
         ))}
       </select>
@@ -450,6 +451,29 @@ function PageSpinner() {
  * and taking the app off them early to make a point is not the deal. It says the
  * date, and stops appearing the moment they enrol.
  */
+/**
+ * Say it once, at the top, rather than letting people find out at Save.
+ *
+ * A deactivated company refuses every write at the API. Without this the first
+ * sign of that is a filled-in form and a red box, which reads as a bug rather than
+ * as the deliberate state somebody put the company into.
+ */
+function DeactivatedCompanyNotice() {
+  const { data: session } = useQuery(sessionQuery);
+  const active = session?.companies.find((company) => company.id === session.companyId);
+  if (!active || active.status !== "inactive") return null;
+
+  return (
+    <div className="mb-4">
+      <Alert tone="warning">
+        <strong>{active.name} is deactivated.</strong> You can read and export everything in it, but
+        nothing new can be added and nothing existing can be changed. Reactivate it from
+        Organisation → Companies.
+      </Alert>
+    </div>
+  );
+}
+
 function TwoFactorCountdown() {
   const { data: session } = useQuery(sessionQuery);
   const twoFactor = session?.twoFactor;
@@ -524,6 +548,7 @@ export function AppShell() {
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar onOpenSidebar={() => setDrawerOpen(true)} />
           <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+            <DeactivatedCompanyNotice />
             <TwoFactorCountdown />
             <ErrorBoundary boundary="app-shell">
               {/* Every page is fetched when its route is, so there is a moment before
