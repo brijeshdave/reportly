@@ -56,6 +56,49 @@ export type UpdateComment = z.infer<typeof updateCommentSchema>;
  * This says *who* took part; how many points each earns is scored separately (see
  * the scoring grid). Being named here is what puts a worker in the grid.
  */
+/**
+ * One piece of work, by one person, at a time.
+ *
+ * The entry keeps `workSummary`/`workDetail` as a roll-up so the reports and exports
+ * carry on reading one field, but this is the record: a job worked over two shifts is
+ * several of these, each owned by whoever did it. One text column had nowhere to put
+ * a *when*, and appending to it turned a history into a run-on paragraph.
+ */
+export const workLogSchema = z.object({
+  id: uuidSchema,
+  reportId: uuidSchema,
+  userId: z.string(),
+  userName: z.string(),
+  summary: z.string(),
+  detail: z.string().nullable(),
+  startedAt: z.string().datetime().nullable(),
+  finishedAt: z.string().datetime().nullable(),
+  /** When it was written down, which is often later than when it was done. */
+  createdAt: z.string().datetime(),
+  /** Whether the caller may edit or remove this item — their own, or a superadmin. */
+  canEdit: z.boolean(),
+});
+export type WorkLog = z.infer<typeof workLogSchema>;
+
+export const createWorkLogSchema = z
+  .object({
+    summary: z.string().min(1).max(300),
+    detail: z.string().max(5000).optional(),
+    startedAt: z.string().datetime().optional(),
+    finishedAt: z.string().datetime().optional(),
+  })
+  .refine(
+    (value) => !(value.startedAt && value.finishedAt) || value.finishedAt >= value.startedAt,
+    {
+      message: "Finished before it started",
+      path: ["finishedAt"],
+    },
+  );
+export type CreateWorkLog = z.infer<typeof createWorkLogSchema>;
+
+export const updateWorkLogSchema = createWorkLogSchema;
+export type UpdateWorkLog = z.infer<typeof updateWorkLogSchema>;
+
 export const journalParticipantSchema = z.object({
   userId: z.string(),
   userName: nameSchema,

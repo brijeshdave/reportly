@@ -8,6 +8,23 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Work is a timeline, not a text box.** Each piece of work is its own item with the
+  person who did it and the hours it took, oldest first. The previous attempt appended
+  into the entry's single work field: there was nowhere to put a _when_, a second log
+  was glued onto the first, and the editor showed one run-on paragraph. Colleagues log
+  their own items — anybody on _who worked on it_ can add one, and only its author can
+  change it. The entry's work summary now follows the newest item, so reports and
+  exports read the same field as before. Existing text is migrated into a first item,
+  attributed to the author and timed from the entry's own start and finish.
+- **An entry is edited by whoever holds it.** The author alone was wrong in both
+  directions: after a handover the person who let go could still rewrite it, and the
+  person actually doing the work could not. Held by nobody, it falls back to the
+  author. Work items, scores and _who worked on it_ are unaffected.
+- **Somebody on _who worked on it_ can open the entry.** They are named on it and
+  scored on it, so an entry they could not read was a record of their own work kept
+  from them — and it made logging that work impossible for anyone outside the
+  reporting line.
+
 - **Filing a breakdown no longer asks for the fix at the same time.** Raising an issue
   and recording the work are two moments, and the form asked whoever was sounding the
   alarm to describe work that had not happened yet — which is also why the two tabs

@@ -262,6 +262,10 @@ function Editor({
   // Only when *filing* an issue. Editing one keeps the fields open — correcting a
   // typo in what you already wrote should not need a different screen — and a work
   // log is nothing but work.
+  // The work fields belong to the timeline on the entry now, not to this form — one
+  // job worked over two shifts is several items, and a form cannot hold that. They
+  // stay here only for a **work log**, whose whole content is what was done, and for
+  // an issue being filed by somebody who has already finished the job.
   const collapsible = isIssue && mode === "create";
   const [workOpen, setWorkOpen] = useState(false);
   const activeSeverities = (severities.data ?? []).filter((s: Severity) => s.status === "active");
@@ -507,95 +511,106 @@ function Editor({
             available, because sometimes the honest entry really is "belt snapped, I
             replaced it" and two screens for that would be worse. A work log is
             nothing but work done, so it is never collapsed. */}
-        <Card className="flex flex-col gap-4 p-6">
-          <div className="flex items-center justify-between gap-3">
+        {isIssue && mode === "edit" ? (
+          <Card className="flex flex-col gap-2 p-6">
             <h2 className="text-sm font-semibold">Work done</h2>
-            {collapsible ? (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={workOpen}
-                  onChange={(event) => setWorkOpen(event.target.checked)}
-                />
-                I already did the work
-              </label>
-            ) : null}
-          </div>
-          {collapsible && !workOpen ? (
             <p className="text-sm text-muted-foreground">
-              Raise it now and log the work later, from the entry itself — or tick the box if it is
-              already done.
+              Work is logged on the entry itself, item by item — go back to it and use{" "}
+              <strong className="font-medium text-foreground">Log work</strong>. Editing it here
+              would overwrite a timeline several people may have written.
             </p>
-          ) : (
-            <>
-              <Field label="Summary">
-                {(props) => (
-                  <Input
-                    {...props}
-                    value={form.workSummary}
-                    onChange={(e) => set("workSummary", e.target.value)}
+          </Card>
+        ) : (
+          <Card className="flex flex-col gap-4 p-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold">Work done</h2>
+              {collapsible ? (
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={workOpen}
+                    onChange={(event) => setWorkOpen(event.target.checked)}
                   />
-                )}
-              </Field>
-              <Field label="Details">
-                {(props) => (
-                  <Textarea
-                    {...props}
-                    value={form.workDetail}
-                    onChange={(e) => set("workDetail", e.target.value)}
-                    rows={3}
-                  />
-                )}
-              </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label
-                  className="flex flex-col gap-1 text-sm"
-                  title="When YOU picked the job up — not when the machine stopped. If you were called at 2am but only started at 6am, put 6am."
-                >
-                  <span className="font-medium">Started work</span>
-                  <Input
-                    type="datetime-local"
-                    value={form.startedAt}
-                    onChange={(e) => set("startedAt", e.target.value)}
-                  />
+                  I already did the work
                 </label>
-                <label
-                  className="flex flex-col gap-1 text-sm"
-                  title="When you were done with it — including any watching or checking afterwards. Not when the machine came back."
-                >
-                  <span className="font-medium">Finished work</span>
-                  <Input
-                    type="datetime-local"
-                    value={form.endedAt}
-                    onChange={(e) => set("endedAt", e.target.value)}
-                  />
-                </label>
-              </div>
-              {/* This said "coming soon" of downtime long after downtime shipped —
+              ) : null}
+            </div>
+            {collapsible && !workOpen ? (
+              <p className="text-sm text-muted-foreground">
+                Raise it now and log the work later, from the entry itself — or tick the box if it
+                is already done.
+              </p>
+            ) : (
+              <>
+                <Field label="Summary">
+                  {(props) => (
+                    <Input
+                      {...props}
+                      value={form.workSummary}
+                      onChange={(e) => set("workSummary", e.target.value)}
+                    />
+                  )}
+                </Field>
+                <Field label="Details">
+                  {(props) => (
+                    <Textarea
+                      {...props}
+                      value={form.workDetail}
+                      onChange={(e) => set("workDetail", e.target.value)}
+                      rows={3}
+                    />
+                  )}
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label
+                    className="flex flex-col gap-1 text-sm"
+                    title="When YOU picked the job up — not when the machine stopped. If you were called at 2am but only started at 6am, put 6am."
+                  >
+                    <span className="font-medium">Started work</span>
+                    <Input
+                      type="datetime-local"
+                      value={form.startedAt}
+                      onChange={(e) => set("startedAt", e.target.value)}
+                    />
+                  </label>
+                  <label
+                    className="flex flex-col gap-1 text-sm"
+                    title="When you were done with it — including any watching or checking afterwards. Not when the machine came back."
+                  >
+                    <span className="font-medium">Finished work</span>
+                    <Input
+                      type="datetime-local"
+                      value={form.endedAt}
+                      onChange={(e) => set("endedAt", e.target.value)}
+                    />
+                  </label>
+                </div>
+                {/* This said "coming soon" of downtime long after downtime shipped —
               so the screen was telling people the very separation it was making
               did not exist yet, and the two got confused anyway. */}
-              <div className="-mt-1 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-                <p className="font-medium text-foreground">Which time goes where</p>
-                <ul className="mt-1 space-y-1">
-                  <li>
-                    <strong>Here</strong> — your own hours on the job, start to finish, including
-                    watching it afterwards. Leave both empty if you would rather not say.
-                  </li>
-                  <li>
-                    <strong>Downtime</strong> — how long production actually stopped. Recorded on
-                    this entry once you save it, per machine.
-                  </li>
-                </ul>
-                <p className="mt-1.5">
-                  They are unrelated on purpose, and often differ. A machine back in five minutes
-                  that you then watched for two hours is five minutes of downtime and two hours of
-                  your time. An issue that never stopped production is all work time and no downtime
-                  at all.
-                </p>
-              </div>
-            </>
-          )}
-        </Card>
+                <div className="-mt-1 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">Which time goes where</p>
+                  <ul className="mt-1 space-y-1">
+                    <li>
+                      <strong>Here</strong> — your own hours on the job, start to finish, including
+                      watching it afterwards. Leave both empty if you would rather not say.
+                    </li>
+                    <li>
+                      <strong>Downtime</strong> — how long production actually stopped. Recorded on
+                      this entry once you save it, per machine.
+                    </li>
+                  </ul>
+                  <p className="mt-1.5">
+                    They are unrelated on purpose, and often differ. A machine back in five minutes
+                    that you then watched for two hours is five minutes of downtime and two hours of
+                    your time. An issue that never stopped production is all work time and no
+                    downtime at all.
+                  </p>
+                </div>
+              </>
+            )}
+          </Card>
+        )}
 
         <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background py-3">
           <Button

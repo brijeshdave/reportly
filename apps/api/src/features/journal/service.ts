@@ -28,7 +28,10 @@ import {
   type RecurrenceLink,
   type JournalEntry,
   type JournalHandover,
+  type CreateWorkLog,
   type JournalParticipant,
+  type UpdateWorkLog,
+  type WorkLog,
   type JournalEntryRow,
   type JournalScore,
   type JournalTarget,
@@ -67,6 +70,15 @@ import {
   type ScoreEventReason,
 } from "@/features/journal/score-events-repo.js";
 import { colleaguesOf } from "@/features/departments/repo.js";
+import {
+  deleteWorkLogRow,
+  getWorkLog,
+  insertWorkLog,
+  refreshWorkRollup,
+  updateWorkLogRow,
+  workLogsFor,
+  type WorkLogRow,
+} from "@/features/journal/work-log-repo.js";
 import { ancestorsOf, downlineUserIds } from "@/features/journal/hierarchy.js";
 import {
   addAuthorAsParticipant,
@@ -259,8 +271,23 @@ async function assertVisible(row: JournalEntryRowRaw, ctx: AuthContext): Promise
  * `below` is optional so a caller filtering many rows resolves the downline once
  * instead of walking the reporting line per row.
  */
+/**
+ * Whether the caller is named on "who worked on it".
+ *
+ * `id` is part of the type rather than read off an untyped cast: a projection without
+ * it would have made this quietly answer "no" for everybody, which is the shape of
+ * bug that looks identical to a working guard.
+ */
+async function isWorker(row: { id: string }, ctx: AuthContext): Promise<boolean> {
+  const workers = await participantsFor(row.id);
+  return workers.some((worker) => worker.userId === ctx.userId);
+}
+
 async function isVisible(
-  row: Pick<JournalEntryRowRaw, "authorId" | "state" | "locationId" | "assigneeId" | "companyId">,
+  row: Pick<
+    JournalEntryRowRaw,
+    "id" | "authorId" | "state" | "locationId" | "assigneeId" | "companyId"
+  >,
   ctx: AuthContext,
   below?: Set<string>,
 ): Promise<boolean> {
@@ -284,6 +311,11 @@ async function isVisible(
   if (row.assigneeId && row.assigneeId === ctx.userId) return true;
   // A draft is private, even from a superadmin — it is unfinished, not hidden.
   if (row.state !== "submitted") return false;
+  // Somebody on "who worked on it" can open it. They are named on the entry as
+  // having done the work and are scored on it, so an entry they cannot read was a
+  // record of their own work kept from them — and it made logging that work
+  // impossible for anybody outside the reporting line.
+  if (await isWorker(row, ctx)) return true;
   // Location narrows; it never widens. Both the reporting line AND the site must
   // admit you, so managing the author is not enough to read a report from a plant
   // you cannot see.
@@ -512,6 +544,7 @@ export async function getReport(
   JournalEntry & {
     scores: JournalScore[];
     canChangeStatus: boolean;
+    canEdit: boolean;
     canReopen: boolean;
     canSeePointsHistory: boolean;
     myScoreTier: ScoreTier | null;
@@ -539,6 +572,9 @@ export async function getReport(
     // cannot evaluate without another call — and a screen that guesses will
     // eventually disagree with the API that decides.
     canChangeStatus: await mayDriveStatus(row, ctx),
+    // Resolved here, never inferred in the browser: the rule is about who holds the
+    // entry, and a screen that guessed would offer an Edit button that then 403s.
+    canEdit: mayEdit(row, ctx),
     // Whether this caller may re-open it — the author, or a manager above them who
     // holds reports:update. Mirrors `reopenReport`, so a manager can free a reviewed
     // report (a work log especially, which has no status dropdown) to be scored again.
@@ -1059,6 +1095,27 @@ async function completeLoggedTask(
  * (lockedAt) — the mark must not end up describing work that changed under it — so
  * an edit then is refused, and `reopen` is the deliberate, audited way back.
  */
+/**
+ * Who may edit an entry: **whoever holds it**.
+ *
+ * The author alone was wrong in both directions. After handing over, the person who
+ * let go of the work could still rewrite it, and the person actually doing it could
+ * not — so a handover moved the job without moving the ability to record it.
+ *
+ * With nobody holding it, the author may: an entry put down is still theirs to
+ * correct, and the alternative is a record nobody can touch.
+ *
+ * Their work items, their score and their place on "who worked on it" are untouched by
+ * this — letting go of an entry does not erase what you did on it.
+ */
+export function mayEdit(
+  row: Pick<JournalEntryRowRaw, "authorId" | "assigneeId">,
+  ctx: AuthContext,
+): boolean {
+  if (ctx.isSuperadmin) return true;
+  return row.assigneeId ? row.assigneeId === ctx.userId : row.authorId === ctx.userId;
+}
+
 /** Whether a status ends the ticket — the `isTerminal` flag the workflow already has. */
 async function isClosed(statusId: string | null): Promise<boolean> {
   if (!statusId) return false;
@@ -1072,8 +1129,14 @@ export async function updateReport(
   input: Record<string, unknown>,
 ): Promise<JournalEntry> {
   const row = await requireReport(id, ctx);
-  if (row.authorId !== ctx.userId) {
-    throw new AppError(403, ERROR_CODES.FORBIDDEN, "Only the author can edit a report");
+  if (!mayEdit(row, ctx)) {
+    throw new AppError(
+      403,
+      ERROR_CODES.FORBIDDEN,
+      row.assigneeId
+        ? "This entry is held by somebody else. It can only be edited by whoever it is assigned to."
+        : "Only the author can edit this entry",
+    );
   }
   if (row.lockedAt) {
     throw new AppError(
@@ -1607,4 +1670,138 @@ export async function myPoints(ctx: AuthContext): Promise<PointsSummary> {
   const { own, rollup } = await pointsFor(ctx.userId);
   const round = (n: number) => Math.round(n * 100) / 100;
   return { own: round(own), rollup: round(rollup), total: round(own + rollup) };
+}
+
+// --- the work timeline -------------------------------------------------------
+
+/**
+ * Who may add work to an entry: the people who worked it.
+ *
+ * Participants rather than the holder alone, because "I log the work along with my
+ * colleagues" is the ordinary case — two people on one job, each recording what they
+ * did. The holder is always among them (the author is added on filing, and a handover
+ * does not remove anybody), so this widens the list without letting a stranger write
+ * on somebody else's entry.
+ */
+async function assertMayLogWork(row: JournalEntryRowRaw, ctx: AuthContext): Promise<void> {
+  if (ctx.isSuperadmin) return;
+  const workers = await participantsFor(row.id);
+  const isWorker = workers.some((w) => w.userId === ctx.userId);
+  if (!isWorker && row.assigneeId !== ctx.userId && row.authorId !== ctx.userId) {
+    throw new AppError(
+      403,
+      ERROR_CODES.FORBIDDEN,
+      "Only somebody who worked this entry can log work against it",
+    );
+  }
+}
+
+/** Closed entries take no more work — the same rule the editor enforces. */
+async function assertOpenForWork(row: JournalEntryRowRaw): Promise<void> {
+  if (row.lockedAt) {
+    throw new AppError(
+      409,
+      ERROR_CODES.CONFLICT,
+      "This entry has been appraised and is locked. Re-open it to change anything.",
+    );
+  }
+  if (await isClosed(row.statusId)) {
+    throw new AppError(
+      409,
+      ERROR_CODES.CONFLICT,
+      "This entry is closed. Re-open it before logging any more work against it.",
+    );
+  }
+}
+
+function serializeWorkLog(row: WorkLogRow, ctx: AuthContext): WorkLog {
+  return {
+    id: row.id,
+    reportId: row.reportId,
+    userId: row.userId,
+    userName: row.userName,
+    summary: row.summary,
+    detail: row.detail,
+    startedAt: row.startedAt?.toISOString() ?? null,
+    finishedAt: row.finishedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    // Your own account of what you did is yours to correct; somebody else's is not
+    // yours to rewrite.
+    canEdit: ctx.isSuperadmin || row.userId === ctx.userId,
+  };
+}
+
+export async function listWorkLogs(id: string, ctx: AuthContext): Promise<WorkLog[]> {
+  const row = await requireReport(id, ctx);
+  await assertVisible(row, ctx);
+  return (await workLogsFor(id)).map((log) => serializeWorkLog(log, ctx));
+}
+
+export async function addWorkLog(
+  id: string,
+  input: CreateWorkLog,
+  ctx: AuthContext,
+): Promise<WorkLog> {
+  const row = await requireReport(id, ctx);
+  await assertVisible(row, ctx);
+  await assertMayLogWork(row, ctx);
+  await assertOpenForWork(row);
+
+  const logId = await insertWorkLog({
+    reportId: id,
+    userId: ctx.userId,
+    summary: input.summary.trim(),
+    detail: input.detail?.trim() || null,
+    startedAt: input.startedAt ? new Date(input.startedAt) : null,
+    finishedAt: input.finishedAt ? new Date(input.finishedAt) : null,
+  });
+  await refreshWorkRollup(id);
+
+  // Logging work is being on the job, so it puts you on the list of who worked it —
+  // otherwise a colleague's item would exist while the points split says they were
+  // never there.
+  await addAuthorAsParticipant(id, ctx.userId);
+
+  const created = await getWorkLog(logId);
+  return serializeWorkLog(created!, ctx);
+}
+
+export async function updateWorkLog(
+  logId: string,
+  input: UpdateWorkLog,
+  ctx: AuthContext,
+): Promise<WorkLog> {
+  const log = await getWorkLog(logId);
+  if (!log) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Work log not found");
+
+  const row = await requireReport(log.reportId, ctx);
+  await assertVisible(row, ctx);
+  await assertOpenForWork(row);
+  if (!ctx.isSuperadmin && log.userId !== ctx.userId) {
+    throw new AppError(403, ERROR_CODES.FORBIDDEN, "You can only edit your own work");
+  }
+
+  await updateWorkLogRow(logId, {
+    summary: input.summary.trim(),
+    detail: input.detail?.trim() || null,
+    startedAt: input.startedAt ? new Date(input.startedAt) : null,
+    finishedAt: input.finishedAt ? new Date(input.finishedAt) : null,
+  });
+  await refreshWorkRollup(log.reportId);
+  return serializeWorkLog((await getWorkLog(logId))!, ctx);
+}
+
+export async function removeWorkLog(logId: string, ctx: AuthContext): Promise<void> {
+  const log = await getWorkLog(logId);
+  if (!log) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Work log not found");
+
+  const row = await requireReport(log.reportId, ctx);
+  await assertVisible(row, ctx);
+  await assertOpenForWork(row);
+  if (!ctx.isSuperadmin && log.userId !== ctx.userId) {
+    throw new AppError(403, ERROR_CODES.FORBIDDEN, "You can only remove your own work");
+  }
+
+  await deleteWorkLogRow(logId);
+  await refreshWorkRollup(log.reportId);
 }

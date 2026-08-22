@@ -15,7 +15,10 @@ import {
   pendingAppraisalSchema,
   pointsSummarySchema,
   journalHandoverSchema,
+  createWorkLogSchema,
   journalParticipantSchema,
+  updateWorkLogSchema,
+  workLogSchema,
   journalScoreSchema,
   setParticipantsSchema,
   setScoresSchema,
@@ -311,6 +314,74 @@ export async function journalRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request) => journal.listHandovers(request.params.id, request.ctx!),
+  );
+
+  // --- the work timeline ---
+  app.get(
+    "/journal/:id/work",
+    {
+      preHandler: guard(PERMISSIONS.JOURNAL_READ),
+      schema: {
+        tags: ["Journal"],
+        summary: "What was done on this entry, item by item, oldest first",
+        params: idParams,
+        response: { 200: z.array(workLogSchema) },
+      },
+    },
+    async (request) => journal.listWorkLogs(request.params.id, request.ctx!),
+  );
+
+  app.post(
+    "/journal/:id/work",
+    {
+      preHandler: guard(PERMISSIONS.JOURNAL_READ),
+      schema: {
+        tags: ["Journal"],
+        summary: "Log a piece of work you did on this entry",
+        params: idParams,
+        body: createWorkLogSchema,
+        response: { 201: workLogSchema },
+      },
+    },
+    async (request, reply) => {
+      const log = await journal.addWorkLog(request.params.id, request.body, request.ctx!);
+      await recordAudit(request, request.ctx!, { action: "journal.work.log", after: log });
+      reply.status(201);
+      return log;
+    },
+  );
+
+  app.patch(
+    "/journal/work/:id",
+    {
+      preHandler: guard(PERMISSIONS.JOURNAL_READ),
+      schema: {
+        tags: ["Journal"],
+        summary: "Correct a piece of work you logged",
+        params: idParams,
+        body: updateWorkLogSchema,
+        response: { 200: workLogSchema },
+      },
+    },
+    async (request) => journal.updateWorkLog(request.params.id, request.body, request.ctx!),
+  );
+
+  app.delete(
+    "/journal/work/:id",
+    {
+      preHandler: guard(PERMISSIONS.JOURNAL_READ),
+      schema: {
+        tags: ["Journal"],
+        summary: "Remove a piece of work you logged",
+        params: idParams,
+        response: { 204: z.null() },
+      },
+    },
+    async (request, reply) => {
+      await journal.removeWorkLog(request.params.id, request.ctx!);
+      reply.status(204);
+      return null;
+    },
   );
 
   app.get(

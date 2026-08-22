@@ -886,3 +886,152 @@ describe("participants and scoring", () => {
     ).toBe(404);
   });
 });
+
+describe("the work timeline", () => {
+  it("records who did what and when, in the order it happened", async () => {
+    // One text field had nowhere to put a time and turned a second entry into a
+    // run-on paragraph. Each piece of work is its own row now.
+    const admin = await superadmin();
+    const { author, mate } = await buildTeam(admin);
+    const reportId = await fileReport(author.cookie);
+
+    const first = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+      summary: "Isolated the drive",
+      startedAt: "2026-08-22T08:40:00.000Z",
+      finishedAt: "2026-08-22T09:10:00.000Z",
+    });
+    expect(first.statusCode).toBe(201);
+
+    // The holder puts their colleague on the entry — which is also what lets that
+    // colleague open it at all.
+    await inject("PUT", `/journal/${reportId}/participants`, author.cookie, {
+      participants: [{ userId: mate.id }],
+    });
+
+    // The colleague logs their own, and it belongs to them rather than to the author.
+    const second = await inject("POST", `/journal/${reportId}/work`, mate.cookie, {
+      summary: "Fitted the replacement belt",
+      detail: "Spare from the east store.",
+      startedAt: "2026-08-22T11:15:00.000Z",
+    });
+    expect(second.statusCode).toBe(201);
+    expect(second.json().userName).toBe("Mo Operator");
+
+    const timeline = (await inject("GET", `/journal/${reportId}/work`, author.cookie)).json();
+    expect(timeline.map((w: { summary: string }) => w.summary)).toEqual([
+      "Isolated the drive",
+      "Fitted the replacement belt",
+    ]);
+    expect(timeline[0].startedAt).toBe("2026-08-22T08:40:00.000Z");
+
+    // Logging work puts you on "who worked on it": a colleague's item must not exist
+    // while the points split says they were never there.
+    const workers = (
+      await inject("GET", `/journal/${reportId}/participants`, author.cookie)
+    ).json();
+    expect(workers.map((w: { userId: string }) => w.userId)).toContain(mate.id);
+
+    // The entry's own summary follows the newest item, so the reports keep working.
+    expect((await inject("GET", `/journal/${reportId}`, author.cookie)).json().workSummary).toBe(
+      "Fitted the replacement belt",
+    );
+  });
+
+  it("lets you correct your own work and nobody else's", async () => {
+    const admin = await superadmin();
+    const { author, mate } = await buildTeam(admin);
+    const reportId = await fileReport(author.cookie);
+    const mine = (
+      await inject("POST", `/journal/${reportId}/work`, author.cookie, { summary: "Swapped it" })
+    ).json();
+
+    expect(mine.canEdit).toBe(true);
+    const fixed = await inject("PATCH", `/journal/work/${mine.id}`, author.cookie, {
+      summary: "Swapped the drive belt",
+    });
+    expect(fixed.statusCode).toBe(200);
+
+    // Somebody else's account of what they did is not yours to rewrite — even once
+    // they are on the entry and can read every word of it.
+    await inject("PUT", `/journal/${reportId}/participants`, author.cookie, {
+      participants: [{ userId: mate.id }],
+    });
+    const refused = await inject("PATCH", `/journal/work/${mine.id}`, mate.cookie, {
+      summary: "Actually I did it",
+    });
+    expect(refused.statusCode).toBe(403);
+  });
+
+  it("refuses work from somebody who had no hand in it, and on a closed entry", async () => {
+    const admin = await superadmin();
+    const { author, outsider } = await buildTeam(admin);
+    const reportId = await fileReport(author.cookie);
+
+    // 404 rather than 403: an entry outside their line and their departments is not
+    // theirs to know about, and a "forbidden" would confirm it exists.
+    expect(
+      (await inject("POST", `/journal/${reportId}/work`, outsider.cookie, { summary: "Hello" }))
+        .statusCode,
+    ).toBe(404);
+
+    const statuses = (await inject("GET", "/journal-statuses", author.cookie)).json();
+    const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
+    await inject("PATCH", `/journal/${reportId}/status`, author.cookie, { statusId: resolved.id });
+
+    const closed = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+      summary: "One more thing",
+    });
+    expect(closed.statusCode).toBe(409);
+  });
+
+  it("empties the roll-up when the last item is removed", async () => {
+    const admin = await superadmin();
+    const { author } = await buildTeam(admin);
+    const reportId = await fileReport(author.cookie);
+    const log = (
+      await inject("POST", `/journal/${reportId}/work`, author.cookie, { summary: "Did a thing" })
+    ).json();
+
+    await inject("DELETE", `/journal/work/${log.id}`, author.cookie);
+
+    // Not left holding the words of an item that no longer exists.
+    expect(
+      (await inject("GET", `/journal/${reportId}`, author.cookie)).json().workSummary,
+    ).toBeNull();
+  });
+});
+
+describe("who may edit an entry", () => {
+  it("follows whoever holds it, not whoever filed it", async () => {
+    // The bug: after handing over, the person who let go could still rewrite the
+    // entry, and the person actually doing the work could not.
+    const admin = await superadmin();
+    const { author, mate } = await buildTeam(admin);
+    const reportId = await fileReport(author.cookie);
+
+    // While they hold it, the author edits it.
+    expect(
+      (await inject("PATCH", `/journal/${reportId}`, author.cookie, { title: "Belt snapped" }))
+        .statusCode,
+    ).toBe(200);
+
+    await inject("POST", `/journal/${reportId}/assign`, author.cookie, { assigneeId: mate.id });
+
+    // Now it is Mo's, and Sam is out.
+    expect(
+      (await inject("PATCH", `/journal/${reportId}`, author.cookie, { title: "Mine again" }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await inject("PATCH", `/journal/${reportId}`, mate.cookie, { title: "Belt replaced" }))
+        .statusCode,
+    ).toBe(200);
+
+    // Put down by nobody: it falls back to the author, or the entry would be frozen.
+    await inject("POST", `/journal/${reportId}/assign`, mate.cookie, { assigneeId: null });
+    expect(
+      (await inject("PATCH", `/journal/${reportId}`, author.cookie, { title: "Back to me" }))
+        .statusCode,
+    ).toBe(200);
+  });
+});

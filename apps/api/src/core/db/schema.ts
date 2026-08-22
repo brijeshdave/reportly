@@ -728,6 +728,40 @@ export const journalHandovers = pgTable(
 );
 
 /**
+ * What was actually done, item by item, in the order it happened.
+ *
+ * A journal entry has one pair of `work_summary`/`work_detail` columns, which is fine
+ * for "here is what I did" and useless for a job worked over two shifts by three
+ * people: one text field has nowhere to put a *time*, and appending to it turns a
+ * record into a run-on paragraph. So the work is its own rows.
+ *
+ * `user_id` is who did the work, not who typed it — a colleague's item belongs to
+ * them, and is theirs to correct. `started_at`/`finished_at` are when the work
+ * happened; `created_at` is when it was written down, which is often later and is a
+ * different fact.
+ */
+export const journalWorkLogs = pgTable(
+  "journal_work_logs",
+  {
+    id: idPk(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => journalEntries.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    summary: text("summary").notNull(),
+    detail: text("detail"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  // Ordered by when the work happened, falling back to when it was written: an item
+  // logged without times still has a place in the timeline.
+  (t) => [index("work_logs_report_idx").on(t.reportId, t.startedAt, t.createdAt)],
+);
+
+/**
  * The frozen points ledger — immutable award rows, like bank transactions. Each
  * worker is credited their *official* score (kind = direct); every manager above
  * them earns a decaying share of it (kind = rollup, depth = how far above). Rows

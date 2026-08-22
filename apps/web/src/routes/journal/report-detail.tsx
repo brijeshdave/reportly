@@ -27,11 +27,15 @@ import {
   fetchReport,
   rejectReport,
   reopenReport,
+  addWorkLog,
+  fetchWorkLogs,
+  removeWorkLog,
   setScores,
   unrejectReport,
-  updateReport,
+  updateWorkLog,
 } from "@/services/journal.js";
 import type { JournalEntryDetail } from "@/services/journal.js";
+import type { CreateWorkLog, WorkLog } from "@reportly/shared";
 import { CommentsPanel } from "@/components/comments-panel.js";
 import { StatusBadge } from "@/components/report-badges.js";
 import { TagList } from "@/components/tag-chip.js";
@@ -150,7 +154,10 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
                 <Lock className="h-3 w-3" /> locked
               </Badge>
             ) : null}
-            {isAuthor && !locked ? (
+            {/* Whoever holds it, not whoever filed it: after a handover the person
+                who let go can no longer edit, and the person doing the work can. The
+                server decides — this only avoids showing a button that would 403. */}
+            {r.canEdit && !locked ? (
               <Button
                 size="sm"
                 variant="secondary"
@@ -321,17 +328,10 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
                 ]}
               />
             ) : null}
-            <Prose
-              blocks={[
-                ["Work summary", r.workSummary],
-                ["Work detail", r.workDetail],
-              ]}
-            />
-
             {/* Logging the work is its own act, done here rather than by reopening the
                 whole entry: an issue is raised when it happens and worked afterwards,
                 sometimes by somebody reading it on the next shift. */}
-            <LogWorkPanel report={r} isAuthor={isAuthor} locked={locked} />
+            <WorkTimeline report={r} />
 
             {/* Evidence of the work sits with the work, in the wider column: files
               want room for thumbnails and downtime is a small table. Both used to
@@ -423,72 +423,177 @@ function Prose({ blocks }: { blocks: [string, string | null][] }) {
  * field bound to a round trip would otherwise reset mid-number.
  */
 /**
- * Add what was done, after the entry was filed.
+ * What was done, item by item, in the order it happened.
  *
- * Deliberately not available once the entry is **closed**: the ticket is finished, and
- * a finished record that still accepts "what was done" is one that can be rewritten
- * after everybody has stopped looking. Re-opening is the way back, and that move is
- * logged. The API refuses it too — this only avoids offering a form that would 409.
+ * This replaced a single "Log work" that appended into the entry's one work field.
+ * That had nowhere to put a *when*, and a second entry was glued onto the first — so
+ * a job worked over two shifts read as one run-on paragraph belonging to nobody in
+ * particular. Each item now carries who did it and the hours it took.
+ *
+ * Anybody on "who worked on it" may add their own; only its author may change it.
+ * A closed entry takes no more — the API refuses it too, so this only avoids offering
+ * a form that would 409.
  */
-function LogWorkPanel({
-  report,
-  isAuthor,
-  locked,
-}: {
-  report: JournalEntryDetail;
-  isAuthor: boolean;
-  locked: boolean;
-}) {
+function WorkTimeline({ report }: { report: JournalEntryDetail }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [summary, setSummary] = useState("");
-  const [detail, setDetail] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
 
-  const save = useMutation({
-    mutationFn: () =>
-      updateReport(report.id, {
-        // Appended, not replaced: somebody logging the second visit should not have
-        // to retype the first, and silently overwriting it would lose a record.
-        workSummary: [report.workSummary, summary.trim()].filter(Boolean).join(" · "),
-        workDetail: [report.workDetail, detail.trim()].filter(Boolean).join("\n\n"),
-      }),
-    onSuccess: async () => {
-      setSummary("");
-      setDetail("");
-      setOpen(false);
-      await queryClient.invalidateQueries({ queryKey: ["reports", report.id] });
-    },
+  const logs = useQuery({
+    queryKey: ["reports", report.id, "work"],
+    queryFn: () => fetchWorkLogs(report.id),
   });
 
-  if (!isAuthor || locked) return null;
+  const closed = report.statusIsTerminal || Boolean(report.lockedAt);
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["reports", report.id] });
+    await queryClient.invalidateQueries({ queryKey: ["reports", report.id, "work"] });
+  };
 
-  if (report.statusIsTerminal) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        This entry is closed. Re-open it to log any more work against it.
-      </p>
-    );
-  }
+  const items = logs.data ?? [];
 
-  if (!open) {
-    return (
-      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-        <Wrench className="h-4 w-4" />
-        Log work
-      </Button>
-    );
-  }
+  return (
+    <Card className="flex flex-col gap-3 p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Wrench className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Work done</h2>
+        </div>
+        {!closed && !open && editing === null ? (
+          <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+            Log work
+          </Button>
+        ) : null}
+      </div>
+
+      {logs.isLoading ? <Spinner /> : null}
+
+      {items.length === 0 && !logs.isLoading ? (
+        <p className="text-sm text-muted-foreground">
+          {closed
+            ? "No work was logged against this entry."
+            : "Nothing logged yet. Add what you did, and when — the next person reads this."}
+        </p>
+      ) : null}
+
+      <ol className="flex flex-col gap-3">
+        {items.map((item) =>
+          editing === item.id ? (
+            <li key={item.id}>
+              <WorkForm
+                initial={item}
+                onCancel={() => setEditing(null)}
+                onSaved={async () => {
+                  setEditing(null);
+                  await refresh();
+                }}
+                save={(input) => updateWorkLog(item.id, input)}
+              />
+            </li>
+          ) : (
+            <li key={item.id} className="border-l-2 border-border pl-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-medium">{item.summary}</span>
+                <span className="text-xs text-muted-foreground">{workWhen(item)}</span>
+              </div>
+              {item.detail ? (
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground">{item.detail}</p>
+              ) : null}
+              <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                <span>{item.userName}</span>
+                {item.canEdit && !closed ? (
+                  <>
+                    <button
+                      type="button"
+                      className="underline underline-offset-2 hover:text-foreground"
+                      onClick={() => setEditing(item.id)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="underline underline-offset-2 hover:text-destructive"
+                      onClick={async () => {
+                        await removeWorkLog(item.id);
+                        await refresh();
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </li>
+          ),
+        )}
+      </ol>
+
+      {open ? (
+        <WorkForm
+          onCancel={() => setOpen(false)}
+          onSaved={async () => {
+            setOpen(false);
+            await refresh();
+          }}
+          save={(input) => addWorkLog(report.id, input)}
+        />
+      ) : null}
+
+      {closed && items.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          This entry is closed. Re-open it to log any more work against it.
+        </p>
+      ) : null}
+    </Card>
+  );
+}
+
+/** "22 Aug 08:40–09:10", or the day it was written when no times were given. */
+function workWhen(item: WorkLog): string {
+  if (!item.startedAt) return `logged ${formatDateTime(item.createdAt)}`;
+  const start = formatDateTime(item.startedAt);
+  if (!item.finishedAt) return start;
+  return `${start} – ${formatDateTime(item.finishedAt).split(" ").slice(-1)[0]}`;
+}
+
+/** One work item being written or corrected. Times are optional but asked for. */
+function WorkForm({
+  initial,
+  save,
+  onSaved,
+  onCancel,
+}: {
+  initial?: WorkLog;
+  save: (input: CreateWorkLog) => Promise<unknown>;
+  onSaved: () => Promise<void> | void;
+  onCancel: () => void;
+}) {
+  const [summary, setSummary] = useState(initial?.summary ?? "");
+  const [detail, setDetail] = useState(initial?.detail ?? "");
+  const [startedAt, setStartedAt] = useState(toLocalInput(initial?.startedAt));
+  const [finishedAt, setFinishedAt] = useState(toLocalInput(initial?.finishedAt));
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      save({
+        summary: summary.trim(),
+        detail: detail.trim() || undefined,
+        startedAt: fromLocalInput(startedAt),
+        finishedAt: fromLocalInput(finishedAt),
+      }),
+    onSuccess: onSaved,
+  });
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border p-4">
-      {save.error ? <ErrorAlert error={save.error} /> : null}
+      {mutation.error ? <ErrorAlert error={mutation.error} /> : null}
       <Field label="What you did">
         {(props) => (
           <Input
             {...props}
             value={summary}
             onChange={(event) => setSummary(event.target.value)}
-            placeholder="e.g. Replaced the drive belt"
+            placeholder="e.g. Fitted the replacement belt"
           />
         )}
       </Field>
@@ -502,20 +607,50 @@ function LogWorkPanel({
           />
         )}
       </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Started</span>
+          <Input
+            type="datetime-local"
+            value={startedAt}
+            onChange={(event) => setStartedAt(event.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Finished</span>
+          <Input
+            type="datetime-local"
+            value={finishedAt}
+            onChange={(event) => setFinishedAt(event.target.value)}
+          />
+        </label>
+      </div>
       <div className="flex justify-end gap-2">
-        <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>
+        <Button size="sm" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
         <Button
           size="sm"
-          disabled={save.isPending || summary.trim() === ""}
-          onClick={() => save.mutate()}
+          disabled={mutation.isPending || summary.trim() === ""}
+          onClick={() => mutation.mutate()}
         >
           Save
         </Button>
       </div>
     </div>
   );
+}
+
+/** ISO → the value a `datetime-local` input wants, in the reader's own timezone. */
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function fromLocalInput(value: string): string | undefined {
+  return value ? new Date(value).toISOString() : undefined;
 }
 
 function ScoringPanel({ report, isAuthor }: { report: JournalEntryDetail; isAuthor: boolean }) {

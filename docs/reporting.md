@@ -40,11 +40,21 @@ Only the **title** is required to save. Everything else is there when it helps.
 
 ### Logging the work afterwards
 
-Open the entry and use **Log work**. It **adds** to what is already recorded rather
-than replacing it, so somebody logging a second visit does not have to retype the
-first.
+Open the entry and use **Log work**. Each piece of work is its own item, with **who
+did it and when** — start and finish times, both optional but worth filling in. A job
+worked over two shifts by three people reads as what it was:
 
-**A closed entry will not take new work.** That is deliberate and separate from the
+> 08:40 – 09:10 Ravi — Isolated the drive
+> 11:15 Mo — Fitted the replacement belt
+
+**Colleagues log their own.** Anybody on **who worked on it** can add an item, and it
+belongs to them: you can correct your own, and nobody can rewrite yours. Adding
+somebody to _who worked on it_ is also what lets them open the entry at all.
+
+The entry's own work summary follows the newest item, so the reports and exports carry
+on reading one line.
+
+**A closed entry will not take new work**, and neither will a locked one. That is deliberate and separate from the
 appraisal lock, which comes later: a finished record that still accepts "what was
 done" is one that can be rewritten after everyone has stopped looking. **Re-open** it
 if there is more to say — that move is recorded, which is the point of making it the
@@ -259,6 +269,10 @@ A report records **who filed it** and, separately, **who is holding it now**.
   picks it up, and pretending otherwise would make people pick a name at random.
 - Every change is kept: the panel lists who took it, from whom, who moved it and
   why. That trail cannot be edited or deleted.
+- **Handing over moves the right to edit.** The entry can be edited by whoever holds
+  it — not by whoever filed it — so passing it on passes on the ability to correct it.
+  With the entry put down and held by nobody, the author may edit it again. What you
+  logged, your score and your place on _who worked on it_ stay yours either way.
 
 ## Who worked on it
 

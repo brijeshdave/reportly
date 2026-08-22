@@ -6,6 +6,8 @@
 import type {
   AwaitingReview,
   CreateJournalEntry,
+  CreateWorkLog,
+  WorkLog,
   PendingAppraisal,
   PointsSummary,
   JournalEntry,
@@ -20,6 +22,8 @@ import { http } from "@/services/http.js";
 export type JournalEntryDetail = JournalEntry & {
   scores: JournalScore[];
   canChangeStatus: boolean;
+  /** Whether you may edit it — follows whoever holds the entry, not who filed it. */
+  canEdit: boolean;
   /** Whether this caller may re-open it (clearing its scores). */
   canReopen: boolean;
   /** Whether this caller may see the points-change history (blind upward, like the review). */
@@ -48,6 +52,23 @@ export function createReport(input: CreateJournalEntry): Promise<JournalEntry> {
  */
 export function changeReportStatus(id: string, statusId: string | null): Promise<JournalEntry> {
   return http.patch<JournalEntry>(`/journal/${id}/status`, { statusId });
+}
+
+/** What was done on an entry, oldest first. */
+export function fetchWorkLogs(reportId: string): Promise<WorkLog[]> {
+  return http.get<WorkLog[]>(`/journal/${reportId}/work`);
+}
+
+export function addWorkLog(reportId: string, input: CreateWorkLog): Promise<WorkLog> {
+  return http.post<WorkLog>(`/journal/${reportId}/work`, input);
+}
+
+export function updateWorkLog(logId: string, input: CreateWorkLog): Promise<WorkLog> {
+  return http.patch<WorkLog>(`/journal/work/${logId}`, input);
+}
+
+export function removeWorkLog(logId: string): Promise<void> {
+  return http.delete<void>(`/journal/work/${logId}`);
 }
 
 export function updateReport(id: string, input: UpdateJournalEntry): Promise<JournalEntry> {
