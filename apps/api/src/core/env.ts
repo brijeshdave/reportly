@@ -163,6 +163,20 @@ export const envSchema = z.object({
       "Set `true` to allow `cli restore:dev` to wipe this database and load a " +
         "production backup into it. Development machines only.",
     ),
+  /**
+   * Whether `cli seed:activity` may write invented work into this database.
+   *
+   * Its own flag rather than sharing ALLOW_DEV_RESTORE: one wipes a database and
+   * loads a backup, the other writes fiction into the one already there. Somebody
+   * who has allowed the first has not thereby allowed the second.
+   */
+  ALLOW_DEV_SEED: z
+    .enum(["true", "false"])
+    .default("false")
+    .describe(
+      "Set `true` to allow `cli seed:activity` to generate demo journal entries, " +
+        "tasks, rotas and points in this database. Development machines only.",
+    ),
   QUEUE_ADMIN: z
     .enum(QUEUE_ADMIN_MODES)
     .default("off")

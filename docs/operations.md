@@ -26,6 +26,7 @@ not the container name.
 | `cli reset-superadmin`  | Prints a new random superadmin password, once. `--password-stdin` sets a chosen one.        |
 | `cli reset-2fa <email>` | Removes an account's two-factor enrolment and signs it out everywhere.                      |
 | `cli storage:migrate`   | Moves attachments onto the configured backend. `--dry-run` reports without moving.          |
+| `cli seed:activity`     | Fills a date range with demo work on top of the master data already here. Development only. |
 
 ```bash
 pnpm --filter @reportly/api cli migrate
@@ -171,6 +172,47 @@ confirmation phrase is typed. Then, in the same transaction as the restore:
 
 Add `--logs <dump>` to restore the log database too; without it your development
 logs are left alone.
+
+### Filling a copy with something to look at
+
+A restored copy has your real people, departments, shifts and machines — and, if the
+production data is young, very little _work_ to show. Every report opens empty, which
+looks like a bug and is not one.
+
+```bash
+ALLOW_DEV_SEED=true pnpm --filter @reportly/api cli seed:activity --months 2
+```
+
+It generates journal entries and their status trail, scores and the points ledger,
+downtime, tasks, routine completions and a published rota per month — **on top of the
+master data already there, which it never touches.**
+
+| Flag                            |                                                    |
+| ------------------------------- | -------------------------------------------------- |
+| `--months N`                    | the N months ending today (default 2)              |
+| `--from` / `--to`               | an explicit range, `YYYY-MM-DD`                    |
+| `--volume light｜normal｜heavy` | roughly 1, 3 or 6 entries per person per week      |
+| `--seed N`                      | reproduce an earlier run exactly                   |
+| `--dry-run`                     | print what the master data supports, write nothing |
+| `--purge`                       | remove everything a previous run wrote             |
+
+**It prints what it can and cannot generate before writing**, per department — a
+department with nobody in it cannot file anything, one with no devices has no
+downtime. That summary is worth a `--dry-run` on its own.
+
+The shape is deliberate: weekdays carry most of the work, one week is a bad week on
+one machine so reliability visibly dips, and a few entries are left open at the end so
+Reviews is not empty. Every row is marked, and `--purge` matches on that mark — so
+anything **you** typed while looking at the demo data survives it.
+
+Guarded like `restore:dev`: `ALLOW_DEV_SEED=true` must be set, `NODE_ENV=production`
+is refused outright, and a `DATABASE_URL` pointing anywhere but this machine is
+refused too.
+
+> **One simplification worth knowing.** A department's entries are all filed against
+> the first site its people work at. A department spread across three plants will look
+> more concentrated than it really is, which matters if you are checking the
+> location-scoping of a report specifically.
 
 **What it does about notifications.** Every channel except the in-app bell is
 switched off, in both places that decide: the app-wide delivery setting and each

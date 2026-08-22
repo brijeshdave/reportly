@@ -27,6 +27,7 @@ import { seedDemoData } from "@/core/db/seed/demo.js";
 import { seedDatabase } from "@/core/db/seed/index.js";
 import { env } from "@/core/env.js";
 import { runLogMigrations } from "@/core/logdb/migrate.js";
+import { runSeedActivity } from "@/cli/seed-activity.js";
 import { closeNotificationQueue } from "@/core/queue/notifications.js";
 import { redis } from "@/core/redis.js";
 import { runDatabaseBackup } from "@/features/backups/service.js";
@@ -37,7 +38,9 @@ const USAGE =
   "Usage: cli <migrate|seed|reset-superadmin [--password-stdin]|reset-2fa <email>|" +
   "storage:migrate [--dry-run]|doctor|backup:database|" +
   "restore:dev --file <dump> [--logs <dump>] --confirm <phrase>|" +
-  "seed:demo|seed:demo-cartridges [companyId]>";
+  "seed:demo|seed:demo-cartridges [companyId]|" +
+  "seed:activity [--from YYYY-MM-DD --to YYYY-MM-DD | --months N] " +
+  "[--volume light|normal|heavy] [--seed N] [--dry-run] [--purge]>";
 
 /** `--flag value` out of argv, for the few commands that take one. */
 function flag(name: string): string | undefined {
@@ -241,6 +244,24 @@ async function main(): Promise<void> {
         );
       } else {
         console.error(`\nDatabase backup FAILED: ${backup.error ?? "unknown error"}\n`);
+        process.exitCode = 1;
+      }
+      break;
+    }
+    case "seed:activity": {
+      try {
+        await runSeedActivity({
+          from: flag("from"),
+          to: flag("to"),
+          months: flag("months"),
+          volume: flag("volume"),
+          seed: flag("seed"),
+          dryRun: process.argv.includes("--dry-run"),
+          purge: process.argv.includes("--purge"),
+        });
+      } catch (err) {
+        // The refusals are the point, so they read as instructions, not a trace.
+        console.error(`\n${err instanceof Error ? err.message : String(err)}\n`);
         process.exitCode = 1;
       }
       break;

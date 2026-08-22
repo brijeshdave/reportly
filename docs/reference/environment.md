@@ -31,6 +31,7 @@ to start when a required variable is missing or malformed.
 | `PG_DUMP_CMD` | no | `pg_dump` | Command (argv, space-split) used to run pg_dump for backups. |
 | `PG_RESTORE_CMD` | no | `pg_restore` | Command (argv, space-split) used to run pg_restore for restores. |
 | `ALLOW_DEV_RESTORE` | no | `false` | Set `true` to allow `cli restore:dev` to wipe this database and load a production backup into it. Development machines only. |
+| `ALLOW_DEV_SEED` | no | `false` | Set `true` to allow `cli seed:activity` to generate demo journal entries, tasks, rotas and points in this database. Development machines only. |
 | `QUEUE_ADMIN` | no | `off` | Queue management: `off` (default, routes not mounted), `read` (view only), or `manage` (retry, remove, pause, clean). |
 | `REDIS_URL` | no | `redis://localhost:6379` | Redis for sessions, caches, rate limits and the job queue. The `/N` db index is honoured. |
 | `BETTER_AUTH_SECRET` | no | `dev-only-insecure-secret-change-me` | Signs sessions and cookies. **Must** be replaced in every real environment. |

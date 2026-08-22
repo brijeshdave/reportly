@@ -109,6 +109,17 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`cli seed:activity` — demo work across a date range, on your own master data.** A
+  restored development copy has the real people, departments and machines but often
+  little work to show, so every report opens empty and looks broken. This fills a
+  range you name with journal entries and their status trail, scores, points,
+  downtime, tasks, routine completions and a published rota — **without touching
+  master data**. It prints what each department can and cannot support before writing
+  anything, the shape is deliberate rather than uniform (weekday-biased, one bad week
+  on one machine, some entries left open), and `--purge` removes exactly what it wrote
+  and nothing you typed. Guarded like `restore:dev`: `ALLOW_DEV_SEED=true`, never with
+  `NODE_ENV=production`, never against a non-local database.
+
 - **The month roster exports** to Excel or a printable A4 **landscape** page — which
   is also how a PDF is made: open it and print to PDF, rather than carrying a headless
   browser in the server image. Both carry the shift colours and are stamped
