@@ -116,11 +116,23 @@ function createAuth(oauthConfigs: OAuthConfigs, settings: AuthSettings) {
       storage: "secondary-storage",
       window: 60,
       max: 100,
-      // The credential doors are **not** here any more: sign-in, forgot-password and
-      // TOTP are counted by `core/auth/login-throttle.ts`, which keys on the account
-      // as well as the address. Two limiters on one path would double-count, and this
-      // one cannot see a username — which is the whole problem it was causing.
+      // The credential doors are counted by `core/auth/login-throttle.ts` instead,
+      // which keys on the account as well as the address. Two limiters on one path
+      // would double-count, and this one cannot see a username — the whole problem
+      // it was causing.
+      //
+      // `false` **switches this limiter off** for those paths, and saying so is not
+      // optional: simply leaving them out does not make them unlimited, it drops
+      // them onto better-auth's own built-in rule of **3 requests per 10 seconds
+      // per IP** for anything beginning `/sign-in` — stricter than the rule it
+      // replaced, and IP-keyed, which is the fault we are fixing. Omitting these
+      // entries broke three sign-ins in a row in the e2e suite, and would have
+      // locked out an office faster than before.
       customRules: {
+        "/sign-in/email": false,
+        "/sign-in/username": false,
+        "/forget-password": false,
+        "/two-factor/verify-totp": false,
         "/sign-up/email": { window: 60, max: 5 },
       },
     },

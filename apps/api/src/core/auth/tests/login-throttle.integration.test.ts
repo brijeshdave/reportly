@@ -10,7 +10,8 @@ import { AUTH_RATE_LIMIT } from "@reportly/shared";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  consumeLoginAttempt,
+  assertNotLockedOut,
+  recordFailure,
   release,
   throttleKey,
   throttleState,
@@ -30,10 +31,10 @@ beforeEach(async () => {
   await setSystemSetting(AUTH_RATE_LIMIT, { signInMax: 3, signInWindowSeconds: 60 });
 });
 
-/** Spend the allowance for one identity at one address. */
+/** Fail sign-in enough times to spend the allowance. */
 async function exhaust(identity: string, ip: string): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await consumeLoginAttempt(identity, ip, "sign-in");
+    await recordFailure(identity, ip, "sign-in");
   }
 }
 
@@ -43,14 +44,12 @@ describe("the sign-in throttle", () => {
     const ip = "203.0.113.7";
     await exhaust("banti.patel", ip);
 
-    await expect(consumeLoginAttempt("banti.patel", ip, "sign-in")).rejects.toMatchObject({
+    await expect(assertNotLockedOut("banti.patel", ip, "sign-in")).rejects.toMatchObject({
       statusCode: 429,
     });
 
     // Their colleague, on the same address, is unaffected.
-    await expect(consumeLoginAttempt("shakil.pathan", ip, "sign-in")).resolves.toMatchObject({
-      locked: false,
-    });
+    await expect(assertNotLockedOut("shakil.pathan", ip, "sign-in")).resolves.toBeUndefined();
   });
 
   it("still counts per address, so one username cannot be attacked from everywhere", async () => {
@@ -58,15 +57,15 @@ describe("the sign-in throttle", () => {
     // enough to lock them out from anywhere — a nuisance turned into a weapon.
     await exhaust("banti.patel", "203.0.113.7");
     await expect(
-      consumeLoginAttempt("banti.patel", "198.51.100.9", "sign-in"),
-    ).resolves.toMatchObject({ locked: false });
+      assertNotLockedOut("banti.patel", "198.51.100.9", "sign-in"),
+    ).resolves.toBeUndefined();
   });
 
   it("treats one person's name as one allowance whatever the capitalisation", async () => {
     await exhaust("Banti.Patel", "203.0.113.7");
-    await expect(
-      consumeLoginAttempt("banti.patel", "203.0.113.7", "sign-in"),
-    ).rejects.toMatchObject({ statusCode: 429 });
+    await expect(assertNotLockedOut("banti.patel", "203.0.113.7", "sign-in")).rejects.toMatchObject(
+      { statusCode: 429 },
+    );
   });
 
   it("reports the lock so an administrator can see it", async () => {
@@ -81,15 +80,13 @@ describe("the sign-in throttle", () => {
     const ip = "203.0.113.7";
     await exhaust("banti.patel", ip);
     // Locked out, they try the password-reset door too, as people do.
-    await consumeLoginAttempt("banti.patel", ip, "password-reset");
+    await recordFailure("banti.patel", ip, "password-reset");
 
     const cleared = await release("banti.patel");
     expect(cleared).toBeGreaterThanOrEqual(2);
 
     expect((await throttleState("banti.patel")).locked).toBe(false);
-    await expect(consumeLoginAttempt("banti.patel", ip, "sign-in")).resolves.toMatchObject({
-      locked: false,
-    });
+    await expect(assertNotLockedOut("banti.patel", ip, "sign-in")).resolves.toBeUndefined();
   });
 
   it("releases by address as well, for a site locked out behind one gateway", async () => {
@@ -101,12 +98,23 @@ describe("the sign-in throttle", () => {
     expect((await throttleState("shakil.pathan")).locked).toBe(false);
   });
 
+  it("does not count a sign-in that succeeds", async () => {
+    // The flaw in the first version of this: it counted every attempt, so somebody
+    // signing in from a second tab and a phone inside a minute was refused while
+    // typing the right password — the very complaint it was written to fix.
+    const ip = "203.0.113.7";
+    for (let signIn = 0; signIn < 10; signIn += 1) {
+      await expect(assertNotLockedOut("banti.patel", ip, "sign-in")).resolves.toBeUndefined();
+    }
+    expect((await throttleState("banti.patel")).locked).toBe(false);
+  });
+
   it("lets the request through when Redis cannot be reached", async () => {
     // Failing closed would turn a cache outage into an installation nobody can enter.
     const key = throttleKey("banti.patel", "203.0.113.7", "sign-in");
     await redis.set(key, "not-a-number");
     await expect(
-      consumeLoginAttempt("banti.patel", "203.0.113.7", "sign-in"),
-    ).resolves.toBeDefined();
+      assertNotLockedOut("banti.patel", "203.0.113.7", "sign-in"),
+    ).resolves.toBeUndefined();
   });
 });

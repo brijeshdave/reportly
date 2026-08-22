@@ -16,8 +16,9 @@ import { buildAuthContext, hasCompanyAccess } from "@/core/auth/context.js";
 import { isUserActive, mustChangePassword } from "@/core/auth/account-status.js";
 import {
   THROTTLED_PATHS,
+  assertNotLockedOut,
   clearOnSuccess,
-  consumeLoginAttempt,
+  recordFailure,
 } from "@/core/auth/login-throttle.js";
 import { isSuperadmin } from "@/core/auth/context.js";
 import { twoFactorRequirement, type TwoFactorRequirement } from "@/core/auth/two-factor-policy.js";
@@ -181,9 +182,10 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       const path = request.url.slice(AUTH_BASE_PATH.length).split("?")[0] ?? "";
       const door = THROTTLED_PATHS[path];
       const identity = identityFrom(request.body);
-      if (door && env.NODE_ENV !== "test") {
+      const throttled = Boolean(door) && env.NODE_ENV !== "test";
+      if (throttled) {
         try {
-          await consumeLoginAttempt(identity, request.ip, door);
+          await assertNotLockedOut(identity, request.ip, door!);
         } catch (error) {
           // Recorded before it is refused, so "why could I not sign in?" has an
           // answer in the audit trail rather than only in somebody's memory.
@@ -195,9 +197,18 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       const response = await getAuth().handler(toWebRequest(request));
       const body = await response.text();
 
-      // Proving who you are ends the count: a success is not an attack, and the next
-      // person on that machine should not inherit somebody else's failures.
-      if (door && response.status < 400) void clearOnSuccess(identity, request.ip);
+      if (throttled) {
+        if (response.status >= 400) {
+          // Only a refusal counts. A lockout defends against guessing, and a correct
+          // password is not a guess — counting every attempt locked people out while
+          // they were typing the right one.
+          void recordFailure(identity, request.ip, door!);
+        } else {
+          // Proving who you are ends the count, so yesterday's typos do not follow
+          // somebody into today.
+          void clearOnSuccess(identity, request.ip);
+        }
+      }
 
       // Record auth activity with full request context (never blocks the response).
       const subPath = request.url.slice(AUTH_BASE_PATH.length).split("?")[0] ?? "";

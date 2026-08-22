@@ -123,48 +123,67 @@ export async function release(identityOrIp: string): Promise<number> {
 }
 
 /**
- * Count one attempt, and refuse it when the allowance is spent.
+ * Refuse the attempt when the allowance is already spent — **without counting it**.
  *
- * Returns the state so the caller can record what happened; throws 429 when the door
- * is shut, with `Retry-After` in the message because "try later" without a number is
- * an instruction nobody can follow.
+ * Only *failures* are counted (see `recordFailure`), because a lockout is a defence
+ * against guessing and a correct password is not a guess. Counting every attempt
+ * meant six legitimate sign-ins in a minute — two tabs, a phone, a test suite —
+ * locked somebody out while typing the right password, which is the complaint this
+ * whole change exists to fix, merely narrowed from the office to one person.
  */
-export async function consumeLoginAttempt(
+export async function assertNotLockedOut(
+  identity: string | null,
+  ip: string,
+  door: string,
+): Promise<void> {
+  const { signInMax, signInWindowSeconds } = await getSystemSetting(AUTH_RATE_LIMIT);
+  const key = throttleKey(identity, ip, door);
+
+  let attempts = 0;
+  let ttl = signInWindowSeconds;
+  try {
+    attempts = Number((await redis.get(key)) ?? 0);
+    if (attempts > 0) ttl = await redis.ttl(key);
+  } catch {
+    return; // fails open — see the note at the top of the file
+  }
+
+  if (attempts >= signInMax) {
+    throw new AppError(
+      429,
+      ERROR_CODES.RATE_LIMITED,
+      `Too many failed attempts. Try again in ${ttl > 0 ? ttl : signInWindowSeconds}s, or ask an administrator to release the lock.`,
+    );
+  }
+}
+
+/**
+ * Count a failure. Called only when the credentials were actually refused.
+ *
+ * Returns the state so the caller can say, in the audit trail, how close to the limit
+ * this attempt came.
+ */
+export async function recordFailure(
   identity: string | null,
   ip: string,
   door: string,
 ): Promise<ThrottleState> {
-  const settings = await getSystemSetting(AUTH_RATE_LIMIT);
-  const max = settings.signInMax;
-  const window = settings.signInWindowSeconds;
+  const { signInMax, signInWindowSeconds } = await getSystemSetting(AUTH_RATE_LIMIT);
   const key = throttleKey(identity, ip, door);
 
-  let attempts: number;
-  let ttl = window;
   try {
-    attempts = await redis.incr(key);
-    if (attempts === 1) await redis.expire(key, window);
-    else ttl = await redis.ttl(key);
+    const attempts = await redis.incr(key);
+    if (attempts === 1) await redis.expire(key, signInWindowSeconds);
+    const ttl = await redis.ttl(key);
+    return {
+      attempts,
+      max: signInMax,
+      retryAfterSeconds: ttl > 0 ? ttl : signInWindowSeconds,
+      locked: attempts >= signInMax,
+    };
   } catch {
-    // Fails open, deliberately: see the note at the top of the file.
-    return { attempts: 0, max, retryAfterSeconds: null, locked: false };
+    return { attempts: 0, max: signInMax, retryAfterSeconds: null, locked: false };
   }
-
-  const state: ThrottleState = {
-    attempts,
-    max,
-    retryAfterSeconds: ttl > 0 ? ttl : window,
-    locked: attempts > max,
-  };
-
-  if (state.locked) {
-    throw new AppError(
-      429,
-      ERROR_CODES.RATE_LIMITED,
-      `Too many attempts. Try again in ${state.retryAfterSeconds}s, or ask an administrator to release the lock.`,
-    );
-  }
-  return state;
 }
 
 /** Forget the count once somebody proves who they are — a success is not an attack. */
