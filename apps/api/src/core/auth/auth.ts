@@ -30,7 +30,7 @@ import { uniqueUsername } from "@/core/auth/username.js";
 import { db } from "@/core/db/index.js";
 import { accounts, sessions, twoFactors, users, verifications } from "@/core/db/schema.js";
 import { corsOrigins, env, trustsForwardedIp, useSecureCookies } from "@/core/env.js";
-import { resetPasswordEmail } from "@/core/mail/templates.js";
+import { inviteEmail, resetPasswordEmail } from "@/core/mail/templates.js";
 import { enqueueEmail } from "@/core/queue/email.js";
 import { enabledProviders } from "@/features/sso/service.js";
 import { redis } from "@/core/redis.js";
@@ -132,6 +132,7 @@ function createAuth(oauthConfigs: OAuthConfigs, settings: AuthSettings) {
         "/sign-in/email": false,
         "/sign-in/username": false,
         "/forget-password": false,
+        "/request-password-reset": false,
         "/two-factor/verify-totp": false,
         "/sign-up/email": { window: 60, max: 5 },
       },
@@ -172,7 +173,19 @@ function createAuth(oauthConfigs: OAuthConfigs, settings: AuthSettings) {
       disableSignUp: !env.ALLOW_REGISTRATION,
       minPasswordLength: settings.passwordPolicy.minLength,
       sendResetPassword: async ({ user, url }) => {
-        await enqueueEmail({ to: user.email, ...resetPasswordEmail(url) });
+        // An invitation is sent through this same mechanism — `sendSetPasswordLink`
+        // calls requestPasswordReset — so the two are told apart by where the link
+        // lands. Without this the log would report every invitation as a password
+        // reset, and "did their invite go out?" would have no answer again.
+        //
+        // No leading slash in the match: the destination arrives inside the reset
+        // link as an encoded `callbackURL`, where the slash is `%2F`.
+        const invited = url.includes("accept-invite");
+        const kind = invited ? "invite" : "password-reset";
+        await enqueueEmail(
+          { to: user.email, ...(invited ? inviteEmail(url) : resetPasswordEmail(url)) },
+          { kind, toUserId: user.id },
+        );
       },
     },
     // Complexity and reuse live here: `emailAndPassword` understands only minLength.

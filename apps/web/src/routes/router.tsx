@@ -900,6 +900,13 @@ const logsRoute = createRoute({
   },
 });
 
+const messagesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/messages",
+  beforeLoad: requirePermission(PERMISSIONS.LOGS_VIEW),
+  component: lazyRouteComponent(() => import("@/routes/messages/messages-page.js"), "MessagesPage"),
+});
+
 const auditRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/audit",
@@ -1050,6 +1057,7 @@ const routeTree = rootRoute.addChildren([
     ssoRoute,
     logsRoute,
     backupsRoute,
+    messagesRoute,
     auditRoute,
     notificationsRoute,
     queuesRoute,

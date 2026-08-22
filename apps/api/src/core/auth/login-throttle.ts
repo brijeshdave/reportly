@@ -29,7 +29,12 @@ import { getSystemSetting } from "@/core/settings/service.js";
 export const THROTTLED_PATHS: Record<string, string> = {
   "/sign-in/email": "sign-in",
   "/sign-in/username": "sign-in",
+  // Both spellings of the same door. better-auth answers on either, and the web
+  // app calls `/request-password-reset` — so listing only `/forget-password`, as
+  // the first version of this did, left the door people actually use on the
+  // IP-only limiter this module exists to replace.
   "/forget-password": "password-reset",
+  "/request-password-reset": "password-reset",
   "/two-factor/verify-totp": "two-factor",
 };
 

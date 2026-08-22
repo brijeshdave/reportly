@@ -30,6 +30,7 @@ import {
   Printer,
   Repeat,
   ScrollText,
+  Send,
   Workflow,
   Settings,
   ShieldCheck,
@@ -265,6 +266,8 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: PERMISSIONS.SETTINGS_READ,
       },
       { label: "Logs", to: "/logs", icon: ScrollText, permission: PERMISSIONS.LOGS_VIEW },
+      // What left the building, as opposed to what happened inside it.
+      { label: "Messages", to: "/messages", icon: Send, permission: PERMISSIONS.LOGS_VIEW },
       { label: "Audit", to: "/audit", icon: ShieldCheck, permission: PERMISSIONS.AUDIT_VIEW },
       {
         label: "Backups",

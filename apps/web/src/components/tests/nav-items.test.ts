@@ -111,6 +111,7 @@ describe("visibleNavGroups", () => {
       "Settings",
       "Single sign-on",
       "Logs",
+      "Messages",
       "Audit",
       "Backups",
       "Queues",

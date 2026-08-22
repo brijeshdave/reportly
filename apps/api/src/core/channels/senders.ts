@@ -10,8 +10,22 @@
 import type { Channel, ChannelProviders } from "@reportly/shared";
 
 import { logger } from "@/core/logger.js";
+import { markFailed, markSent, recordQueued, type MessageRecord } from "@/core/messages/record.js";
 import { notificationEmail, verificationCodeEmail } from "@/core/mail/templates.js";
 import { enqueueEmail } from "@/core/queue/email.js";
+
+/**
+ * Who a message is for, and what event it came from — for the outbound log.
+ *
+ * Optional so that a caller with nothing to say records an anonymous row rather
+ * than being unable to send at all: an unattributed record beats no record.
+ */
+export interface SendMeta {
+  toUserId?: string | null;
+  companyId?: string | null;
+  /** The notification type, when this is a notification. */
+  eventType?: string | null;
+}
 
 /** Which channels can actually deliver, given the configured providers. */
 export function availability(providers: ChannelProviders): Record<Channel, boolean> {
@@ -129,16 +143,40 @@ export async function sendVerificationCode(
   destination: string,
   code: string,
   expiryMinutes: number,
+  meta?: SendMeta,
 ): Promise<void> {
   const body = BODY(code, expiryMinutes);
   logger.info({ channel }, "Sending a channel verification code");
 
+  if (channel === "email") {
+    await enqueueEmail(
+      { to: destination, ...verificationCodeEmail(code, expiryMinutes) },
+      { kind: "verification-code", toUserId: meta?.toUserId ?? null, companyId: null },
+    );
+    return;
+  }
+
+  await recorded(
+    { channel, kind: "verification-code", destination, toUserId: meta?.toUserId ?? null },
+    () => deliver(providers, channel, destination, body),
+  );
+}
+
+/**
+ * Send over one of the messaging channels. Email is not here — it has a queue.
+ *
+ * Split out so that the recording wrapper has exactly one thing to wrap, and so
+ * the two entry points cannot drift into sending differently.
+ */
+async function deliver(
+  providers: ChannelProviders,
+  channel: Exclude<Channel, "email">,
+  destination: string,
+  text: string,
+): Promise<void> {
   switch (channel) {
-    case "email":
-      await enqueueEmail({ to: destination, ...verificationCodeEmail(code, expiryMinutes) });
-      return;
     case "mobile":
-      await sendTwilio(providers, "mobile", providers.twilioSmsFrom, destination, body);
+      await sendTwilio(providers, "mobile", providers.twilioSmsFrom, destination, text);
       return;
     case "whatsapp":
       await sendTwilio(
@@ -146,16 +184,34 @@ export async function sendVerificationCode(
         "whatsapp",
         providers.twilioWhatsappFrom,
         `whatsapp:${destination}`,
-        body,
+        text,
       );
       return;
     case "telegram":
-      await sendTelegram(providers, destination, body);
+      await sendTelegram(providers, destination, text);
       return;
     case "discord":
-      await sendDiscord(providers, destination, body);
+      await sendDiscord(providers, destination, text);
       return;
   }
+}
+
+/**
+ * Send, and write down what happened either way.
+ *
+ * The failure is recorded and then **rethrown**: the caller decides whether one
+ * unreachable handle should cost the others their message, and a wrapper that
+ * swallowed it would take that decision away.
+ */
+async function recorded(record: MessageRecord, send: () => Promise<void>): Promise<void> {
+  const id = await recordQueued(record);
+  try {
+    await send();
+  } catch (error) {
+    await markFailed(id, error);
+    throw error;
+  }
+  await markSent(id);
 }
 
 /**
@@ -177,30 +233,33 @@ export async function sendToChannel(
   subject: string,
   body: string,
   url?: string,
+  meta?: SendMeta,
 ): Promise<void> {
   const line = body ? `${subject} — ${body}` : subject;
 
-  switch (channel) {
-    case "email":
-      await enqueueEmail({ to: destination, ...notificationEmail(subject, body, url) });
-      return;
-    case "mobile":
-      await sendTwilio(providers, "mobile", providers.twilioSmsFrom, destination, line);
-      return;
-    case "whatsapp":
-      await sendTwilio(
-        providers,
-        "whatsapp",
-        providers.twilioWhatsappFrom,
-        `whatsapp:${destination}`,
-        line,
-      );
-      return;
-    case "telegram":
-      await sendTelegram(providers, destination, line);
-      return;
-    case "discord":
-      await sendDiscord(providers, destination, line);
-      return;
+  if (channel === "email") {
+    await enqueueEmail(
+      { to: destination, ...notificationEmail(subject, body, url) },
+      {
+        kind: "notification",
+        eventType: meta?.eventType ?? null,
+        toUserId: meta?.toUserId ?? null,
+        companyId: meta?.companyId ?? null,
+      },
+    );
+    return;
   }
+
+  await recorded(
+    {
+      channel,
+      kind: "notification",
+      eventType: meta?.eventType ?? null,
+      toUserId: meta?.toUserId ?? null,
+      companyId: meta?.companyId ?? null,
+      destination,
+      subject,
+    },
+    () => deliver(providers, channel, destination, line),
+  );
 }

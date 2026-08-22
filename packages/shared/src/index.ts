@@ -19,6 +19,7 @@ export * from "@/entities/queue.js";
 export * from "@/entities/part.js";
 export * from "@/entities/device.js";
 export * from "@/entities/log.js";
+export * from "@/entities/message.js";
 export * from "@/entities/user.js";
 export * from "@/entities/company.js";
 export * from "@/entities/location.js";

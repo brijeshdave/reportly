@@ -399,7 +399,10 @@ export async function resetUserTwoFactor(
 
   // Nothing was removed, so there is nothing to warn them about.
   if (wasEnabled) {
-    await enqueueEmail({ to: row.email, ...twoFactorResetEmail(actorName) });
+    await enqueueEmail(
+      { to: row.email, ...twoFactorResetEmail(actorName) },
+      { kind: "two-factor-reset", toUserId: row.id },
+    );
   }
 
   return { user: serialize((await getUserById(id))!), wasEnabled };

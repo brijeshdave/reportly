@@ -29,6 +29,10 @@ const EXEMPT = new Map<string, string>([
   ["analytics", "Reporting on what already exists. Read-only by nature."],
   ["audit", "The record of what happened, which a deactivation must not edit or hide."],
   ["notifications", "Marking your own notifications read is not the company's work."],
+  [
+    "messages",
+    "The record of what was sent. Read-only, and a deactivation must not edit or hide it.",
+  ],
 ]);
 
 /** Every route path a feature registers, as written in its routes file. */

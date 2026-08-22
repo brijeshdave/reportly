@@ -79,3 +79,21 @@ export function resetPasswordEmail(resetUrl: string): Omit<OutgoingEmail, "to"> 
 <p>If you didn't request this, you can safely ignore this email.</p>`,
   };
 }
+
+/**
+ * The invitation. Same link, different words.
+ *
+ * An invited person has no password to *re*set, and telling them to reset one
+ * they have never had reads as a mistake — or as a phishing attempt, which is
+ * worse. The mechanism underneath is better-auth's reset flow either way; only
+ * this text knows the difference.
+ */
+export function inviteEmail(setUrl: string): Omit<OutgoingEmail, "to"> {
+  return {
+    subject: "You have been invited to Reportly",
+    text: `You have been invited to Reportly.\n\nChoose your password to get started:\n${setUrl}\n\nIf you were not expecting this, you can ignore this email.`,
+    html: `<p>You have been invited to Reportly.</p>
+<p><a href="${setUrl}">Choose your password</a></p>
+<p>If you were not expecting this, you can safely ignore this email.</p>`,
+  };
+}

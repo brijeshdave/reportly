@@ -226,6 +226,31 @@ production's, your development box is still holding production secrets and point
 at production's SMTP. And it restores the database only: attachments live in the
 file store, so downloads will 404 unless you restore that separately.
 
+## The message log
+
+**System → Messages** (`logs:view`) records every email, SMS, WhatsApp, Telegram
+and Discord message Reportly sends: what kind it was, who it was for, whether it
+arrived, and what the provider said if it did not.
+
+Two things it deliberately does not hold:
+
+- **The message body.** A password-reset email contains a working reset link. A log
+  that stored it would be a second front door with a longer memory than the token.
+- **The full destination.** Addresses are redacted as they are written —
+  `b•••@example.com`, `+91•••4321` — so the row never held the address at all and
+  no future screen can reveal it. Enough to recognise; not enough to harvest a
+  directory.
+
+Retention is per channel (**Settings → Messages**), because the rows are not worth
+the same: an email row carrying a provider's refusal is evidence months later, a
+WhatsApp line mirroring a bell notification is noise after a fortnight. Setting a
+channel to **0 days** stops it being logged at all — nothing is written, rather
+than written and swept up later. Rows already there are left alone.
+
+Non-superadmins see their own company's messages plus the ones belonging to no
+company (a password reset belongs to a person, not a tenant) — the same rule the
+audit trail uses.
+
 ## Log database sizing
 
 Logs live in their own database so their volume can never affect the application.
@@ -470,10 +495,20 @@ between the liveness and readiness probes.
 Mail is queued through Redis and sent by a worker inside the API process. A failure
 is retried, so nothing is lost — but nothing is delivered either.
 
-1. Check the SMTP variables. In development, mail goes to Mailpit
+1. **System → Messages** is the first place to look. Every message Reportly sends
+   is recorded there with its status, and a failed one carries **the provider's own
+   refusal, word for word**. That is usually the entire diagnosis: "API key not
+   authorized for this domain: example.com" says exactly what to change, and no
+   amount of reading SMTP settings would have found it.
+2. Check the SMTP variables. In development, mail goes to Mailpit
    (<http://localhost:8025>), never to a real inbox.
-2. **Logs → Search**, filter `feature` = `email`.
-3. If Redis was down, queued jobs are gone. Re-send the invitation.
+3. **Logs → Search**, filter `feature` = `email`.
+4. If Redis was down, queued jobs are gone. Re-send the invitation.
+
+> **A connection test is not a delivery test.** `cli doctor` reporting that
+> `smtp.example.com:465 accepted the connection` proves the relay is reachable and
+> nothing more. A provider can accept the TCP connection and refuse every message
+> afterwards — which is precisely what happened on one installation for a week.
 
 ### Writes are being refused with 409 in one company
 

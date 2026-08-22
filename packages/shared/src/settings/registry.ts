@@ -335,6 +335,35 @@ export const LOG_LEVEL_SETTINGS: SettingDef<typeof logLevelsSchema> = {
   keyOptions: { features: LOG_FEATURES },
 };
 
+/**
+ * How long the outbound message log is kept, per channel.
+ *
+ * Per channel because the rows are not worth the same. An email row carries the
+ * provider's own refusal — "API key not authorized for this domain" — which is
+ * the evidence somebody needs weeks later; a WhatsApp line that mirrored a bell
+ * notification is noise after a fortnight.
+ *
+ * There is no "forever": a busy installation writes one row per person per
+ * notification, and unbounded is how a table grows until somebody notices in a
+ * year. 0 switches a channel's log off — nothing is written for it at all.
+ */
+export const messageRetentionSchema = z.object({
+  email: z.number().int().min(0).max(3650).default(90),
+  mobile: z.number().int().min(0).max(3650).default(30),
+  whatsapp: z.number().int().min(0).max(3650).default(30),
+  telegram: z.number().int().min(0).max(3650).default(30),
+  discord: z.number().int().min(0).max(3650).default(30),
+});
+export type MessageRetention = z.infer<typeof messageRetentionSchema>;
+
+export const MESSAGE_RETENTION: SettingDef<typeof messageRetentionSchema> = {
+  namespace: "messages",
+  key: "retention",
+  schema: messageRetentionSchema,
+  userOverridable: false,
+  description: "How long the record of sent messages is kept, per channel",
+};
+
 export const LOG_RETENTION: SettingDef<typeof logRetentionSchema> = {
   namespace: "logging",
   key: "retention",

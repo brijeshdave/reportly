@@ -1209,6 +1209,44 @@ export const auditEvents = pgTable("audit_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * What Reportly sent out, and whether it arrived.
+ *
+ * `destination` is stored **redacted** — the row never holds the address at all,
+ * so it cannot leak one later. The message body is never stored: a reset email
+ * carries a working link, and a log of those is a second front door.
+ */
+export const outboundMessages = pgTable(
+  "outbound_messages",
+  {
+    id: idPk(),
+    channel: text("channel").notNull(),
+    kind: text("kind").notNull(),
+    /** The notification type, when the kind is `notification`. */
+    eventType: text("event_type"),
+    // text, not uuid: better-auth owns the users table and its ids are text.
+    toUserId: text("to_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Null for a message about the installation rather than one company. */
+    companyId: uuid("company_id").references(() => companies.id, { onDelete: "set null" }),
+    destination: text("destination").notNull(),
+    subject: text("subject"),
+    status: text("status").notNull().default("queued"),
+    /** The provider's own refusal, verbatim. */
+    error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
+    queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("outbound_messages_queued_at_idx").on(table.queuedAt.desc()),
+    index("outbound_messages_to_user_idx").on(table.toUserId, table.queuedAt.desc()),
+    index("outbound_messages_channel_status_idx").on(table.channel, table.status),
+    index("outbound_messages_company_idx").on(table.companyId, table.queuedAt.desc()),
+  ],
+);
+
 export const entityHistory = pgTable("entity_history", {
   id: idPk(),
   entityType: text("entity_type").notNull(),

@@ -171,7 +171,9 @@ export async function requestCode(userId: string, channel: Channel): Promise<Cha
   await insertVerification({ userId, channel, destination, codeHash: hash(code), expiresAt });
 
   try {
-    await sendVerificationCode(providers, channel, destination, code, config.expiryMinutes);
+    await sendVerificationCode(providers, channel, destination, code, config.expiryMinutes, {
+      toUserId: userId,
+    });
   } catch (err) {
     if (err instanceof ChannelSendError) {
       throw new AppError(502, ERROR_CODES.INTERNAL_ERROR, err.message);

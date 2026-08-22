@@ -19,6 +19,7 @@ import { currentQueryCount, runWithRequestContext } from "@/core/request-context
 import { logger } from "@/core/logger.js";
 import { generateRequestId, REQUEST_ID_HEADER, registerRequestId } from "@/core/request-id.js";
 import { auditRoutes } from "@/features/audit/routes.js";
+import { messagesRoutes } from "@/features/messages/routes.js";
 import { companiesRoutes } from "@/features/companies/routes.js";
 import { debugRoutes } from "@/features/debug/routes.js";
 import { groupsRoutes } from "@/features/groups/routes.js";
@@ -185,6 +186,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(logsRoutes, { prefix: API_PREFIX });
   await app.register(debugRoutes, { prefix: API_PREFIX });
   await app.register(auditRoutes, { prefix: API_PREFIX });
+  await app.register(messagesRoutes, { prefix: API_PREFIX });
 
   return app;
 }

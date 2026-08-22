@@ -150,6 +150,9 @@ export async function dispatch(request: NotificationRequest): Promise<number> {
         request.title,
         request.body ?? "",
         request.link ? `${env.WEB_URL}${request.link}` : undefined,
+        // So the outbound log can answer "did the downtime alerts go out?" by
+        // event type, rather than by guessing from subject lines.
+        { toUserId: contact.userId, eventType: request.type, companyId: request.companyId },
       );
     } catch (error) {
       // One unreachable handle must not cost the other recipients their message.
