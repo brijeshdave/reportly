@@ -18,6 +18,7 @@ import {
 
 import { db } from "@/core/db/index.js";
 import { env } from "@/core/env.js";
+import { colleaguesOf } from "@/features/departments/repo.js";
 import { getEffectiveSetting, getSystemSetting } from "@/core/settings/service.js";
 import { AppError } from "@/core/errors.js";
 import { companies, groupUsers, groups, userCompanies, users } from "@/core/db/schema.js";
@@ -65,6 +66,30 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     async (request) => departmentsService.departmentsForUser(request.authUserId!),
+  );
+
+  app.get(
+    "/me/colleagues",
+    {
+      preHandler: [app.authenticate, app.companyContext],
+      schema: {
+        tags: ["Me"],
+        summary: "The people who share a department with the caller — for handovers and co-workers",
+        response: {
+          200: z.array(
+            z.object({ userId: z.string(), name: z.string(), departmentName: z.string() }),
+          ),
+        },
+      },
+    },
+    // Answers for the caller alone, so it needs no `users:read`. A handover picker
+    // that required the right to enumerate every user in the company would be
+    // invisible to exactly the people who hand work over.
+    async (request) => {
+      const companyId = request.ctx!.companyId;
+      if (!companyId) return [];
+      return colleaguesOf(request.authUserId!, companyId);
+    },
   );
 
   app.get(

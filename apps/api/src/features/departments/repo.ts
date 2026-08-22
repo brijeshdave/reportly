@@ -2,7 +2,7 @@
 // Department repository — the only code touching the departments and
 // department_users tables. Every query is scoped to a company id so a caller can
 // never reach another company's org tree.
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
@@ -13,6 +13,7 @@ import {
   departments,
   designations,
   locations,
+  userCompanies,
   users,
 } from "@/core/db/schema.js";
 
@@ -577,4 +578,47 @@ export async function uplineOf(userId: string, maxDepth = 3): Promise<UplineRow[
   return result.rows
     .map((row) => ({ userId: row.user_id, depth: Number(row.depth) }))
     .sort((a, b) => a.depth - b.depth);
+}
+
+/**
+ * Everyone who shares a department with this person — their colleagues.
+ *
+ * Distinct from the downline, and the distinction matters: the downline answers "who
+ * works for me", which is right for handing work *down* and wrong for handing it
+ * *across*. A shift handover goes to whoever takes the job next, who is usually a
+ * peer; asking for a downline there left every member of staff able to hand over only
+ * to themselves.
+ *
+ * Answers for the caller alone, so it needs no `users:read` — the same reason
+ * `/me/departments` exists.
+ */
+export async function colleaguesOf(
+  userId: string,
+  companyId: string,
+): Promise<{ userId: string; name: string; departmentName: string }[]> {
+  const mine = db
+    .select({ id: departmentUsers.departmentId })
+    .from(departmentUsers)
+    .where(eq(departmentUsers.userId, userId));
+
+  const rows = await db
+    .selectDistinct({
+      userId: departmentUsers.userId,
+      name: users.name,
+      departmentName: departments.name,
+    })
+    .from(departmentUsers)
+    .innerJoin(users, eq(users.id, departmentUsers.userId))
+    .innerJoin(departments, eq(departments.id, departmentUsers.departmentId))
+    .innerJoin(userCompanies, eq(userCompanies.userId, departmentUsers.userId))
+    .where(
+      and(
+        inArray(departmentUsers.departmentId, mine),
+        eq(users.status, "active"),
+        eq(userCompanies.companyId, companyId),
+      ),
+    )
+    .orderBy(asc(users.name));
+
+  return rows;
 }

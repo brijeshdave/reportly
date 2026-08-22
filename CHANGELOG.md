@@ -8,6 +8,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A handover could only go to yourself or somebody below you**, so anybody without
+  subordinates could hand a report to exactly one person: themselves. That is not a
+  handover. Work now passes to **a colleague in one of your departments** as well —
+  the peer on the next shift is who picks the job up — and the same list feeds
+  **who worked on it**, so a co-worker can finally be added. Both pickers read
+  `/me/colleagues`, which answers for the caller alone and needs no `users:read`.
+- **A new journal entry belongs to whoever filed it.** It used to start held by
+  nobody, so every entry asked its author to open a panel and choose their own name —
+  a question whose answer was already known.
+
 - **The roster cell is filled edge to edge, rather than holding a coloured badge.**
   The colour sat on a span wrapped around the shift's letter, inside layout wrappers
   that shrink to their contents — so each day showed a small tinted pill with the

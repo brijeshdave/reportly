@@ -22,7 +22,7 @@ import {
   setParticipants,
 } from "@/services/comments.js";
 import { sessionQuery } from "@/lib/queries.js";
-import { fetchDownline } from "@/services/departments.js";
+import { fetchMyColleagues } from "@/services/departments.js";
 
 export function AssignmentPanel({ report }: { report: JournalEntry }) {
   const queryClient = useQueryClient();
@@ -31,13 +31,13 @@ export function AssignmentPanel({ report }: { report: JournalEntry }) {
   const { data: session } = useQuery(sessionQuery);
   const me = session?.user;
 
-  // The same source the task editor uses: yourself plus your downline. One idea of
-  // "who works for me", so the picker cannot offer somebody the API would refuse.
-  const downline = useQuery({
-    queryKey: ["downline", me?.id],
-    queryFn: () => fetchDownline(me!.id),
-    enabled: Boolean(me?.id),
-  });
+  // Colleagues, not the downline.
+  //
+  // A handover goes to whoever picks the job up next — the peer on the next shift far
+  // more often than a subordinate — and the co-workers on an entry are the people who
+  // worked it beside you. Fed by the downline, both pickers showed an engineer with
+  // nobody under them exactly one name: their own.
+  const colleagues = useQuery({ queryKey: ["me", "colleagues"], queryFn: fetchMyColleagues });
   const handovers = useQuery({
     queryKey: ["reports", reportId, "handovers"],
     queryFn: () => fetchHandovers(reportId),
@@ -70,11 +70,14 @@ export function AssignmentPanel({ report }: { report: JournalEntry }) {
     },
   });
 
-  // Deduplicated: somebody reachable through two departments appears once.
+  // Deduplicated: somebody in two of your departments appears once, and you are
+  // never offered twice.
   const people = [
     ...(me ? [{ id: me.id, name: `${me.name} (you)` }] : []),
     ...new Map(
-      (downline.data ?? []).map((m) => [m.userId, { id: m.userId, name: m.name }]),
+      (colleagues.data ?? [])
+        .filter((c) => c.userId !== me?.id)
+        .map((c) => [c.userId, { id: c.userId, name: c.name }]),
     ).values(),
   ];
   const current = participants.data ?? [];

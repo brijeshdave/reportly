@@ -66,6 +66,7 @@ import {
   scoreEventsFor,
   type ScoreEventReason,
 } from "@/features/journal/score-events-repo.js";
+import { colleaguesOf } from "@/features/departments/repo.js";
 import { ancestorsOf, downlineUserIds } from "@/features/journal/hierarchy.js";
 import {
   addAuthorAsParticipant,
@@ -786,14 +787,25 @@ export async function assignReport(
   await assertVisible(row, ctx);
 
   if (input.assigneeId !== null && !ctx.isSuperadmin) {
-    const below = await downlineUserIds(ctx.userId);
-    below.add(ctx.userId);
-    if (!below.has(input.assigneeId)) {
-      throw new AppError(
-        403,
-        ERROR_CODES.FORBIDDEN,
-        "You can only hand a report to yourself or someone below you in the reporting line",
-      );
+    // Yourself, your downline, **or a colleague** — somebody who shares a department
+    // with you.
+    //
+    // The downline alone was wrong, and wrong in a way that fell hardest on the
+    // people who hand work over most: a handover goes to whoever picks the job up
+    // next, which is usually the peer on the next shift, not a subordinate. An
+    // engineer with nobody reporting to them could hand a report to exactly one
+    // person — themselves — which is not a handover at all.
+    const allowed = await downlineUserIds(ctx.userId);
+    allowed.add(ctx.userId);
+    if (!allowed.has(input.assigneeId)) {
+      const colleagues = await colleaguesOf(ctx.userId, row.companyId);
+      if (!colleagues.some((colleague) => colleague.userId === input.assigneeId)) {
+        throw new AppError(
+          403,
+          ERROR_CODES.FORBIDDEN,
+          "You can hand a report to yourself, a colleague in your department, or someone below you in the reporting line",
+        );
+      }
     }
   }
 
@@ -935,6 +947,8 @@ export async function createReport(
     workDetail?: string;
     recurrenceOfId?: string;
     taskId?: string;
+    /** Who is on it. Defaults to the author — see the insert below. */
+    assigneeId?: string;
     targets?: JournalTargetInput[];
   },
 ): Promise<JournalEntry> {
@@ -985,6 +999,10 @@ export async function createReport(
     workDetail: input.workDetail ?? null,
     recurrenceOfId: input.recurrenceOfId ?? null,
     taskId: input.taskId ?? null,
+    // Whoever files it is on it, unless they said otherwise. The alternative — an
+    // entry that belongs to nobody until its author opens a panel and picks their own
+    // name — made every new entry ask a question whose answer was already known.
+    assigneeId: input.assigneeId ?? ctx.userId,
     submittedAt: input.state === "submitted" ? new Date() : null,
   };
   const id = await insertReport(fields);

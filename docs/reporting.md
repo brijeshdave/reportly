@@ -233,9 +233,12 @@ fault — an administrator can grant `comments:update`, `comments:delete` or
 ## Handing work over
 
 A report records **who filed it** and, separately, **who is holding it now**.
+**Whoever files it holds it** — you do not have to claim your own entry.
 
-- **Hand over** on the report detail assigns it to yourself or to anyone below you
-  in the reporting line, with an optional reason.
+- **Hand over** on the report detail passes it to **a colleague in one of your
+  departments**, to anyone below you in the reporting line, or back to yourself, with
+  an optional reason. Colleagues matter most: a handover usually goes to whoever picks
+  the job up on the next shift, who is a peer rather than a subordinate.
 - You can hand it back to **nobody**. Work gets put down before the next person
   picks it up, and pretending otherwise would make people pick a name at random.
 - Every change is kept: the panel lists who took it, from whom, who moved it and
@@ -244,7 +247,9 @@ A report records **who filed it** and, separately, **who is holding it now**.
 ## Who worked on it
 
 **Who worked on it** is a list on the report — everyone who put time in, not just
-whoever typed it up. Whoever raised the report is on it automatically.
+whoever typed it up. Whoever raised the report is on it automatically, and the picker
+offers your colleagues, so a second pair of hands can be added by the person who was
+actually there.
 
 This list is only **who took part**, not how the points divide — that is scored
 separately, once the report is resolved (see below). **Add and remove people as the

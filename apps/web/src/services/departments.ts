@@ -106,6 +106,19 @@ export function fetchOrgPeople(): Promise<OrgPerson[]> {
  * Everyone below this person in the reporting line, at any depth — the set the
  * reports feature will scope on.
  */
+/**
+ * The people who share a department with you.
+ *
+ * Not the downline: handing a report over goes *across* to whoever takes the job next,
+ * and asking for a downline there left anybody without subordinates able to hand over
+ * only to themselves. Answers for the caller alone, so it needs no `users:read`.
+ */
+export function fetchMyColleagues(): Promise<
+  { userId: string; name: string; departmentName: string }[]
+> {
+  return http.get<{ userId: string; name: string; departmentName: string }[]>("/me/colleagues");
+}
+
 export function fetchDownline(userId: string): Promise<DownlineMember[]> {
   return http.get<DownlineMember[]>(`/users/${userId}/downline`);
 }

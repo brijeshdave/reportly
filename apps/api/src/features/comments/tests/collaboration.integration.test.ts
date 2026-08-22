@@ -365,30 +365,59 @@ describe("handover", () => {
     const { manager, author, mate } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
-    // Unassigned to start: filing something is not the same as holding it.
-    expect(
-      (await inject("GET", `/journal/${reportId}`, author.cookie)).json().assigneeId,
-    ).toBeNull();
+    // Whoever files it holds it. It used to start unassigned, which meant every new
+    // entry asked its author to open a panel and pick their own name — a question
+    // whose answer was already known.
+    expect((await inject("GET", `/journal/${reportId}`, author.cookie)).json().assigneeId).toBe(
+      author.id,
+    );
 
+    // Away and back, because the author already holds what they filed: assigning to
+    // whoever has it is a no-op, not a handover.
     await inject("POST", `/journal/${reportId}/assign`, manager.cookie, {
-      assigneeId: author.id,
-      reason: "You found it",
-    });
-    const handed = await inject("POST", `/journal/${reportId}/assign`, manager.cookie, {
       assigneeId: mate.id,
       reason: "Sam is off shift",
     });
-    expect(handed.json().assigneeName).toBe("Mo Operator");
+    const handed = await inject("POST", `/journal/${reportId}/assign`, manager.cookie, {
+      assigneeId: author.id,
+      reason: "Back to you",
+    });
+    expect(handed.json().assigneeName).toBe("Sam Operator");
 
     const trail = (await inject("GET", `/journal/${reportId}/handovers`, author.cookie)).json();
     expect(trail).toHaveLength(2);
-    // Nobody held it first, so the first handover comes from null.
-    expect(trail[0].fromUserId).toBeNull();
-    expect(trail[0].toUserName).toBe("Sam Operator");
-    expect(trail[1].fromUserName).toBe("Sam Operator");
-    expect(trail[1].toUserName).toBe("Mo Operator");
+    // The author held it from the moment they filed it, so the first move comes
+    // *from* them rather than from nobody.
+    expect(trail[0].fromUserName).toBe("Sam Operator");
+    expect(trail[0].toUserName).toBe("Mo Operator");
+    expect(trail[0].reason).toBe("Sam is off shift");
+    expect(trail[1].fromUserName).toBe("Mo Operator");
+    expect(trail[1].toUserName).toBe("Sam Operator");
     expect(trail[1].byUserName).toBe("Ravi Lead");
-    expect(trail[1].reason).toBe("Sam is off shift");
+  });
+
+  it("lets somebody hand a report sideways, to a colleague", async () => {
+    // The bug this fixes: handover was limited to "yourself or your downline", so an
+    // engineer with nobody under them could hand a report to exactly one person —
+    // themselves. A handover goes to whoever picks the job up next, and on a shift
+    // that is a peer.
+    const admin = await superadmin();
+    const { author, mate, outsider } = await buildTeam(admin);
+    const reportId = await fileReport(author.cookie);
+
+    const sideways = await inject("POST", `/journal/${reportId}/assign`, author.cookie, {
+      assigneeId: mate.id,
+      reason: "Going off shift",
+    });
+    expect(sideways.statusCode).toBe(200);
+    expect(sideways.json().assigneeName).toBe("Mo Operator");
+
+    // But not to somebody outside their departments: "anyone at all" is not the rule
+    // either, and a colleague is what a shared department means.
+    const stranger = await inject("POST", `/journal/${reportId}/assign`, author.cookie, {
+      assigneeId: outsider.id,
+    });
+    expect(stranger.statusCode).toBe(403);
   });
 
   it("treats putting the report down as a real destination", async () => {
@@ -414,8 +443,9 @@ describe("handover", () => {
     const { manager, author } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
-    await inject("POST", `/journal/${reportId}/assign`, manager.cookie, { assigneeId: author.id });
-    await inject("POST", `/journal/${reportId}/assign`, manager.cookie, { assigneeId: author.id });
+    // One real move (the author holds it on filing), then the same destination twice.
+    await inject("POST", `/journal/${reportId}/assign`, manager.cookie, { assigneeId: manager.id });
+    await inject("POST", `/journal/${reportId}/assign`, manager.cookie, { assigneeId: manager.id });
 
     // Re-assigning to whoever already holds it would otherwise fill the trail with
     // entries recording that nothing happened.
@@ -424,13 +454,13 @@ describe("handover", () => {
     ).toHaveLength(1);
   });
 
-  it("refuses to hand work sideways, out of the reporting line", async () => {
+  it("refuses to hand work to somebody outside your departments and your line", async () => {
     const admin = await superadmin();
     const { author, outsider } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
-    // The same walk tasks use: yourself or someone below you. The outsider is
-    // neither, so the author cannot dump work on them.
+    // Yourself, a colleague, or your downline. The outsider shares no department and
+    // is nobody's report, so the author cannot dump work on them.
     const refused = await inject("POST", `/journal/${reportId}/assign`, author.cookie, {
       assigneeId: outsider.id,
     });
