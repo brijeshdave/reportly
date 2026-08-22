@@ -8,6 +8,11 @@
 // that looks like. Dark is for what must be found at a glance — leave, a holiday, the
 // one shift somebody is scanning for — where the eye is supposed to land on it.
 //
+// The light shades are `-200`, not `-100`. They were `-100` when the colour was a
+// small pill sitting on a white cell, where that was enough; as a fill for the whole
+// cell it disappeared into the table, and a month of pale shifts looked like a month
+// of empty ones. Checked by looking at a painted month, not by reasoning about it.
+//
 // Getting that the wrong way round is a mistake this file has already made: every
 // cell went dark at once, which turned a calendar into a wall of colour where nothing
 // stood out because everything did.
@@ -33,64 +38,64 @@ interface ColorClasses {
 
 export const SHIFT_COLOR_CLASSES: Record<ShiftColor, ColorClasses> = {
   slate: {
-    cell: "bg-slate-100 text-slate-900 dark:bg-slate-500/25 dark:text-slate-100",
-    chip: "bg-slate-100 text-slate-900 dark:bg-slate-500/25 dark:text-slate-100",
-    swatch: "bg-slate-200",
+    cell: "bg-slate-200 text-slate-900 dark:bg-slate-500/25 dark:text-slate-100",
+    chip: "bg-slate-200 text-slate-900 dark:bg-slate-500/25 dark:text-slate-100",
+    swatch: "bg-slate-300",
   },
   red: {
-    cell: "bg-red-100 text-red-900 dark:bg-red-500/25 dark:text-red-100",
-    chip: "bg-red-100 text-red-900 dark:bg-red-500/25 dark:text-red-100",
-    swatch: "bg-red-200",
+    cell: "bg-red-200 text-red-900 dark:bg-red-500/25 dark:text-red-100",
+    chip: "bg-red-200 text-red-900 dark:bg-red-500/25 dark:text-red-100",
+    swatch: "bg-red-300",
   },
   orange: {
-    cell: "bg-orange-100 text-orange-900 dark:bg-orange-500/25 dark:text-orange-100",
-    chip: "bg-orange-100 text-orange-900 dark:bg-orange-500/25 dark:text-orange-100",
-    swatch: "bg-orange-200",
+    cell: "bg-orange-200 text-orange-900 dark:bg-orange-500/25 dark:text-orange-100",
+    chip: "bg-orange-200 text-orange-900 dark:bg-orange-500/25 dark:text-orange-100",
+    swatch: "bg-orange-300",
   },
   amber: {
-    cell: "bg-amber-100 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100",
-    chip: "bg-amber-100 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100",
-    swatch: "bg-amber-200",
+    cell: "bg-amber-200 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100",
+    chip: "bg-amber-200 text-amber-900 dark:bg-amber-500/25 dark:text-amber-100",
+    swatch: "bg-amber-300",
   },
   green: {
-    cell: "bg-green-100 text-green-900 dark:bg-green-500/25 dark:text-green-100",
-    chip: "bg-green-100 text-green-900 dark:bg-green-500/25 dark:text-green-100",
-    swatch: "bg-green-200",
+    cell: "bg-green-200 text-green-900 dark:bg-green-500/25 dark:text-green-100",
+    chip: "bg-green-200 text-green-900 dark:bg-green-500/25 dark:text-green-100",
+    swatch: "bg-green-300",
   },
   teal: {
-    cell: "bg-teal-100 text-teal-900 dark:bg-teal-500/25 dark:text-teal-100",
-    chip: "bg-teal-100 text-teal-900 dark:bg-teal-500/25 dark:text-teal-100",
-    swatch: "bg-teal-200",
+    cell: "bg-teal-200 text-teal-900 dark:bg-teal-500/25 dark:text-teal-100",
+    chip: "bg-teal-200 text-teal-900 dark:bg-teal-500/25 dark:text-teal-100",
+    swatch: "bg-teal-300",
   },
   blue: {
-    cell: "bg-blue-100 text-blue-900 dark:bg-blue-500/25 dark:text-blue-100",
-    chip: "bg-blue-100 text-blue-900 dark:bg-blue-500/25 dark:text-blue-100",
-    swatch: "bg-blue-200",
+    cell: "bg-blue-200 text-blue-900 dark:bg-blue-500/25 dark:text-blue-100",
+    chip: "bg-blue-200 text-blue-900 dark:bg-blue-500/25 dark:text-blue-100",
+    swatch: "bg-blue-300",
   },
   indigo: {
-    cell: "bg-indigo-100 text-indigo-900 dark:bg-indigo-500/25 dark:text-indigo-100",
-    chip: "bg-indigo-100 text-indigo-900 dark:bg-indigo-500/25 dark:text-indigo-100",
-    swatch: "bg-indigo-200",
+    cell: "bg-indigo-200 text-indigo-900 dark:bg-indigo-500/25 dark:text-indigo-100",
+    chip: "bg-indigo-200 text-indigo-900 dark:bg-indigo-500/25 dark:text-indigo-100",
+    swatch: "bg-indigo-300",
   },
   violet: {
-    cell: "bg-violet-100 text-violet-900 dark:bg-violet-500/25 dark:text-violet-100",
-    chip: "bg-violet-100 text-violet-900 dark:bg-violet-500/25 dark:text-violet-100",
-    swatch: "bg-violet-200",
+    cell: "bg-violet-200 text-violet-900 dark:bg-violet-500/25 dark:text-violet-100",
+    chip: "bg-violet-200 text-violet-900 dark:bg-violet-500/25 dark:text-violet-100",
+    swatch: "bg-violet-300",
   },
   pink: {
-    cell: "bg-pink-100 text-pink-900 dark:bg-pink-500/25 dark:text-pink-100",
-    chip: "bg-pink-100 text-pink-900 dark:bg-pink-500/25 dark:text-pink-100",
-    swatch: "bg-pink-200",
+    cell: "bg-pink-200 text-pink-900 dark:bg-pink-500/25 dark:text-pink-100",
+    chip: "bg-pink-200 text-pink-900 dark:bg-pink-500/25 dark:text-pink-100",
+    swatch: "bg-pink-300",
   },
   cyan: {
-    cell: "bg-cyan-100 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-100",
-    chip: "bg-cyan-100 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-100",
-    swatch: "bg-cyan-200",
+    cell: "bg-cyan-200 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-100",
+    chip: "bg-cyan-200 text-cyan-900 dark:bg-cyan-500/25 dark:text-cyan-100",
+    swatch: "bg-cyan-300",
   },
   purple: {
-    cell: "bg-purple-100 text-purple-900 dark:bg-purple-500/25 dark:text-purple-100",
-    chip: "bg-purple-100 text-purple-900 dark:bg-purple-500/25 dark:text-purple-100",
-    swatch: "bg-purple-200",
+    cell: "bg-purple-200 text-purple-900 dark:bg-purple-500/25 dark:text-purple-100",
+    chip: "bg-purple-200 text-purple-900 dark:bg-purple-500/25 dark:text-purple-100",
+    swatch: "bg-purple-300",
   },
   "slate-dark": {
     cell: "bg-slate-700 text-white",

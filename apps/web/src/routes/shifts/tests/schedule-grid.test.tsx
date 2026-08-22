@@ -107,7 +107,7 @@ describe("the roster cell", () => {
     const cell = renderGrid(gridWith("working", "s1"));
 
     // The fill is on the button — the full width and height of the cell.
-    expect(cell.className).toContain("bg-blue-100");
+    expect(cell.className).toContain("bg-blue-200");
     expect(cell.className).toContain("h-full");
     expect(cell.className).toContain("w-full");
 
@@ -121,7 +121,7 @@ describe("the roster cell", () => {
 
   it("paints a day off in its own colour too", () => {
     const cell = renderGrid(gridWith("off", null));
-    expect(cell.className).toContain("bg-slate-100");
+    expect(cell.className).toContain("bg-slate-200");
     expect(cell.textContent).toContain("W/O");
   });
 
