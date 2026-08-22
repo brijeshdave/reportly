@@ -58,6 +58,12 @@ export const journalEntrySchema = z
     statusId: uuidSchema.nullable(),
     statusName: z.string().nullable(),
     statusGroup: z.string().nullable(),
+    /**
+     * Whether the status ends the ticket. Sent as well as the group because a
+     * workflow may have several terminal statuses in different groups, and "closed"
+     * is the flag the workflow itself keeps rather than a name to match on.
+     */
+    statusIsTerminal: z.boolean(),
 
     reportDate: z.string(),
     /** When an issue actually happened (may predate the report). */

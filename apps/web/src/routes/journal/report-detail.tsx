@@ -10,7 +10,7 @@
 import { MAX_ENTRY_POINTS, PERMISSIONS, formatDate, formatDateTime } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Ban, Lock } from "lucide-react";
+import { Ban, Lock, Wrench } from "lucide-react";
 import { useState } from "react";
 
 import { usePermission } from "@/components/can.js";
@@ -19,7 +19,7 @@ import { HistoryTab } from "@/components/history-tab.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { PointsHistoryTab } from "@/routes/journal/points-history-tab.js";
 import { sessionQuery } from "@/lib/queries.js";
-import { Spinner } from "@/components/ui/form.js";
+import { Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import {
@@ -29,6 +29,7 @@ import {
   reopenReport,
   setScores,
   unrejectReport,
+  updateReport,
 } from "@/services/journal.js";
 import type { JournalEntryDetail } from "@/services/journal.js";
 import { CommentsPanel } from "@/components/comments-panel.js";
@@ -327,6 +328,11 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
               ]}
             />
 
+            {/* Logging the work is its own act, done here rather than by reopening the
+                whole entry: an issue is raised when it happens and worked afterwards,
+                sometimes by somebody reading it on the next shift. */}
+            <LogWorkPanel report={r} isAuthor={isAuthor} locked={locked} />
+
             {/* Evidence of the work sits with the work, in the wider column: files
               want room for thumbnails and downtime is a small table. Both used to
               be on the right, which is how that column ended up carrying seven
@@ -416,6 +422,102 @@ function Prose({ blocks }: { blocks: [string, string | null][] }) {
  * The draft lives in local state and is saved on the button, not per keystroke — a
  * field bound to a round trip would otherwise reset mid-number.
  */
+/**
+ * Add what was done, after the entry was filed.
+ *
+ * Deliberately not available once the entry is **closed**: the ticket is finished, and
+ * a finished record that still accepts "what was done" is one that can be rewritten
+ * after everybody has stopped looking. Re-opening is the way back, and that move is
+ * logged. The API refuses it too — this only avoids offering a form that would 409.
+ */
+function LogWorkPanel({
+  report,
+  isAuthor,
+  locked,
+}: {
+  report: JournalEntryDetail;
+  isAuthor: boolean;
+  locked: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [detail, setDetail] = useState("");
+
+  const save = useMutation({
+    mutationFn: () =>
+      updateReport(report.id, {
+        // Appended, not replaced: somebody logging the second visit should not have
+        // to retype the first, and silently overwriting it would lose a record.
+        workSummary: [report.workSummary, summary.trim()].filter(Boolean).join(" · "),
+        workDetail: [report.workDetail, detail.trim()].filter(Boolean).join("\n\n"),
+      }),
+    onSuccess: async () => {
+      setSummary("");
+      setDetail("");
+      setOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["reports", report.id] });
+    },
+  });
+
+  if (!isAuthor || locked) return null;
+
+  if (report.statusIsTerminal) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        This entry is closed. Re-open it to log any more work against it.
+      </p>
+    );
+  }
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+        <Wrench className="h-4 w-4" />
+        Log work
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border p-4">
+      {save.error ? <ErrorAlert error={save.error} /> : null}
+      <Field label="What you did">
+        {(props) => (
+          <Input
+            {...props}
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            placeholder="e.g. Replaced the drive belt"
+          />
+        )}
+      </Field>
+      <Field label="Details">
+        {(props) => (
+          <Textarea
+            {...props}
+            value={detail}
+            onChange={(event) => setDetail(event.target.value)}
+            rows={3}
+          />
+        )}
+      </Field>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="secondary" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          disabled={save.isPending || summary.trim() === ""}
+          onClick={() => save.mutate()}
+        >
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ScoringPanel({ report, isAuthor }: { report: JournalEntryDetail; isAuthor: boolean }) {
   const queryClient = useQueryClient();
   const { scores, myScoreTier } = report;

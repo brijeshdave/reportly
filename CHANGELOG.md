@@ -6,6 +6,24 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Filing a breakdown no longer asks for the fix at the same time.** Raising an issue
+  and recording the work are two moments, and the form asked whoever was sounding the
+  alarm to describe work that had not happened yet — which is also why the two tabs
+  looked alike: "Work done" was on both. On a new issue the work fields now start
+  collapsed behind _"I already did the work"_, so the quick honest entry — belt
+  snapped, I replaced it — is still one screen.
+- **Work can be logged from the entry itself**, afterwards, with **Log work**. It
+  appends rather than replacing, so the second visit does not overwrite the first.
+  Until now the work fields were display-only once filed, and the only way to add
+  anything was to re-open the whole editor.
+- **A closed entry refuses new work.** The appraisal lock is about scoring; this is
+  about the ticket being finished, and they are different moments. Re-open it to add
+  more — that move is logged, which is the point of making it the way back. Everything
+  else about a closed entry stays editable: the rule is about the work record, not a
+  general freeze.
+
 ### Fixed
 
 - **A handover could only go to yourself or somebody below you**, so anybody without

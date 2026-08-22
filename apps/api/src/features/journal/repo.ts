@@ -41,6 +41,7 @@ export interface JournalEntryRowRaw {
   statusId: string | null;
   statusName: string | null;
   statusGroup: string | null;
+  statusIsTerminal: boolean | null;
   reportDate: Date;
   occurredAt: Date | null;
   startedAt: Date | null;
@@ -90,6 +91,7 @@ const cols = {
   statusId: journalEntries.statusId,
   statusName: journalStatuses.name,
   statusGroup: journalStatuses.group,
+  statusIsTerminal: journalStatuses.isTerminal,
   reportDate: journalEntries.reportDate,
   occurredAt: journalEntries.occurredAt,
   startedAt: journalEntries.startedAt,

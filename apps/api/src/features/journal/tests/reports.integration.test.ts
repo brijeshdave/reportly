@@ -615,4 +615,40 @@ describe("reports and scoring", () => {
     await inject("PUT", "/settings/reports/entry", admin, { value: { graceDays: 10 } });
     expect((await issue(daysAgo(3))).statusCode).toBe(201);
   });
+
+  it("refuses to log work against a closed entry, and takes it once re-opened", async () => {
+    // A finished record that still accepts "what was done" can be rewritten after
+    // everybody has stopped looking. Re-opening is the way back, and that move is
+    // logged — which is the whole point of making it the way back.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const reportId = await fileIssue(author.cookie, critical.id);
+
+    // Open: work can be logged.
+    expect(
+      (
+        await inject("PATCH", `/journal/${reportId}`, author.cookie, {
+          workSummary: "Belt swapped",
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    await finish(author.cookie, reportId);
+
+    const refused = await inject("PATCH", `/journal/${reportId}`, author.cookie, {
+      workSummary: "And greased the bearings",
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.message).toMatch(/closed/i);
+
+    // Everything else about a closed entry is still editable — the rule is about the
+    // work record, not a general freeze.
+    expect(
+      (
+        await inject("PATCH", `/journal/${reportId}`, author.cookie, {
+          title: "Belt snapped again",
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
 });

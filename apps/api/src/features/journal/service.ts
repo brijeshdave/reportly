@@ -141,6 +141,7 @@ function serialize(
     statusId: row.statusId,
     statusName: row.statusName,
     statusGroup: row.statusGroup,
+    statusIsTerminal: row.statusIsTerminal ?? false,
     reportDate: row.reportDate.toISOString(),
     occurredAt: iso(row.occurredAt),
     startedAt: iso(row.startedAt),
@@ -1058,6 +1059,13 @@ async function completeLoggedTask(
  * (lockedAt) — the mark must not end up describing work that changed under it — so
  * an edit then is refused, and `reopen` is the deliberate, audited way back.
  */
+/** Whether a status ends the ticket — the `isTerminal` flag the workflow already has. */
+async function isClosed(statusId: string | null): Promise<boolean> {
+  if (!statusId) return false;
+  const status = await getStatusRow(statusId);
+  return Boolean(status?.isTerminal);
+}
+
 export async function updateReport(
   id: string,
   ctx: AuthContext,
@@ -1072,6 +1080,22 @@ export async function updateReport(
       409,
       ERROR_CODES.CONFLICT,
       "This report has been appraised and is locked. Re-open it to make changes.",
+    );
+  }
+
+  // Work cannot be logged against a closed ticket.
+  //
+  // The lock above is about *appraisal*; this is about the ticket being finished.
+  // They are different moments — an entry is closed long before anyone scores it —
+  // and a closed ticket that still accepts "what was done" is one whose record can be
+  // rewritten after everybody has stopped looking. Re-open it if there is more to
+  // say; that move is logged, which is the point.
+  const touchesWork = input.workSummary !== undefined || input.workDetail !== undefined;
+  if (touchesWork && (await isClosed(row.statusId))) {
+    throw new AppError(
+      409,
+      ERROR_CODES.CONFLICT,
+      "This entry is closed. Re-open it before logging any more work against it.",
     );
   }
 
