@@ -102,8 +102,11 @@ export function AssignmentPanel({ report }: { report: JournalEntry }) {
               placeholder="Nobody"
             />
           </div>
+          {/* `whitespace-nowrap`: this column is narrow, and without it the label
+              breaks after "Hand" and stacks two words in a button two words wide. */}
           <Button
             size="sm"
+            className="whitespace-nowrap"
             onClick={() => assign.mutate()}
             disabled={assign.isPending || assigneeId === (report.assigneeId ?? "")}
           >

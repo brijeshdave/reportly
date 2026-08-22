@@ -25,6 +25,9 @@ and a report still in progress has not finished being done — so move it to
 
 - **Issue / breakdown** — something went wrong. You give it a severity, describe what
   happened, the root cause, and what will stop it happening again, and set a status.
+  **The work fields start closed**: raising a breakdown and fixing it are two moments,
+  and the fix usually happens afterwards — sometimes by whoever reads it on the next
+  shift. Tick **"I already did the work"** when it is genuinely one job, and they open.
 - **Work log** — routine daily work. Just what you did. No severity, no status.
 
 Fill in what fits, then either:
@@ -34,6 +37,19 @@ Fill in what fits, then either:
 - **Submit** — sends it up the line, where your managers see it and can score it.
 
 Only the **title** is required to save. Everything else is there when it helps.
+
+### Logging the work afterwards
+
+Open the entry and use **Log work**. It **adds** to what is already recorded rather
+than replacing it, so somebody logging a second visit does not have to retype the
+first.
+
+**A closed entry will not take new work.** That is deliberate and separate from the
+appraisal lock, which comes later: a finished record that still accepts "what was
+done" is one that can be rewritten after everyone has stopped looking. **Re-open** it
+if there is more to say — that move is recorded, which is the point of making it the
+way back. Everything else about a closed entry stays editable; this is a rule about
+the work record, not a freeze.
 
 ## What the report is about
 
