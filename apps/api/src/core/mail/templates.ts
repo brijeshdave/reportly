@@ -97,3 +97,13 @@ export function inviteEmail(setUrl: string): Omit<OutgoingEmail, "to"> {
 <p>If you were not expecting this, you can safely ignore this email.</p>`,
   };
 }
+
+/** The message a "send a test" button sends. Says what it is, and nothing else. */
+export function testEmail(): Omit<OutgoingEmail, "to"> {
+  return {
+    subject: "Reportly test message",
+    text: "This is a test message from Reportly. If you are reading it, email is configured correctly.",
+    html: `<p>This is a test message from Reportly.</p>
+<p>If you are reading it, email is configured correctly.</p>`,
+  };
+}

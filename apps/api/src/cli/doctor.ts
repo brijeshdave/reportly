@@ -97,7 +97,16 @@ async function checkRedis(): Promise<Check> {
 async function checkMail(): Promise<Check> {
   try {
     await verifyMailer();
-    return ok("smtp", `${env.SMTP_HOST}:${env.SMTP_PORT} accepted the connection`);
+    // Deliberately not called "ok to send". This check opens a connection and
+    // authenticates; it does not send anything, and a provider can accept the
+    // connection and then refuse every message — which is precisely what happened
+    // here for a week. Settings → Channels → Send a test message is the check that
+    // exercises the API key, the from-address and the recipient rules.
+    return ok(
+      "smtp",
+      `${env.SMTP_HOST}:${env.SMTP_PORT} accepted the connection (a handshake, not a delivery — ` +
+        "use Settings → Channels → Send a test message to prove it can actually send)",
+    );
   } catch (err) {
     return fail(
       "smtp",

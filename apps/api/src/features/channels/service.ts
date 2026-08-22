@@ -16,10 +16,12 @@ import {
   type Channel,
   type ChannelCodeSent,
   type ChannelStatus,
+  type ChannelTestResult,
   ERROR_CODES,
 } from "@reportly/shared";
 
 import { availability, ChannelSendError, sendVerificationCode } from "@/core/channels/senders.js";
+import { sendTest } from "@/features/channels/test-send.js";
 import { AppError } from "@/core/errors.js";
 import { getSystemSetting } from "@/core/settings/service.js";
 import {
@@ -243,4 +245,31 @@ export async function confirmCode(
   await consumeVerification(pending.id);
   await markVerified(userId, channel, new Date());
   return listChannels(userId);
+}
+
+/**
+ * Send a test message over one channel, to prove it actually works.
+ *
+ * Defaults to the caller's own destination for that channel. An arbitrary address
+ * is allowed — an administrator checking a relay often wants a mailbox they can
+ * open — but never a silent one: the address used comes back in the answer, and
+ * the attempt is recorded in the outbound log and the audit trail.
+ */
+export async function testChannel(
+  userId: string,
+  channel: Channel,
+  destination?: string,
+): Promise<ChannelTestResult> {
+  const user = await requireUser(userId);
+  const to = destination?.trim() || destinationFor(user, channel);
+  if (!to) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      `You have no ${channel} destination set, so there is nowhere to send a test. Give an address, or set yours first.`,
+    );
+  }
+
+  const result = await sendTest(channel, to);
+  return { ...result, destination: to };
 }

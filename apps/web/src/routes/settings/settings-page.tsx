@@ -27,6 +27,7 @@ import { Alert, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { errorMessage } from "@/lib/error-message.js";
+import { ChannelTestCard } from "@/routes/settings/channel-test-card.js";
 import { SystemRolesNotice } from "@/routes/settings/system-roles-card.js";
 import { debugQuery, queryKeys } from "@/lib/queries.js";
 import { disableDebug, enableDebug } from "@/services/debug.js";
@@ -133,6 +134,9 @@ export function SettingsPage({ tab }: { tab: string }) {
                 onSave={(value) => save.mutateAsync({ def, value })}
               />
             ))}
+            {/* Only where the channels are configured — it is a way to send mail
+                from this installation's server, so it sits with that. */}
+            {activeTab === "channels" ? <ChannelTestCard disabled={!canManage} /> : null}
             {activeTab === "notifications" ? (
               <NotificationMatrixCard
                 // Whatever is stored, else the catalogue's own defaults — so the

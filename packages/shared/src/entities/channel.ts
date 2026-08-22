@@ -44,3 +44,23 @@ export const channelCodeSentSchema = z.object({
   expiresAt: z.string().datetime(),
 });
 export type ChannelCodeSent = z.infer<typeof channelCodeSentSchema>;
+
+/** Ask Reportly to send one message now, and say what the provider answered. */
+export const channelTestSchema = z.object({
+  channel: channelSchema,
+  /**
+   * Where to send it. Optional: without one it goes to the caller's own verified
+   * destination for that channel, which is the sane default — a test that can be
+   * pointed anywhere is a way to send unsolicited mail from somebody else's server.
+   */
+  destination: z.string().min(3).max(320).optional(),
+});
+export type ChannelTest = z.infer<typeof channelTestSchema>;
+
+export const channelTestResultSchema = z.object({
+  delivered: z.boolean(),
+  /** The provider's own refusal, whole. That text is usually the entire diagnosis. */
+  error: z.string().nullable(),
+  destination: z.string(),
+});
+export type ChannelTestResult = z.infer<typeof channelTestResultSchema>;

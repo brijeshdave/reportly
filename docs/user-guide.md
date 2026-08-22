@@ -630,6 +630,18 @@ password. Nothing is deleted, and you can reactivate them later.
 
 The last active superadmin cannot be deactivated — the API refuses, and says so.
 
+### Check that email (or WhatsApp, or Telegram) actually works
+
+**Settings → Channels → Send a test message** (`settings:manage`).
+
+Sends one message straight away — not through the queue — and shows exactly what
+the provider answered, refusal included. Leave the address blank to send to
+yourself, or type one you can open.
+
+Do this after changing any mail setting. A relay can accept a connection and then
+refuse every message: that looks perfectly healthy from the outside and is
+invisible until somebody says they never got their invitation.
+
 ### Stop people resetting their own password
 
 **Settings → Authentication → Password reset** (`settings:write`).

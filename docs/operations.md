@@ -538,6 +538,11 @@ is retried, so nothing is lost — but nothing is delivered either.
 > `smtp.example.com:465 accepted the connection` proves the relay is reachable and
 > nothing more. A provider can accept the TCP connection and refuse every message
 > afterwards — which is precisely what happened on one installation for a week.
+>
+> **Settings → Channels → Send a test message** is the check that settles it. It
+> sends one message immediately, outside the queue, and shows the provider's own
+> answer — including its refusal, word for word. It works for every channel, not
+> just email, and each test is written to the message log like anything else.
 
 ### Writes are being refused with 409 in one company
 
