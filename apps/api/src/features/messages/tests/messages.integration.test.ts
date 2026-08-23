@@ -129,6 +129,7 @@ describe("the outbound message log", () => {
       whatsapp: 30,
       telegram: 30,
       discord: 30,
+      perType: {},
     });
 
     expect(
@@ -153,6 +154,7 @@ describe("the outbound message log", () => {
       whatsapp: 1,
       telegram: 30,
       discord: 30,
+      perType: {},
     });
 
     const old = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
@@ -169,6 +171,56 @@ describe("the outbound message log", () => {
 
     const left = await db.select({ channel: outboundMessages.channel }).from(outboundMessages);
     expect(left.map((row) => row.channel)).toEqual(["email"]);
+  });
+
+  it("keeps a type for longer than its channel when told to", async () => {
+    // The point of the per-type override: a routine reminder is noise after a
+    // week, a password reset is evidence. Both are email.
+    await setSystemSetting(MESSAGE_RETENTION, {
+      email: 7,
+      mobile: 30,
+      whatsapp: 30,
+      telegram: 30,
+      discord: 30,
+      perType: { "password-reset": 365 },
+    });
+
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    for (const kind of ["password-reset", "invite"] as const) {
+      const id = await recordQueued({ channel: "email", kind, destination: "a@b.test" });
+      await db.update(outboundMessages).set({ queuedAt: old }).where(eq(outboundMessages.id, id!));
+    }
+
+    // The invite is past the channel's seven days; the reset is inside its year.
+    expect(await cleanupOutboundMessages()).toBe(1);
+    const left = await db.select({ kind: outboundMessages.kind }).from(outboundMessages);
+    expect(left.map((row) => row.kind)).toEqual(["password-reset"]);
+  });
+
+  it("names a notification by its own type, so one kind of alert can be kept", async () => {
+    await setSystemSetting(MESSAGE_RETENTION, {
+      email: 7,
+      mobile: 30,
+      whatsapp: 30,
+      telegram: 30,
+      discord: 30,
+      perType: { "notification:downtime.opened": 365 },
+    });
+
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    for (const eventType of ["downtime.opened", "task.assigned"]) {
+      const id = await recordQueued({
+        channel: "email",
+        kind: "notification",
+        eventType,
+        destination: "a@b.test",
+      });
+      await db.update(outboundMessages).set({ queuedAt: old }).where(eq(outboundMessages.id, id!));
+    }
+
+    expect(await cleanupOutboundMessages()).toBe(1);
+    const left = await db.select({ eventType: outboundMessages.eventType }).from(outboundMessages);
+    expect(left.map((row) => row.eventType)).toEqual(["downtime.opened"]);
   });
 
   it("is readable by whoever may read the logs, and nobody else", async () => {

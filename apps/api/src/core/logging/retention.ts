@@ -11,7 +11,7 @@ import { env } from "@/core/env.js";
 import { logDb } from "@/core/logdb/index.js";
 import { appLogs } from "@/core/logdb/schema.js";
 import { getSystemSetting } from "@/core/settings/service.js";
-import { pruneMessages } from "@/features/messages/repo.js";
+import { pruneMessages, pruneMessagesOfType } from "@/features/messages/repo.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -62,12 +62,24 @@ export async function cleanupLogFiles(days: number): Promise<number> {
  * history as a side effect of flipping a toggle is not what anybody asked for.
  */
 export async function cleanupOutboundMessages(): Promise<number> {
-  const retention = await getSystemSetting(MESSAGE_RETENTION);
+  const { perType, ...channels } = await getSystemSetting(MESSAGE_RETENTION);
+  const overridden = Object.keys(perType);
   let removed = 0;
-  for (const [channel, days] of Object.entries(retention)) {
+
+  // The overrides first, each on its own clock.
+  for (const [type, days] of Object.entries(perType)) {
     if (days <= 0) continue;
-    removed += await pruneMessages(channel, new Date(Date.now() - days * DAY_MS));
+    removed += await pruneMessagesOfType(type, new Date(Date.now() - days * DAY_MS));
   }
+
+  // Then the rest of each channel, skipping anything an override is keeping —
+  // otherwise the channel's shorter clock would delete it first and the override
+  // would be a setting that changed nothing.
+  for (const [channel, days] of Object.entries(channels)) {
+    if (days <= 0) continue;
+    removed += await pruneMessages(channel, new Date(Date.now() - days * DAY_MS), overridden);
+  }
+
   return removed;
 }
 

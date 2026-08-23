@@ -5,7 +5,7 @@
 // that does the sending (`core/messages/record.ts`) and are never edited from a
 // screen. A log somebody can tidy is not a log.
 import type { ResolvedListQuery } from "@reportly/shared";
-import { type SQL, and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { type SQL, and, eq, inArray, isNull, lt, not, or, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import { outboundMessages, users } from "@/core/db/schema.js";
@@ -103,11 +103,44 @@ export async function listMessages(
  * Per channel because they are not worth the same: a bell-adjacent WhatsApp line
  * is noise after a week, while an email row carrying a provider's refusal is the
  * evidence somebody needs months later.
+ *
+ * `exceptTypes` are the kinds and notification types that carry their own number
+ * and are swept separately — left alone here, or the channel's shorter clock would
+ * quietly delete what an override was keeping.
  */
-export async function pruneMessages(channel: string, cutoff: Date): Promise<number> {
+export async function pruneMessages(
+  channel: string,
+  cutoff: Date,
+  exceptTypes: string[] = [],
+): Promise<number> {
+  const conditions = [eq(outboundMessages.channel, channel), lt(outboundMessages.queuedAt, cutoff)];
+  if (exceptTypes.length > 0) conditions.push(not(inArray(typeKey(), exceptTypes)));
+
   const deleted = await db
     .delete(outboundMessages)
-    .where(and(eq(outboundMessages.channel, channel), lt(outboundMessages.queuedAt, cutoff)))
+    .where(and(...conditions))
+    .returning({ id: outboundMessages.id });
+  return deleted.length;
+}
+
+/**
+ * How a row names itself for retention: its kind, or `notification:<type>`.
+ *
+ * The same string the settings screen shows, so what an administrator types is
+ * what the sweep matches — rather than two vocabularies that agree until they do
+ * not.
+ */
+function typeKey() {
+  return sql<string>`case when ${outboundMessages.kind} = 'notification'
+      then 'notification:' || coalesce(${outboundMessages.eventType}, '')
+      else ${outboundMessages.kind} end`;
+}
+
+/** Drop rows of one kind or notification type, on its own clock. */
+export async function pruneMessagesOfType(type: string, cutoff: Date): Promise<number> {
+  const deleted = await db
+    .delete(outboundMessages)
+    .where(and(eq(typeKey(), type), lt(outboundMessages.queuedAt, cutoff)))
     .returning({ id: outboundMessages.id });
   return deleted.length;
 }

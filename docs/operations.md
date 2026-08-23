@@ -290,6 +290,16 @@ WhatsApp line mirroring a bell notification is noise after a fortnight. Setting 
 channel to **0 days** stops it being logged at all — nothing is written, rather
 than written and swept up later. Rows already there are left alone.
 
+**Per type, where a channel is too blunt.** `perType` overrides the channel's
+number for one kind or one notification type — a routine reminder is noise after a
+week while a password reset is evidence, and both are email. Keys are the strings
+the log itself uses: a kind (`password-reset`, `invite`, `two-factor-reset`,
+`verification-code`, `test`) or `notification:<type>`
+(`notification:downtime.opened`). Anything without an override follows its
+channel. The sweep runs the overrides first and then skips those rows when it
+sweeps the channel — otherwise the channel's shorter clock would delete what the
+override was keeping, and the setting would appear to do nothing.
+
 Non-superadmins see their own company's messages plus the ones belonging to no
 company (a password reset belongs to a person, not a tenant) — the same rule the
 audit trail uses.

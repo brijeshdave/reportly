@@ -353,6 +353,20 @@ export const messageRetentionSchema = z.object({
   whatsapp: z.number().int().min(0).max(3650).default(30),
   telegram: z.number().int().min(0).max(3650).default(30),
   discord: z.number().int().min(0).max(3650).default(30),
+  /**
+   * Overrides for particular kinds and notification types, keyed the way the
+   * message log stores them: a kind (`invite`, `password-reset`) or a notification
+   * type (`notification:downtime.opened`).
+   *
+   * A record rather than a fixed object, for the same reason the notification
+   * matrix is one: adding a type to the catalogue must not require migrating a
+   * stored value. Anything absent falls back to its channel's number.
+   *
+   * The reason to have it at all: a routine reminder is noise after a week, while
+   * a two-factor reset or a password reset is evidence and should outlive it —
+   * and those can sit on the same channel.
+   */
+  perType: z.record(z.string(), z.number().int().min(0).max(3650)).default({}),
 });
 export type MessageRetention = z.infer<typeof messageRetentionSchema>;
 
