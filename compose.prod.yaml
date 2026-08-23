@@ -46,7 +46,6 @@ x-app-env: &app-env
   # are queued and never delivered.
   # Kept here only to fail the stack fast when it is unset: without a relay, every
   # invitation and password reset is queued and never delivered.
-  SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
 
 # Docker's default json-file driver grows without limit. A chatty API fills a
 # disk in weeks, and a full disk stops Postgres.

@@ -312,12 +312,35 @@ export function mailConfigErrors(env: Env): string[] {
     smtp: [],
   } as const;
 
-  return needed[env.MAIL_TRANSPORT]
+  const errors = needed[env.MAIL_TRANSPORT]
     .filter((key) => !env[key])
     .map(
       (key) =>
         `MAIL_TRANSPORT is ${env.MAIL_TRANSPORT} but ${key} is not set — no email could be sent.`,
     );
+
+  // SMTP's own requirement, checked here rather than in compose.
+  //
+  // compose.prod.yaml used to refuse to start without SMTP_HOST. That was right
+  // when SMTP was the only way out, and became a trap the moment a provider API
+  // was an option: an installation sending through Resend would be held up over a
+  // relay it does not use. Compose cannot know which transport was chosen; this
+  // does.
+  //
+  // Production only. Development points at Mailpit on localhost by design, and
+  // that default is the whole reason `pnpm app:infra` needs no mail setup.
+  if (
+    env.MAIL_TRANSPORT === "smtp" &&
+    env.NODE_ENV === "production" &&
+    (!env.SMTP_HOST || env.SMTP_HOST === "localhost")
+  ) {
+    errors.push(
+      "MAIL_TRANSPORT is smtp but SMTP_HOST is unset (it defaults to localhost, where nothing is " +
+        "listening) — invitations and password resets would queue and never arrive.",
+    );
+  }
+
+  return errors;
 }
 
 /**

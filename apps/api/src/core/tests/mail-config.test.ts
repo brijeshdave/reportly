@@ -10,7 +10,8 @@ import { describe, expect, it } from "vitest";
 import { mailConfigErrors, type Env } from "@/core/env.js";
 
 function withTransport(overrides: Partial<Env>): Env {
-  return { MAIL_TRANSPORT: "smtp", ...overrides } as Env;
+  // Development by default: the localhost relay is Mailpit, and is the point.
+  return { MAIL_TRANSPORT: "smtp", NODE_ENV: "development", ...overrides } as Env;
 }
 
 describe("mail configuration", () => {
@@ -43,5 +44,31 @@ describe("mail configuration", () => {
     expect(
       mailConfigErrors(withTransport({ MAIL_TRANSPORT: "resend", SENDGRID_API_KEY: "SG.x" })),
     ).toHaveLength(1);
+  });
+
+  it("refuses production SMTP that still points at localhost", () => {
+    // compose.prod.yaml used to enforce this with `${SMTP_HOST:?}`. That became a
+    // trap when a provider API arrived: an install sending through Resend was held
+    // up over a relay it does not use. Compose cannot know the transport; this can.
+    const errors = mailConfigErrors(withTransport({ NODE_ENV: "production" }));
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("SMTP_HOST");
+    expect(errors[0]).toContain("queue and never arrive");
+  });
+
+  it("does not ask a provider install for an SMTP relay it never uses", () => {
+    expect(
+      mailConfigErrors(
+        withTransport({
+          NODE_ENV: "production",
+          MAIL_TRANSPORT: "resend",
+          RESEND_API_KEY: "re_x",
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("leaves development pointing at Mailpit", () => {
+    expect(mailConfigErrors(withTransport({ SMTP_HOST: "localhost" }))).toEqual([]);
   });
 });
