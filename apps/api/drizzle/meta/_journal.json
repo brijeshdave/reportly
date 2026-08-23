@@ -85,6 +85,13 @@
       "when": 1786791600002,
       "tag": "0011_last_login",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786791600003,
+      "tag": "0012_sessions_permission",
+      "breakpoints": true
     }
   ]
 }

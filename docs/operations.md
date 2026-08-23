@@ -226,6 +226,29 @@ production's, your development box is still holding production secrets and point
 at production's SMTP. And it restores the database only: attachments live in the
 file store, so downloads will 404 unless you restore that separately.
 
+## What an upgrade touches, and what it never does
+
+**Nothing seeds itself.** `docker compose up -d` runs the migrate gate, which runs
+migrations and nothing else; the API container starts the server and never seeds.
+`cli seed` is a step you take by hand, documented as a **first boot** step.
+
+So an upgrade adds and alters schema, and — where a feature needs a new permission
+— inserts that permission and grants it to the roles that already hold its nearest
+neighbour. It does not touch your data.
+
+**If you do run `cli seed` again, it no longer argues with you.** It used to: a
+status deleted because your organisation does not use it came back, one renamed
+with different capitalisation arrived a second time beside the original, and
+"Headquarters" reappeared next to the "HO" you had renamed it to. The starter
+vocabularies — severities, statuses, asset types — are now seeded **only into an
+empty table**, and the demo company's sites **only into a company with no sites at
+all**. They are a starting point for an empty install, not a set the seed
+maintains. Regression tests pin each case.
+
+**New permissions arrive by migration, not by seed.** A permission that exists only
+in the seed exists only on fresh databases — on every server that already exists it
+would be held by nobody, and the feature behind it would be silently switched off.
+
 ## How email is sent
 
 `MAIL_TRANSPORT` chooses: `smtp` (the default, unchanged) or a provider's HTTP

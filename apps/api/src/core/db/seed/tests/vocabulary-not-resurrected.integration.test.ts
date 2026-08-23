@@ -12,7 +12,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/core/db/index.js";
 import { appPool, logPool } from "@/core/db/pool.js";
 import { seedDatabase } from "@/core/db/seed/index.js";
-import { assetTypes, journalStatuses, severities } from "@/core/db/schema.js";
+import { assetTypes, journalStatuses, locations, severities } from "@/core/db/schema.js";
 import { resetDb } from "../../../../../test/reset-db.js";
 
 afterAll(async () => {
@@ -70,6 +70,50 @@ describe("seeding a database that already has its vocabulary", () => {
 
     const [row] = await db.select().from(assetTypes).where(eq(assetTypes.name, "Station"));
     expect(row!.status).toBe("inactive");
+  });
+
+  it("does not put a site back beside the one it was renamed to", async () => {
+    // The second half of the same report: "Headquarters as locations gets created
+    // everytime i migrate the production. i had renamed it to HO". Seeded by name,
+    // the rename missed the conflict target and the old name arrived alongside it.
+    const [remote] = await db
+      .select({ companyId: locations.companyId })
+      .from(locations)
+      .where(eq(locations.name, "Headquarters"))
+      .limit(1);
+    expect(remote, "the first seed should have created it").toBeDefined();
+
+    await db.update(locations).set({ name: "HO" }).where(eq(locations.name, "Headquarters"));
+
+    await seedDatabase();
+
+    const names = (
+      await db
+        .select({ name: locations.name })
+        .from(locations)
+        .where(eq(locations.companyId, remote!.companyId))
+    )
+      .map((row) => row.name)
+      .sort();
+    expect(names).toEqual(["HO", "Remote"]);
+    expect(names).not.toContain("Headquarters");
+  });
+
+  it("does not re-create a site somebody deleted, so long as one site remains", async () => {
+    // A company that has named its own sites has answered the question. The seed
+    // adds nothing — including when only one of the two starters is left.
+    const [any] = await db.select({ companyId: locations.companyId }).from(locations).limit(1);
+    await db.delete(locations).where(eq(locations.name, "Headquarters"));
+
+    await seedDatabase();
+
+    const names = (
+      await db
+        .select({ name: locations.name })
+        .from(locations)
+        .where(eq(locations.companyId, any!.companyId))
+    ).map((row) => row.name);
+    expect(names).not.toContain("Headquarters");
   });
 
   it("still fills an empty database, which is what the vocabulary is for", async () => {
