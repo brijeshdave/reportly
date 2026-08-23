@@ -118,6 +118,19 @@ const SHOTS: Shot[] = [
     ready: (page) => page.getByRole("table").first().waitFor(),
   },
   {
+    // What was sent, and what the provider said back — the screen that answers
+    // "did their invitation actually go out?".
+    name: "messages",
+    path: "/messages",
+    ready: (page) => page.getByRole("heading", { name: /messages/i }).waitFor(),
+  },
+  {
+    // The roster with last seen and who is signed in now.
+    name: "users",
+    path: "/users",
+    ready: (page) => page.getByRole("table").waitFor(),
+  },
+  {
     name: "queues",
     path: "/queues",
     // Only reachable when the server runs with QUEUE_ADMIN set; the generator
