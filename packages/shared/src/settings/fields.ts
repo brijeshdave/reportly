@@ -23,6 +23,11 @@ export interface SettingField {
    * anything on purpose, and narrowing that in the form would take the freedom
    * away. But a bare text box tells an operator nothing about what belongs in it.
    */
+  /**
+   * What a record's values are, when they are not an enum. Absent means "use
+   * `options`", which is how log levels work.
+   */
+  valueKind?: "number";
   keyOptions?: readonly string[];
   /** "expiresInSeconds" -> "Expires in seconds". */
   label: string;
@@ -112,11 +117,21 @@ export function describeSettingSchema(schema: z.ZodTypeAny): SettingField[] {
         // say why. Anything that cannot be edited is not configuration.
         return { key, label, kind: "list" };
       case "record": {
+        // A record's values are not always an enum. Log levels are, and the form
+        // grew a `<select>` for them; retention days are numbers, and rendering
+        // that same select gave a control with no options — a key you could add
+        // and a value you could never set.
         const valueType = internals(inner).valueType;
-        const options = valueType
-          ? Object.values(internals(unwrap(valueType)).entries ?? {})
-          : undefined;
-        return { key, label, kind: "record", options: options?.length ? options : undefined };
+        const unwrapped = valueType ? unwrap(valueType) : undefined;
+        const options = unwrapped ? Object.values(internals(unwrapped).entries ?? {}) : undefined;
+        const numeric = unwrapped ? internals(unwrapped).type === "number" : false;
+        return {
+          key,
+          label,
+          kind: "record",
+          options: options?.length ? (options as string[]) : undefined,
+          ...(numeric ? { valueKind: "number" as const, ...numberConstraints(unwrapped!) } : {}),
+        };
       }
       default:
         return { key, label, kind: "string" };

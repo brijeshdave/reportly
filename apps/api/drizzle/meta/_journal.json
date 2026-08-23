@@ -92,6 +92,13 @@
       "when": 1786791600003,
       "tag": "0012_sessions_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786791600004,
+      "tag": "0013_backfill_last_login",
+      "breakpoints": true
     }
   ]
 }

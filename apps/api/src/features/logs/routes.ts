@@ -3,6 +3,7 @@
 // sinks) as server logs, tagged feature="client" and carrying the request id, so
 // one id traces a user action from the browser through the API and its jobs.
 import {
+  LOG_FEATURES,
   PERMISSIONS,
   listQuerySchema,
   logEntrySchema,
@@ -13,6 +14,7 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 
+import { distinctFeatures } from "@/features/logs/repo.js";
 import { exportLogs, getLogTail, getLogs } from "@/features/logs/service.js";
 import { consumeRateLimit } from "@/lib/rate-limit.js";
 import { resolveListQuery } from "@/lib/resolve-list-query.js";
@@ -70,6 +72,25 @@ export async function logsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request) => getLogs(await resolveListQuery(request.query, request.authUserId)),
+  );
+
+  /**
+   * What the filter offers, so a feature added later needs nobody to remember it.
+   *
+   * The shipped catalogue is unioned in, so a known feature that has not logged
+   * anything yet is still offered rather than looking like it does not exist.
+   */
+  app.get(
+    "/logs/features",
+    {
+      preHandler: guard,
+      schema: {
+        tags: ["Logs"],
+        summary: "The log feature names present, for the filter",
+        response: { 200: z.array(z.string()) },
+      },
+    },
+    async () => [...new Set([...LOG_FEATURES, ...(await distinctFeatures())])].sort(),
   );
 
   app.get(

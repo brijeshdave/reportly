@@ -10,7 +10,10 @@ import {
   formatDate,
   formatDateTime,
 } from "@reportly/shared";
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+
+import { fetchLogFeatures } from "@/services/logs.js";
 
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
@@ -147,25 +150,29 @@ const initialColumnVisibility = {
  * question, not two. The person filter searches by name and stores the id, so a
  * link still works; the free-text id box stays for whoever arrives holding one.
  */
-const filterDefs: FilterDef[] = [
-  { field: "ts", label: "Date range", kind: "daterange" },
-  {
-    field: "level",
-    label: "Level",
-    kind: "multiselect",
-    options: LOG_LEVELS.map((level) => ({ value: level, label: level })),
-  },
-  {
-    field: "feature",
-    label: "Feature",
-    kind: "multiselect",
-    options: LOG_FEATURES.map((feature) => ({ value: feature, label: feature })),
-  },
-  { field: "msg", label: "Message", kind: "text" },
-  { field: "userId", label: "Person", kind: "people" },
-  { field: "requestId", label: "Request ID", kind: "text", op: "eq" },
-  { field: "userId", label: "User ID", kind: "text", op: "eq" },
-];
+function filterDefsFor(features: string[]): FilterDef[] {
+  return [
+    { field: "ts", label: "Date range", kind: "daterange" },
+    {
+      field: "level",
+      label: "Level",
+      kind: "multiselect",
+      options: LOG_LEVELS.map((level) => ({ value: level, label: level })),
+    },
+    {
+      field: "feature",
+      label: "Feature",
+      kind: "multiselect",
+      // From the logs themselves, so a feature added later needs nobody to
+      // remember it — see the note on LOG_FEATURES, which is only a starting set.
+      options: features.map((feature) => ({ value: feature, label: feature })),
+    },
+    { field: "msg", label: "Message", kind: "text" },
+    { field: "userId", label: "Person", kind: "people" },
+    { field: "requestId", label: "Request ID", kind: "text", op: "eq" },
+    { field: "userId", label: "User ID", kind: "text", op: "eq" },
+  ];
+}
 
 const TABS = [
   { id: "search", label: "Search" },
@@ -198,6 +205,15 @@ export function LogsPage({ tab, requestId }: { tab: string; requestId?: string }
 
 function LogSearch({ requestId }: { requestId?: string }) {
   const [selected, setSelected] = useState<LogEntry | null>(null);
+  const features = useQuery({
+    queryKey: ["logs", "features"],
+    queryFn: fetchLogFeatures,
+    staleTime: 5 * 60_000,
+  });
+  const filterDefs = useMemo(
+    () => filterDefsFor(features.data ?? [...LOG_FEATURES]),
+    [features.data],
+  );
   const list = useListResource<LogEntry>({
     resource: "logs",
     path: "/logs",

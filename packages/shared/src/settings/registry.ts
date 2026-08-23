@@ -5,7 +5,7 @@
 // `schema.parse({})` yields the setting's default value.
 import { z } from "zod";
 
-import { notificationMatrixSchema } from "@/entities/notification.js";
+import { ALL_NOTIFICATION_TYPES, notificationMatrixSchema } from "@/entities/notification.js";
 import { shiftColorSchema } from "@/entities/shift.js";
 import { DEFAULT_PAGE_SIZE, pageSizeSchema } from "@/http/pagination.js";
 
@@ -370,12 +370,35 @@ export const messageRetentionSchema = z.object({
 });
 export type MessageRetention = z.infer<typeof messageRetentionSchema>;
 
+/**
+ * What a per-type retention override may be keyed by.
+ *
+ * The kinds the message log records, plus `notification:<type>` for every type in
+ * the catalogue — the same strings the sweep matches on, so what an operator picks
+ * is what the job compares. Derived from the catalogue rather than typed out, so a
+ * notification type added tomorrow is offered without anybody remembering.
+ */
+export const MESSAGE_RETENTION_KEYS: readonly string[] = [
+  "password-reset",
+  "invite",
+  "two-factor-reset",
+  "verification-code",
+  "notification",
+  "test",
+  ...ALL_NOTIFICATION_TYPES.map((type) => `notification:${type}`),
+];
+
 export const MESSAGE_RETENTION: SettingDef<typeof messageRetentionSchema> = {
   namespace: "messages",
   key: "retention",
   schema: messageRetentionSchema,
   userOverridable: false,
-  description: "How long the record of sent messages is kept, per channel",
+  description:
+    "How long the record of sent messages is kept — per channel, and per kind where a channel is too blunt",
+  // Suggestions for the per-type overrides, so an operator is not faced with an
+  // empty box and the words "Type name". The kinds, and every notification type,
+  // spelled exactly as the log stores them.
+  keyOptions: { perType: MESSAGE_RETENTION_KEYS },
 };
 
 export const LOG_RETENTION: SettingDef<typeof logRetentionSchema> = {
@@ -820,6 +843,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   UPLOAD_LIMITS,
   LOG_SINKS,
   LOG_LEVEL_SETTINGS,
+  MESSAGE_RETENTION,
   LOG_RETENTION,
   LOG_BUFFER,
   DEBUG_MODE,

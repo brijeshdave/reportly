@@ -95,51 +95,54 @@ export function UsersListPage() {
   });
 
   const columns = useMemo<TableColumn<User>[]>(() => {
-    const presence: TableColumn<User>[] = canSeePresence
-      ? [
-          {
-            id: "lastLoginAt",
-            accessorKey: "lastLoginAt",
-            header: "Last seen",
-            cell: ({ row }) => (
-              <span className="flex items-center gap-2 whitespace-nowrap">
-                {row.original.signedIn ? (
-                  // "Has a live session", which is as close to "here now" as this
-                  // app can honestly claim — it cannot know they left the desk.
-                  <Badge tone="success">Signed in</Badge>
-                ) : null}
-                {row.original.lastLoginAt ? (
-                  formatDateTime(row.original.lastLoginAt)
-                ) : (
-                  <span className="text-muted-foreground">Never</span>
-                )}
-              </span>
-            ),
-          },
-        ]
-      : [];
-
-    if (!canSeeLockouts) return [...baseColumns, ...presence];
     const locked = new Set((lockedOut.data ?? []).map((row) => row.userId));
-    return [
-      ...baseColumns,
-      ...presence,
-      {
-        id: "lockout",
-        header: "Sign-in",
-        // Not sortable or filterable: it lives in Redis, not in the query the
-        // server sorts, and a column that sorts by nothing is a promise it breaks.
-        enableSorting: false,
-        cell: ({ row }) =>
-          locked.has(row.original.id) ? (
-            <Badge tone="danger" className="whitespace-nowrap">
-              Locked out
-            </Badge>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
-      },
-    ];
+
+    /**
+     * One column about sign-in state, not two.
+     *
+     * Last seen and the lockout badge answer the same question — "can this person
+     * get in, and when were they last here" — and side by side they read as a
+     * column of dates beside a column of dashes. The two permissions are still
+     * separate, so what the cell contains depends on what the viewer may know:
+     * a person who may release lockouts but not see attendance gets the badge
+     * alone, under a header that says only that.
+     */
+    const signIn: TableColumn<User>[] =
+      canSeePresence || canSeeLockouts
+        ? [
+            {
+              id: "lastLoginAt",
+              ...(canSeePresence ? { accessorKey: "lastLoginAt" } : {}),
+              header: canSeePresence ? "Last seen" : "Sign-in",
+              // The lock lives in Redis rather than in the query the server sorts,
+              // so this only sorts when it is showing the stored column.
+              enableSorting: canSeePresence,
+              cell: ({ row }) => (
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  {canSeeLockouts && locked.has(row.original.id) ? (
+                    <Badge tone="danger">Locked out</Badge>
+                  ) : null}
+                  {canSeePresence && row.original.signedIn ? (
+                    // "Has a live session", which is as close to "here now" as this
+                    // app can honestly claim — it cannot know they left the desk.
+                    <Badge tone="success">Signed in</Badge>
+                  ) : null}
+                  {canSeePresence ? (
+                    row.original.lastLoginAt ? (
+                      formatDateTime(row.original.lastLoginAt)
+                    ) : (
+                      <span className="text-muted-foreground">Never</span>
+                    )
+                  ) : locked.has(row.original.id) ? null : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </span>
+              ),
+            },
+          ]
+        : [];
+
+    return [...baseColumns, ...signIn];
   }, [canSeeLockouts, canSeePresence, lockedOut.data]);
 
   // Designations are a fixed catalogue, so the filter picks from them rather than
@@ -183,9 +186,22 @@ export function UsersListPage() {
                 { value: "false", label: "Not signed in" },
               ],
             },
-            // "Long time inactive" is this with an upper bound and no lower one —
-            // the same date range every other screen uses, rather than a bespoke
-            // "inactive for N days" control that would then need its own rules.
+            {
+              // The "long time inactive" list, asked for in as many words. A date
+              // range could express it by setting only its upper bound, but that
+              // asks somebody to reason backwards — and quietly leaves out
+              // everybody who has never signed in, who are most of the answer.
+              field: "notSeenForDays",
+              label: "Not seen for",
+              kind: "select",
+              options: [
+                { value: "7", label: "Over a week" },
+                { value: "30", label: "Over a month" },
+                { value: "90", label: "Over three months" },
+                { value: "365", label: "Over a year" },
+              ],
+            },
+            // And the plain range, for a question about a particular window.
             { field: "lastLoginAt", label: "Last seen", kind: "daterange" },
           ] satisfies FilterDef[])
         : []),

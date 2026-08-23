@@ -23,12 +23,16 @@ function RecordField({
   disabled,
 }: {
   field: SettingField;
-  value: Record<string, string>;
-  onChange: (next: Record<string, string>) => void;
+  value: Record<string, string | number>;
+  onChange: (next: Record<string, string | number>) => void;
   disabled?: boolean;
 }) {
   const [newKey, setNewKey] = useState("");
   const options = field.options ?? [];
+  // A record's values are an enum (log levels) or a number (retention days). The
+  // form only ever drew the `<select>`, so a numeric record rendered a control
+  // with no options: a key you could add and a value you could never set.
+  const numeric = field.valueKind === "number";
   const suggestions = field.keyOptions ?? [];
   // What is left to add — a name already overridden is not a suggestion.
   const remaining = suggestions.filter((name) => !(name in value));
@@ -37,7 +41,7 @@ function RecordField({
   const add = () => {
     const key = newKey.trim();
     if (key === "" || key in value) return;
-    onChange({ ...value, [key]: options[0] ?? "" });
+    onChange({ ...value, [key]: numeric ? (field.min ?? 0) : (options[0] ?? "") });
     setNewKey("");
   };
 
@@ -47,8 +51,11 @@ function RecordField({
 
       {Object.entries(value).length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No overrides — every area logs at the default. Add one to turn a single area up or down
-          without changing the rest.
+          {/* The copy used to talk about logging, because log levels were the only
+              record setting. It is the same control for message retention, where
+              "every area logs at the default" means nothing. */}
+          No overrides — everything follows the defaults above. Add one to change a single entry
+          without touching the rest.
         </p>
       ) : null}
 
@@ -57,19 +64,33 @@ function RecordField({
           <code className="min-w-0 flex-1 truncate rounded-lg bg-muted px-2 py-1 text-xs">
             {key}
           </code>
-          <select
-            aria-label={`${field.label} for ${key}`}
-            value={entry}
-            disabled={disabled}
-            onChange={(event) => onChange({ ...value, [key]: event.target.value })}
-            className={`${SELECT_CLASS} h-8 w-32`}
-          >
-            {options.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          {numeric ? (
+            <Input
+              type="number"
+              aria-label={`${field.label} for ${key}`}
+              value={String(entry)}
+              min={field.min}
+              max={field.max}
+              step={field.integer ? 1 : undefined}
+              disabled={disabled}
+              onChange={(event) => onChange({ ...value, [key]: Number(event.target.value) })}
+              className="h-8 w-32"
+            />
+          ) : (
+            <select
+              aria-label={`${field.label} for ${key}`}
+              value={String(entry)}
+              disabled={disabled}
+              onChange={(event) => onChange({ ...value, [key]: event.target.value })}
+              className={`${SELECT_CLASS} h-8 w-32`}
+            >
+              {options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -96,7 +117,7 @@ function RecordField({
             value={newKey}
             onChange={(event) => setNewKey(event.target.value)}
             placeholder={
-              suggestions.length > 0 ? `e.g. ${suggestions[1] ?? suggestions[0]}` : "Feature name"
+              suggestions.length > 0 ? `e.g. ${suggestions[1] ?? suggestions[0]}` : "Name"
             }
             aria-label={`Add an override to ${field.label}`}
             disabled={disabled}

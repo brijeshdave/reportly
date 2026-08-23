@@ -1,7 +1,7 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // User repository — the only code touching the users table for profile/admin
 // operations (better-auth owns auth-table writes). Services call these.
-import { type SQL, and, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import {
@@ -99,6 +99,25 @@ const listConfig: ListConfig = {
  * a filter naming a field it does not know — so without this the toggle would look
  * like it worked and change nothing, which is the worst of the three outcomes.
  */
+/**
+ * "Not seen for 90 days", as asked for — including people who never signed in.
+ *
+ * A date range could express this by setting only its upper bound, which is how it
+ * shipped first. That is not the same as a filter for long-inactive people: it asks
+ * somebody to reason backwards from "last seen before X", and it silently excludes
+ * everybody whose last_login_at is NULL — the people who have never been here at
+ * all, who are exactly who the question is about.
+ */
+function staleCondition(query: ResolvedListQuery): SQL | undefined {
+  const filter = query.filters.find((entry) => entry.field === "notSeenForDays");
+  if (!filter) return undefined;
+  const days = Number(filter.value);
+  if (!Number.isFinite(days) || days < 0) return undefined;
+
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return or(isNull(users.lastLoginAt), lt(users.lastLoginAt, cutoff));
+}
+
 function presenceCondition(query: ResolvedListQuery): SQL | undefined {
   const filter = query.filters.find((entry) => entry.field === "signedIn");
   if (!filter) return undefined;
@@ -115,8 +134,13 @@ export async function listUsers(
   query: ResolvedListQuery,
 ): Promise<{ rows: UserRow[]; total: number }> {
   const parts = buildListParts(listConfig, query);
-  const presence = presenceCondition(query);
-  const where = presence ? and(parts.where, presence) : parts.where;
+  // Neither of these is a column, so neither can ride the generic filter builder —
+  // which silently drops a filter naming a field it does not know, making a
+  // control that looks like it works and changes nothing.
+  const extra = [presenceCondition(query), staleCondition(query)].filter(
+    (condition): condition is SQL => condition !== undefined,
+  );
+  const where = extra.length > 0 ? and(parts.where, ...extra) : parts.where;
   const { orderBy, limit, offset } = parts;
   const rows = await db
     .select(cols)

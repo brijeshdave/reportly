@@ -145,7 +145,12 @@ export function PageHeader({
 }: {
   /** A node, not just text: a page about a person leads with their face. */
   title: ReactNode;
-  description?: string;
+  /**
+   * Usually a sentence, but a node where the header carries a fact worth marking —
+   * a badge for "signed in", say. Kept as a `<p>` either way, so the styling and
+   * the spacing do not fork.
+   */
+  description?: ReactNode;
   actions?: ReactNode;
 }) {
   return (

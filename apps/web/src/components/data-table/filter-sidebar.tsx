@@ -156,11 +156,15 @@ export function FilterSidebar({
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
           {defs.map((def) => {
             const current = draft.find((filter) => filter.field === def.field);
+            // `String()` on a multi-select's array gives "a,b", which matches no
+            // option — the control then showed nothing selected and looked hung.
+            // Text controls still want the string; the array is kept alongside.
+            const raw = current?.value;
             const value = current === undefined ? "" : String(current.value);
 
             if (def.kind === "daterange") {
               return (
-                <Field key={def.field} label={def.label}>
+                <Field key={`${def.field}:${def.kind}`} label={def.label}>
                   {() => (
                     <DateRangeFilter
                       field={def.field}
@@ -179,7 +183,7 @@ export function FilterSidebar({
 
             if (def.kind === "people") {
               return (
-                <Field key={def.field} label={def.label}>
+                <Field key={`${def.field}:${def.kind}`} label={def.label}>
                   {(props) => (
                     <PeopleFilter
                       {...props}
@@ -196,9 +200,16 @@ export function FilterSidebar({
               // The value travels as an array and comes back as one; a single
               // remembered choice arrives as a bare string, so it is widened here
               // rather than every caller having to think about it.
-              const values = Array.isArray(value) ? value : value === "" ? [] : [String(value)];
+              // From the array as stored. A single remembered choice can arrive as
+              // a bare string, so that is widened rather than every caller having
+              // to think about it.
+              const values = Array.isArray(raw)
+                ? raw.map(String)
+                : raw === undefined || raw === ""
+                  ? []
+                  : [String(raw)];
               return (
-                <Field key={def.field} label={def.label}>
+                <Field key={`${def.field}:${def.kind}`} label={def.label}>
                   {(props) => (
                     <MultiSelect
                       {...props}
@@ -223,7 +234,7 @@ export function FilterSidebar({
 
             if (def.kind === "combobox") {
               return (
-                <Field key={def.field} label={def.label}>
+                <Field key={`${def.field}:${def.kind}`} label={def.label}>
                   {() => (
                     <SearchableSelect
                       value={value}
@@ -238,7 +249,7 @@ export function FilterSidebar({
             }
 
             return (
-              <Field key={def.field} label={def.label}>
+              <Field key={`${def.field}:${def.kind}`} label={def.label}>
                 {(props) =>
                   def.kind === "number" ? (
                     <Input

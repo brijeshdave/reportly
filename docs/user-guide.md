@@ -649,9 +649,10 @@ holding a live session — but only for people with `users:sessions:read`. Witho
 it the column is not drawn and the API does not send the field at all, because
 when a colleague was last at their desk is attendance data, not directory data.
 
-Two filters come with it: **Signed in now**, and **Last seen** as a date range —
-set only the upper bound to find people who have not been here since then. That is
-the "long time inactive" list, and it sorts and pages like every other column.
+Three filters come with it: **Signed in now**; **Not seen for** (over a week, a
+month, three months, a year) — the long-inactive list, which **includes people who
+have never signed in at all**, since they are most of the answer to "who is not
+using this?"; and **Last seen** as a plain date range for a particular window.
 
 The same permission now governs the **Sessions** tab, which shows a person's
 devices, addresses and times. It used to sit behind plain `users:read`, which made

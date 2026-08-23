@@ -27,3 +27,14 @@ export async function reportClientLog(input: ClientLogInput): Promise<void> {
 export function fetchLogTail(cursor?: string, limit = 100): Promise<LogTail> {
   return http.get<LogTail>("/logs/tail", { query: { cursor, limit } });
 }
+
+/**
+ * The feature names the filter offers.
+ *
+ * Read from the logs themselves, unioned with the shipped catalogue, so a feature
+ * added later appears the moment it logs a line — rather than waiting for somebody
+ * to remember a hand-kept list.
+ */
+export function fetchLogFeatures(): Promise<string[]> {
+  return http.get<string[]>("/logs/features");
+}

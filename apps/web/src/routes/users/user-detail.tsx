@@ -131,7 +131,28 @@ export function UserDetailPage({ userId, tab }: { userId: string; tab: string })
             {user.data.name}
           </span>
         }
-        description={user.data.email}
+        description={
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {user.data.email}
+            {/*
+              Sign-in state belongs on the person's own page, not only in the list:
+              somebody opens this page precisely to ask "can they get in, and when
+              were they last here?". Shown only to a viewer allowed to know — the
+              API does not send the fields otherwise.
+            */}
+            {canSeeSessions ? (
+              <>
+                <span aria-hidden>·</span>
+                {user.data.signedIn ? <Badge tone="success">Signed in</Badge> : null}
+                <span className="text-xs">
+                  {user.data.lastLoginAt
+                    ? `Last seen ${formatDateTime(user.data.lastLoginAt)}`
+                    : "Never signed in"}
+                </span>
+              </>
+            ) : null}
+          </span>
+        }
         actions={
           <Can permission={PERMISSIONS.USERS_UPDATE}>
             <Button

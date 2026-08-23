@@ -57,6 +57,28 @@ function list(cookie: string, query = "") {
   return app.inject({ method: "GET", url: `${API_PREFIX}/users${query}`, headers: { cookie } });
 }
 
+/**
+ * Back-date somebody's last sign-in, once the sign-in that just happened has
+ * finished writing it.
+ *
+ * The stamp is deliberately fire-and-forget — a bookkeeping column must never be
+ * able to fail somebody's sign-in — so it can land *after* the update below. On a
+ * quiet machine it never did; under the full suite it did, and the row came back
+ * dated today with nobody on the long-inactive list. Waiting for the write we know
+ * is coming is the fix; loosening the assertion would have hidden it.
+ */
+async function backdateLastLogin(userId: string, when: Date): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const [row] = await db
+      .select({ lastLoginAt: users.lastLoginAt })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (row?.lastLoginAt) break;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await db.update(users).set({ lastLoginAt: when }).where(eq(users.id, userId));
+}
+
 describe("last seen", () => {
   it("is stamped by signing in", async () => {
     const cookie = await superadmin();
@@ -141,8 +163,7 @@ describe("who is signed in now", () => {
     // stored column, so it sorts and pages like everything else.
     const admin = await superadmin();
     const target = await member();
-    const longAgo = new Date("2020-01-01T00:00:00.000Z");
-    await db.update(users).set({ lastLoginAt: longAgo }).where(eq(users.id, target.id));
+    await backdateLastLogin(target.id, new Date("2020-01-01T00:00:00.000Z"));
 
     const stale = (
       await list(
@@ -151,6 +172,42 @@ describe("who is signed in now", () => {
       )
     ).json().data as { id: string }[];
     expect(stale.map((row) => row.id)).toEqual([target.id]);
+  });
+});
+
+describe("the long-inactive list", () => {
+  it("finds people who have not been seen for a while", async () => {
+    const admin = await superadmin();
+    const target = await member();
+    await backdateLastLogin(target.id, new Date("2020-01-01T00:00:00.000Z"));
+
+    const stale = (
+      await list(admin, '?filters=[{"field":"notSeenForDays","op":"eq","value":"30"}]')
+    ).json().data as { id: string }[];
+    expect(stale.map((row) => row.id)).toContain(target.id);
+    // The admin signed in a moment ago, so they are not on it.
+    const admins = (await list(admin)).json().data as { id: string; email: string }[];
+    const adminId = admins.find((row) => row.email === "admin@reportly.local")!.id;
+    expect(stale.map((row) => row.id)).not.toContain(adminId);
+  });
+
+  it("includes people who have never signed in at all", async () => {
+    // The reason this is not just a date range with an upper bound: last_login_at
+    // is NULL for somebody invited and never seen, and a `<` comparison drops
+    // them — while they are most of the answer to "who is not using this?".
+    const admin = await superadmin();
+    const invited = await app.inject({
+      method: "POST",
+      url: `${API_PREFIX}/users`,
+      headers: { cookie: admin },
+      payload: { name: "Never Seen", email: "never@reportly.test", username: "never" },
+    });
+    expect(invited.statusCode).toBe(201);
+
+    const stale = (
+      await list(admin, '?filters=[{"field":"notSeenForDays","op":"eq","value":"7"}]')
+    ).json().data as { email: string }[];
+    expect(stale.map((row) => row.email)).toContain("never@reportly.test");
   });
 });
 

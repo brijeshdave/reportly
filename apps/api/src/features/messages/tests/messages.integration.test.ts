@@ -197,6 +197,34 @@ describe("the outbound message log", () => {
     expect(left.map((row) => row.kind)).toEqual(["password-reset"]);
   });
 
+  it("treats an override of zero as no override at all", async () => {
+    // Zero is what the settings form creates the instant somebody adds a row. If
+    // that counted as an override, the type sweep would skip it (nothing to do at
+    // zero days) *and* the channel sweep would leave it alone — so an unfinished
+    // row would keep that kind of message forever, which is the opposite of every
+    // reading of the screen.
+    await setSystemSetting(MESSAGE_RETENTION, {
+      email: 7,
+      mobile: 30,
+      whatsapp: 30,
+      telegram: 30,
+      discord: 30,
+      perType: { "password-reset": 0 },
+    });
+
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const id = await recordQueued({
+      channel: "email",
+      kind: "password-reset",
+      destination: "a@b.test",
+    });
+    await db.update(outboundMessages).set({ queuedAt: old }).where(eq(outboundMessages.id, id!));
+
+    // Swept on the channel's seven days, like anything else without an override.
+    expect(await cleanupOutboundMessages()).toBe(1);
+    expect(await db.select({ id: outboundMessages.id }).from(outboundMessages)).toEqual([]);
+  });
+
   it("names a notification by its own type, so one kind of alert can be kept", async () => {
     await setSystemSetting(MESSAGE_RETENTION, {
       email: 7,

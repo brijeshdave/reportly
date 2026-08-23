@@ -343,6 +343,12 @@ channel. The sweep runs the overrides first and then skips those rows when it
 sweeps the channel — otherwise the channel's shorter clock would delete what the
 override was keeping, and the setting would appear to do nothing.
 
+Edit it under **Settings → Messages**, where each channel is a number of days and
+**Per type** takes an override per kind, offering the exact strings the sweep
+matches. **A `0` there means "follow the channel"**, not "keep forever": a row is
+created at zero the moment you add one, and treating that as an override would
+have quietly exempted that kind from every sweep.
+
 Non-superadmins see their own company's messages plus the ones belonging to no
 company (a password reset belongs to a person, not a tenant) — the same rule the
 audit trail uses.

@@ -3,6 +3,7 @@
 // mis-reads becomes a control that writes a value the schema then rejects. Every
 // real registry schema is checked, not just synthetic ones.
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   LOG_LEVELS,
@@ -121,5 +122,29 @@ describe("describeSettingSchema", () => {
 
   it("returns nothing for a non-object schema", () => {
     expect(describeSettingSchema(LOG_SINKS.schema.shape.console)).toEqual([]);
+  });
+});
+
+describe("a record of numbers", () => {
+  it("is described as numeric, so the form can offer a number box", () => {
+    // Log levels are a record of enum values, and the form renders a `<select>` of
+    // them. Retention days are a record of numbers: rendering that same select
+    // gave a control with no options — a key you could add and a value you could
+    // never set, which made the whole setting unusable.
+    const [field] = describeSettingSchema(
+      z.object({ perType: z.record(z.string(), z.number().int().min(0).max(3650)).default({}) }),
+    );
+
+    expect(field).toMatchObject({ kind: "record", valueKind: "number", integer: true });
+    expect(field!.options).toBeUndefined();
+  });
+
+  it("still describes a record of enum values by its options", () => {
+    const [field] = describeSettingSchema(
+      z.object({ features: z.record(z.string(), z.enum(["info", "debug"])).default({}) }),
+    );
+
+    expect(field).toMatchObject({ kind: "record", options: ["info", "debug"] });
+    expect(field!.valueKind).toBeUndefined();
   });
 });

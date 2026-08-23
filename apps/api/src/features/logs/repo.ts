@@ -125,3 +125,23 @@ export function logFilterWhere(query: ResolvedListQuery): SQL | undefined {
   const { where } = buildListParts(listConfig, query);
   return where ? and(where) : undefined;
 }
+
+/**
+ * The `feature` values actually present in the logs.
+ *
+ * The shipped catalogue (`LOG_FEATURES`) is a hand-kept list carrying the note
+ * "keep this in step with the values the API actually logs" — which is a promise
+ * nobody can keep across a year of features. Reading the column means a feature
+ * added tomorrow appears in the filter the moment it logs a line, with nothing to
+ * remember.
+ *
+ * Distinct over an indexed column and naturally tiny: an installation has a
+ * couple of dozen feature names, not thousands.
+ */
+export async function distinctFeatures(): Promise<string[]> {
+  const rows = await logDb
+    .selectDistinct({ feature: appLogs.feature })
+    .from(appLogs)
+    .orderBy(asc(appLogs.feature));
+  return rows.map((row) => row.feature).filter((feature): feature is string => Boolean(feature));
+}

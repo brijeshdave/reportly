@@ -63,12 +63,19 @@ export async function cleanupLogFiles(days: number): Promise<number> {
  */
 export async function cleanupOutboundMessages(): Promise<number> {
   const { perType, ...channels } = await getSystemSetting(MESSAGE_RETENTION);
-  const overridden = Object.keys(perType);
+
+  // **Only a positive number is an override.** Zero means "follow the channel",
+  // and it matters because zero is what the form creates the moment somebody adds
+  // a row: counting it as an override would exclude those rows from the channel
+  // sweep while the type sweep also skipped them, so adding an override and not
+  // yet typing a number would keep that kind of message *forever*. The setting
+  // would have done the exact opposite of what it says.
+  const overrides = Object.entries(perType).filter(([, days]) => days > 0);
+  const overridden = overrides.map(([type]) => type);
   let removed = 0;
 
   // The overrides first, each on its own clock.
-  for (const [type, days] of Object.entries(perType)) {
-    if (days <= 0) continue;
+  for (const [type, days] of overrides) {
     removed += await pruneMessagesOfType(type, new Date(Date.now() - days * DAY_MS));
   }
 
