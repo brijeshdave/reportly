@@ -5,7 +5,9 @@
 import { PERMISSIONS, type AuditEvent, type DeviceInfo, formatDateTime } from "@reportly/shared";
 import { Link } from "@tanstack/react-router";
 import { ScrollText } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import { useQuery } from "@tanstack/react-query";
 
 import { usePermission } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
@@ -16,13 +18,35 @@ import { Badge, PageHeader } from "@/components/ui/primitives.js";
 import { UserRef } from "@/components/user-ref.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { deviceFromDetails } from "@/lib/device-info.js";
+import { fetchAuditActions } from "@/services/audit.js";
 
-const filterDefs: FilterDef[] = [
-  { field: "createdAt", label: "Date range", kind: "daterange" },
-  { field: "action", label: "Action", kind: "text" },
-  { field: "actorId", label: "Actor ID", kind: "text", op: "eq" },
-  { field: "requestId", label: "Request ID", kind: "text", op: "eq" },
-];
+/**
+ * Filters people can actually use.
+ *
+ * These asked for a uuid, which meant finding one somewhere else before you could
+ * ask a question about a colleague. The id still travels in the URL, so a link
+ * keeps working — the box just stops making anybody read one.
+ *
+ * The free-text id box stays for whoever arrives holding one, out of a support
+ * ticket or a log line.
+ */
+function filterDefsFor(actions: string[]): FilterDef[] {
+  return [
+    { field: "createdAt", label: "Date range", kind: "daterange" },
+    {
+      field: "action",
+      label: "Action",
+      kind: "multiselect",
+      // Built from what is actually in the trail: audit actions are free strings
+      // written by each feature, so a hand-kept list would drift on the first one
+      // somebody added.
+      options: actions.map((action) => ({ value: action, label: action })),
+    },
+    { field: "actorId", label: "Actor", kind: "people" },
+    { field: "requestId", label: "Request ID", kind: "text", op: "eq" },
+    { field: "actorId", label: "Actor ID", kind: "text", op: "eq" },
+  ];
+}
 
 /** A column that reads one field off the event's captured device. Text, muted. */
 function deviceColumn(
@@ -134,6 +158,13 @@ const initialColumnVisibility = {
 
 export function AuditPage() {
   const [selected, setSelected] = useState<AuditEvent | null>(null);
+
+  const actions = useQuery({
+    queryKey: ["audit-events", "actions"],
+    queryFn: fetchAuditActions,
+    staleTime: 5 * 60_000,
+  });
+  const filterDefs = useMemo(() => filterDefsFor(actions.data ?? []), [actions.data]);
 
   const list = useListResource<AuditEvent>({
     resource: "audit-events",

@@ -15,6 +15,8 @@ import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { DateRangeFilter } from "@/components/data-table/date-range-filter.js";
+import { MultiSelect } from "@/components/multi-select.js";
+import { PeopleFilter } from "@/components/people-filter.js";
 import { SearchableSelect, type SelectOption } from "@/components/searchable-select.js";
 import { Field, Input } from "@/components/ui/form.js";
 import { Button } from "@/components/ui/primitives.js";
@@ -28,10 +30,15 @@ export interface FilterDef {
    * How the value is entered; determines the operator sent to the API.
    * - `select` — a native dropdown, for a handful of fixed options.
    * - `combobox` — a type-to-search dropdown, for many options (people, tags…).
+   * - `people` — a person, searched on the server and shown by name. The filter
+   *   still stores their id, so a link keeps working; nobody has to read one.
+   * - `multiselect` — several values at once, sent as `in`. "Every delete and
+   *   every export, by these two people" is then one query rather than four.
    * - `number` — a numeric box, for a count or a score; pair it with `op: "gte"`
    *   for an "at least" filter and say so in the label.
    */
-  kind: "text" | "select" | "combobox" | "boolean" | "number" | "daterange";
+  kind:
+    "text" | "select" | "combobox" | "people" | "multiselect" | "boolean" | "number" | "daterange";
   /** Options for `kind: "select"` or `"combobox"`. */
   options?: SelectOption[];
   /** Defaults to `contains` for text and `eq` for the rest. */
@@ -47,6 +54,7 @@ function upsertDraft(draft: Filter[], filter: Filter): Filter[] {
 function opFor(def: FilterDef): FilterOp {
   if (def.kind === "text") return "contains";
   if (def.kind === "daterange") return "between";
+  if (def.kind === "multiselect") return "in";
   return def.op ?? "eq";
 }
 
@@ -163,6 +171,50 @@ export function FilterSidebar({
                           upsertDraft(now, { field: def.field, op: "between", value: "" }),
                         )
                       }
+                    />
+                  )}
+                </Field>
+              );
+            }
+
+            if (def.kind === "people") {
+              return (
+                <Field key={def.field} label={def.label}>
+                  {(props) => (
+                    <PeopleFilter
+                      {...props}
+                      value={value}
+                      onChange={(next) => change(def, next)}
+                      label={def.label}
+                    />
+                  )}
+                </Field>
+              );
+            }
+
+            if (def.kind === "multiselect") {
+              // The value travels as an array and comes back as one; a single
+              // remembered choice arrives as a bare string, so it is widened here
+              // rather than every caller having to think about it.
+              const values = Array.isArray(value) ? value : value === "" ? [] : [String(value)];
+              return (
+                <Field key={def.field} label={def.label}>
+                  {(props) => (
+                    <MultiSelect
+                      {...props}
+                      values={values}
+                      onChange={(next) =>
+                        setDraft((now) =>
+                          upsertDraft(now, {
+                            field: def.field,
+                            op: "in",
+                            value: next.length > 0 ? next : "",
+                          }),
+                        )
+                      }
+                      options={def.options ?? []}
+                      ariaLabel={def.label}
+                      placeholder={`Any ${def.label.toLowerCase()}`}
                     />
                   )}
                 </Field>

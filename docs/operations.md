@@ -255,6 +255,20 @@ same underlying mechanism. The rule applies to the public self-service endpoints
 only — both spellings of them — so turning it off can never quietly prevent new
 people joining. A test pins exactly that.
 
+## Asking the logs and the audit trail a question
+
+Both screens filter by **name**, not by uuid:
+
+- **Actor** (audit) and **Person** (logs) are searchable people pickers — type a
+  name, pick the person. The id still travels in the URL, so a link you paste into
+  a ticket keeps working; nobody has to read one to ask the question.
+- **Action** (audit) offers the action names **actually present in the trail**,
+  several at a time — "every create and every delete" is one query. The list is
+  read from the rows, because actions are free strings written by each feature and
+  a hand-kept catalogue would drift the first time somebody added one.
+- **Feature** and **Level** (logs) are the fixed catalogues, also multi-select.
+- A free-text **ID** box stays on both, for whoever arrives holding one.
+
 ## The message log
 
 **System → Messages** (`logs:view`) records every email, SMS, WhatsApp, Telegram

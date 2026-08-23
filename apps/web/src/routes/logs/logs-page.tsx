@@ -3,7 +3,13 @@
 // rendered as a console. A row summarises a line; the detail drawer shows the rich
 // context the row cannot — the method, url, status and timing an HTTP line carries
 // but that a bare "incoming request" hides.
-import { LOG_LEVELS, type LogEntry, formatDate, formatDateTime } from "@reportly/shared";
+import {
+  LOG_FEATURES,
+  LOG_LEVELS,
+  type LogEntry,
+  formatDate,
+  formatDateTime,
+} from "@reportly/shared";
 import { useState } from "react";
 
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
@@ -133,16 +139,30 @@ const initialColumnVisibility = {
   duration: false,
 };
 
+/**
+ * Filters people can actually use.
+ *
+ * `feature` and `level` are fixed catalogues, so they are chosen from rather than
+ * spelled — and several at once, because "everything from email and queues" is one
+ * question, not two. The person filter searches by name and stores the id, so a
+ * link still works; the free-text id box stays for whoever arrives holding one.
+ */
 const filterDefs: FilterDef[] = [
   { field: "ts", label: "Date range", kind: "daterange" },
   {
     field: "level",
     label: "Level",
-    kind: "select",
+    kind: "multiselect",
     options: LOG_LEVELS.map((level) => ({ value: level, label: level })),
   },
-  { field: "feature", label: "Feature", kind: "text" },
+  {
+    field: "feature",
+    label: "Feature",
+    kind: "multiselect",
+    options: LOG_FEATURES.map((feature) => ({ value: feature, label: feature })),
+  },
   { field: "msg", label: "Message", kind: "text" },
+  { field: "userId", label: "Person", kind: "people" },
   { field: "requestId", label: "Request ID", kind: "text", op: "eq" },
   { field: "userId", label: "User ID", kind: "text", op: "eq" },
 ];

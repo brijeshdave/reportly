@@ -94,6 +94,23 @@ export async function listAuditEvents(
   return { rows, total: counted[0]?.count ?? 0 };
 }
 
+/**
+ * Every action that actually appears in the trail.
+ *
+ * Built from the rows rather than from a hand-kept list, because audit actions are
+ * written as free strings by each feature — a catalogue would drift the first time
+ * somebody added one. Distinct over an indexed column, and small: an installation
+ * has dozens of action names, not thousands.
+ */
+export async function distinctActions(scope: SQL | undefined): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ action: auditEvents.action })
+    .from(auditEvents)
+    .where(scope)
+    .orderBy(asc(auditEvents.action));
+  return rows.map((row) => row.action);
+}
+
 /** Stream audit rows in batches so a large export never loads everything at once. */
 export async function* streamAuditEvents(
   scope: SQL | undefined,

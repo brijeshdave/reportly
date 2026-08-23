@@ -29,6 +29,7 @@ export function SearchableSelect({
   placeholder = "Any",
   disabled,
   ariaLabel,
+  onQueryChange,
   "aria-describedby": describedBy,
 }: {
   /** Put `Field`'s id here, or its `<label for>` points at nothing. */
@@ -36,6 +37,15 @@ export function SearchableSelect({
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
+  /**
+   * Take over the searching.
+   *
+   * Given this, the caller fetches matching options as the query changes and the
+   * list is shown exactly as handed over — no second, client-side filter on top.
+   * That matters for people: downloading five thousand of them to filter in the
+   * browser is fine at fifty and unusable at five thousand.
+   */
+  onQueryChange?: (query: string) => void;
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
@@ -52,12 +62,14 @@ export function SearchableSelect({
 
   const selected = options.find((option) => option.value === value) ?? null;
   const filtered = useMemo(() => {
+    // The caller is searching; anything it hands back is already the answer.
+    if (onQueryChange) return options;
     const q = query.trim().toLowerCase();
     if (!q) return options;
     return options.filter(
       (option) => option.label.toLowerCase().includes(q) || option.hint?.toLowerCase().includes(q),
     );
-  }, [options, query]);
+  }, [options, query, onQueryChange]);
 
   const close = () => {
     setOpen(false);
@@ -160,6 +172,7 @@ export function SearchableSelect({
                     value={query}
                     onChange={(event) => {
                       setQuery(event.target.value);
+                      onQueryChange?.(event.target.value);
                       // Typing narrows the list, so an index into the old one means
                       // nothing — start again at the top rather than on whatever
                       // happens to sit at that position now.

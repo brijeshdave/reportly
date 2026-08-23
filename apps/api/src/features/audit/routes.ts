@@ -17,7 +17,7 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 
 import { AppError } from "@/core/errors.js";
-import { auditScope } from "@/features/audit/repo.js";
+import { auditScope, distinctActions } from "@/features/audit/repo.js";
 import { exportAuditEvents, getAuditEvents, getEntityHistory } from "@/features/audit/service.js";
 import { resolveListQuery } from "@/lib/resolve-list-query.js";
 
@@ -54,6 +54,25 @@ export async function auditRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) =>
       getAuditEvents(await resolveListQuery(request.query, request.authUserId), scopeFor(request)),
+  );
+
+  /**
+   * The action names present, so the filter can offer them instead of asking
+   * somebody to remember that it is spelled "user.two-factor.reset".
+   *
+   * A static path, and before /audit-events/:id would be if one existed.
+   */
+  app.get(
+    "/audit-events/actions",
+    {
+      preHandler: guard,
+      schema: {
+        tags: ["Audit"],
+        summary: "The audit action names actually present, for the filter",
+        response: { 200: z.array(z.string()) },
+      },
+    },
+    async (request) => distinctActions(scopeFor(request)),
   );
 
   app.get(
