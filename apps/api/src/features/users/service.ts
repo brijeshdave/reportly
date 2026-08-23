@@ -30,6 +30,7 @@ import { env } from "@/core/env.js";
 import { revokeAllSessions, revokeSession } from "@/core/auth/account-status.js";
 import { resetTwoFactor } from "@/core/auth/two-factor.js";
 import { AppError } from "@/core/errors.js";
+import { logger } from "@/core/logger.js";
 import { twoFactorResetEmail } from "@/core/mail/templates.js";
 import { lockedIdentities, release } from "@/core/auth/login-throttle.js";
 import { enqueueEmail } from "@/core/queue/email.js";
@@ -67,6 +68,8 @@ import {
   setUserGroups,
   setUserLocations,
   updateUserRow,
+  signedInNow,
+  touchLastLogin,
   userIdForSessionToken,
   usersByIdentities,
 } from "@/features/users/repo.js";
@@ -127,14 +130,38 @@ async function withAvatars(users: User[]): Promise<User[]> {
   return users.map((user) => ({ ...user, avatarVersion: versions.get(user.id) ?? null }));
 }
 
-export async function listUsers(query: ResolvedListQuery): Promise<PaginatedResult<User>> {
-  const { rows, total } = await listUserRows(query);
-  return toPaginatedResult(await withAvatars(rows.map(serialize)), total, query);
+/**
+ * Attach "last seen" and "signed in now", for a caller allowed to know.
+ *
+ * Omitted entirely rather than nulled for everybody else: a null would still
+ * announce that there is a field here somebody is not allowed to see, and this is
+ * attendance data about a colleague.
+ */
+async function withPresence(people: User[], allowed: boolean, rows: UserRow[]): Promise<User[]> {
+  if (!allowed) return people;
+  const live = await signedInNow(people.map((person) => person.id));
+  const lastLogin = new Map(rows.map((row) => [row.id, row.lastLoginAt]));
+  return people.map((person) => ({
+    ...person,
+    lastLoginAt: lastLogin.get(person.id)?.toISOString() ?? null,
+    signedIn: live.has(person.id),
+  }));
 }
 
-export async function getUser(id: string): Promise<User> {
-  const [user] = await withAvatars([serialize(await requireUser(id))]);
-  return user!;
+export async function listUsers(
+  query: ResolvedListQuery,
+  showPresence = false,
+): Promise<PaginatedResult<User>> {
+  const { rows, total } = await listUserRows(query);
+  const people = await withAvatars(rows.map(serialize));
+  return toPaginatedResult(await withPresence(people, showPresence, rows), total, query);
+}
+
+export async function getUser(id: string, showPresence = false): Promise<User> {
+  const row = await requireUser(id);
+  const [user] = await withAvatars([serialize(row)]);
+  const [withSeen] = await withPresence([user!], showPresence, [row]);
+  return withSeen!;
 }
 
 /** Email and login name are both unique; say which one clashed, not just "taken". */
@@ -238,6 +265,24 @@ export async function announceLockout(identity: string | null, ip: string): Prom
     entityKind: "user",
     entityId: row.id,
   });
+}
+
+/**
+ * Remember that somebody just signed in.
+ *
+ * Two-factor counts as well as the password: an account with a second factor is
+ * not signed in until the code is accepted, and recording only the first step
+ * would make every 2FA user look as though they never completed one.
+ *
+ * Never throws — the caller is the sign-in path, and a bookkeeping column must not
+ * be able to refuse somebody entry.
+ */
+export async function noteSignIn(userId: string): Promise<void> {
+  try {
+    await touchLastLogin(userId);
+  } catch (error) {
+    logger.warn({ err: error, userId }, "Could not record a sign-in time");
+  }
 }
 
 /** Send the set-password link an invited (or password-less) user signs in with. */

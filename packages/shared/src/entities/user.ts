@@ -112,6 +112,17 @@ export const userSchema = z
     discordVerified: z.boolean().default(false),
 
     status: entityStatusSchema,
+
+    /**
+     * When they last signed in, and whether a session of theirs is live right now.
+     *
+     * Both are **omitted entirely** for a caller without `users:sessions:read` —
+     * not nulled, omitted — because "when was this colleague last at their desk"
+     * is attendance data, and a null would still say "there is a field here you
+     * are not allowed to see", which invites guessing.
+     */
+    lastLoginAt: z.string().nullable().optional(),
+    signedIn: z.boolean().optional(),
   })
   .merge(timestampsSchema);
 

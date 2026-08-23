@@ -642,6 +642,24 @@ Do this after changing any mail setting. A relay can accept a connection and the
 refuse every message: that looks perfectly healthy from the outside and is
 invisible until somebody says they never got their invitation.
 
+### See when somebody was last here, and who is signed in now
+
+**Users** shows a **Last seen** column with a **Signed in** badge for anybody
+holding a live session — but only for people with `users:sessions:read`. Without
+it the column is not drawn and the API does not send the field at all, because
+when a colleague was last at their desk is attendance data, not directory data.
+
+Two filters come with it: **Signed in now**, and **Last seen** as a date range —
+set only the upper bound to find people who have not been here since then. That is
+the "long time inactive" list, and it sorts and pages like every other column.
+
+The same permission now governs the **Sessions** tab, which shows a person's
+devices, addresses and times. It used to sit behind plain `users:read`, which made
+gating anything beside it pointless.
+
+"Signed in" means "holds a session that has not expired". Reportly cannot know
+somebody walked away from the desk, and does not pretend to.
+
 ### Stop people resetting their own password
 
 **Settings → Authentication → Password reset** (`settings:write`).

@@ -570,6 +570,11 @@ and that cache is dropped the moment the status changes.
 - **Two-factor lost?** They can use a recovery code on the challenge screen. If
   those are gone too, an administrator cannot help — the account needs a password
   reset, which also clears the pending two-factor challenge.
+- **"Their sessions tab is empty but they are definitely logged in."** Check the
+  viewer holds `users:sessions:read` — the tab is not drawn without it. If it is
+  drawn and empty, the person's session predates `storeSessionInDatabase` and lives
+  only in Redis; it will appear on their next sign-in. **Users → Last seen** answers
+  the underlying question either way.
 - **Signed in but sees nothing?** They are in no group. Groups are the only source
   of permissions. Their user page shows this.
 - **Signed in but everything returns `PASSWORD_EXPIRED`?** Their password is older

@@ -3,7 +3,7 @@
 // person: invite them (a dialog — it asks only for a name and an address) or
 // create them outright (a page — it asks for a login name, channels and possibly a
 // password). Every action is gated by the same permission the API enforces.
-import { PERMISSIONS, type User, formatDate } from "@reportly/shared";
+import { PERMISSIONS, type User, formatDate, formatDateTime } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Download, Mail, Upload, UserPlus } from "lucide-react";
@@ -78,6 +78,9 @@ export function UsersListPage() {
   // permission the column is not drawn at all — "this person keeps failing their
   // password" is not a fact a directory listing should hand to every colleague.
   const canSeeLockouts = usePermission(PERMISSIONS.USERS_MANAGE_2FA);
+  // Attendance data about a colleague, so the column is simply absent without it —
+  // the API does not send the fields either.
+  const canSeePresence = usePermission(PERMISSIONS.USERS_SESSIONS_READ);
   const navigate = useNavigate();
   const list = useListResource<User>({ resource: "users", path: "/users" });
 
@@ -92,10 +95,35 @@ export function UsersListPage() {
   });
 
   const columns = useMemo<TableColumn<User>[]>(() => {
-    if (!canSeeLockouts) return baseColumns;
+    const presence: TableColumn<User>[] = canSeePresence
+      ? [
+          {
+            id: "lastLoginAt",
+            accessorKey: "lastLoginAt",
+            header: "Last seen",
+            cell: ({ row }) => (
+              <span className="flex items-center gap-2 whitespace-nowrap">
+                {row.original.signedIn ? (
+                  // "Has a live session", which is as close to "here now" as this
+                  // app can honestly claim — it cannot know they left the desk.
+                  <Badge tone="success">Signed in</Badge>
+                ) : null}
+                {row.original.lastLoginAt ? (
+                  formatDateTime(row.original.lastLoginAt)
+                ) : (
+                  <span className="text-muted-foreground">Never</span>
+                )}
+              </span>
+            ),
+          },
+        ]
+      : [];
+
+    if (!canSeeLockouts) return [...baseColumns, ...presence];
     const locked = new Set((lockedOut.data ?? []).map((row) => row.userId));
     return [
       ...baseColumns,
+      ...presence,
       {
         id: "lockout",
         header: "Sign-in",
@@ -112,7 +140,7 @@ export function UsersListPage() {
           ),
       },
     ];
-  }, [canSeeLockouts, lockedOut.data]);
+  }, [canSeeLockouts, canSeePresence, lockedOut.data]);
 
   // Designations are a fixed catalogue, so the filter picks from them rather than
   // guessing the spelling — searchable, since an org can have plenty.
@@ -141,8 +169,28 @@ export function UsersListPage() {
           { value: "inactive", label: "Inactive" },
         ],
       },
+      // Both only for somebody allowed to see presence at all: offering a filter
+      // over a column that is not there would be a control that quietly does
+      // nothing.
+      ...(canSeePresence
+        ? ([
+            {
+              field: "signedIn",
+              label: "Signed in now",
+              kind: "select",
+              options: [
+                { value: "true", label: "Signed in" },
+                { value: "false", label: "Not signed in" },
+              ],
+            },
+            // "Long time inactive" is this with an upper bound and no lower one —
+            // the same date range every other screen uses, rather than a bespoke
+            // "inactive for N days" control that would then need its own rules.
+            { field: "lastLoginAt", label: "Last seen", kind: "daterange" },
+          ] satisfies FilterDef[])
+        : []),
     ],
-    [designations.data],
+    [designations.data, canSeePresence],
   );
 
   return (

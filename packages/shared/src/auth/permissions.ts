@@ -31,6 +31,20 @@ export const PERMISSIONS = {
    */
   USERS_MANAGE_2FA: "users:manage-2fa",
   /**
+   * See when somebody last signed in, from where, and on what.
+   *
+   * Its own permission because it is not "who works here" — it is a record of when
+   * a colleague was at their desk, which is attendance data by another name, and a
+   * directory listing has no business handing that to everybody who can read it.
+   *
+   * It governs the Sessions tab as well as the Last seen column. Those were behind
+   * plain `users:read` until this existed, which made "gate the new column" pure
+   * theatre: the tab beside it already showed strictly more — IP, device, times.
+   * Granted with the two-factor and unlock powers, to the people who help others
+   * get in, since that is when it is genuinely needed.
+   */
+  USERS_SESSIONS_READ: "users:sessions:read",
+  /**
    * Bulk import/export of the roster. Its own permission, like every other resource's
    * :import, and a heavy one: one file can create accounts and place people in groups
    * (which grants access). It never carries a password — new people are invited (a

@@ -95,6 +95,8 @@ export function UserDetailPage({ userId, tab }: { userId: string; tab: string })
     queryFn: () => fetchUser(userId),
   });
 
+  const canSeeSessions = usePermission(PERMISSIONS.USERS_SESSIONS_READ);
+
   const toggleStatus = useMutation({
     mutationFn: (next: "active" | "inactive") => setUserStatus(userId, next),
     onSuccess: async () => {
@@ -107,7 +109,11 @@ export function UserDetailPage({ userId, tab }: { userId: string; tab: string })
   if (!user.data) return null;
 
   const active = user.data.status === "active";
-  const activeTab = TABS.some((candidate) => candidate.id === tab) ? tab : "profile";
+  // The Sessions tab lists a colleague's devices, addresses and times. Without the
+  // permission it is not drawn at all, rather than drawn and answering 403 — and
+  // a link that lands on a refusal reads as a bug.
+  const tabs = canSeeSessions ? TABS : TABS.filter((candidate) => candidate.id !== "sessions");
+  const activeTab = tabs.some((candidate) => candidate.id === tab) ? tab : "profile";
 
   return (
     // No tab here holds a draft today, but the panels keep their state anyway, so
@@ -140,7 +146,7 @@ export function UserDetailPage({ userId, tab }: { userId: string; tab: string })
       />
 
       <PageTabs
-        tabs={TABS}
+        tabs={tabs}
         active={activeTab}
         onSelect={(id) => void navigate({ search: { tab: id }, replace: true })}
       />
@@ -167,7 +173,7 @@ export function UserDetailPage({ userId, tab }: { userId: string; tab: string })
           <SecurityTab user={user.data} />
         </TabPanel>
         <TabPanel id="sessions" active={activeTab}>
-          <SessionsTab userId={userId} />
+          {canSeeSessions ? <SessionsTab userId={userId} /> : null}
         </TabPanel>
         <TabPanel id="history" active={activeTab}>
           <HistoryTab entityType="users" id={userId} />

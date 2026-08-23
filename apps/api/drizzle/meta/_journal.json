@@ -78,6 +78,13 @@
       "when": 1786791600001,
       "tag": "0010_outbound_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786791600002,
+      "tag": "0011_last_login",
+      "breakpoints": true
     }
   ]
 }

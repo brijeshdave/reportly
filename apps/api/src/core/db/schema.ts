@@ -80,6 +80,14 @@ export const users = pgTable("users", {
   whatsappVerifiedAt: timestamp("whatsapp_verified_at", { withTimezone: true }),
   telegramVerifiedAt: timestamp("telegram_verified_at", { withTimezone: true }),
   discordVerifiedAt: timestamp("discord_verified_at", { withTimezone: true }),
+  /**
+   * When they last signed in successfully.
+   *
+   * Stored rather than derived from `sessions`: those rows are deleted on sign-out
+   * and on expiry, so a derived "last seen" would read "never" for everybody who
+   * signs out properly.
+   */
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 
   // Set when an administrator chose the password: the person must replace it
   // before they can use the app, so an admin-known password is never a working

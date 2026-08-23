@@ -3,6 +3,7 @@
 // self-service. Permission-gated + audited; Zod schemas validate + document.
 import {
   PERMISSIONS,
+  can,
   createUserSchema,
   discordHandleSchema,
   employeeIdSchema,
@@ -218,7 +219,13 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
         response: { 200: paginatedResult(userSchema) },
       },
     },
-    async (request) => users.listUsers(await resolveListQuery(request.query, request.authUserId)),
+    async (request) =>
+      users.listUsers(
+        await resolveListQuery(request.query, request.authUserId),
+        // Last seen and "signed in now" ride along only for somebody allowed to
+        // know. Not a null for everybody else — the fields are simply not there.
+        can(request.ctx!, PERMISSIONS.USERS_SESSIONS_READ),
+      ),
   );
 
   app.get(
@@ -232,7 +239,8 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
         response: { 200: userSchema },
       },
     },
-    async (request) => users.getUser(request.params.id),
+    async (request) =>
+      users.getUser(request.params.id, can(request.ctx!, PERMISSIONS.USERS_SESSIONS_READ)),
   );
 
   // Groups are what grant access, so the user detail page leads with them.
@@ -559,7 +567,11 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
   app.get(
     "/users/:id/sessions",
     {
-      preHandler: guard(PERMISSIONS.USERS_READ),
+      // Moved off users:read deliberately. This lists a colleague's devices, their
+      // addresses and when each was last used — strictly more revealing than the
+      // "last seen" column beside it, so gating that and not this would have been
+      // theatre.
+      preHandler: guard(PERMISSIONS.USERS_SESSIONS_READ),
       schema: {
         tags: ["Users"],
         summary: "List a user's live sessions",

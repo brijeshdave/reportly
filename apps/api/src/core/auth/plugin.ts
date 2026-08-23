@@ -28,7 +28,7 @@ import { env } from "@/core/env.js";
 import { isPasswordExpired } from "@/core/auth/password-history.js";
 import { resolveDebug } from "@/core/debug/service.js";
 import { isCompanyActive } from "@/features/companies/active.js";
-import { announceLockout } from "@/features/users/service.js";
+import { announceLockout, noteSignIn } from "@/features/users/service.js";
 import { isCompanyOwnedPath } from "@/features/companies/scoped-routes.js";
 import { AppError } from "@/core/errors.js";
 import { setRequestActor } from "@/core/request-context.js";
@@ -313,6 +313,20 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
           // non-JSON body (e.g. redirect) — record without an actor
         }
         void recordAuthEvent(request, action, actorId);
+
+        // "Last seen" is written from the one place that already knows a sign-in
+        // succeeded and who it was. Fire-and-forget: a bookkeeping column must
+        // never be able to fail somebody's sign-in.
+        // Registering counts too: it signs the person in, and leaving it out
+        // would show somebody who joined this morning as never seen.
+        if (
+          actorId &&
+          (action === "auth.login.success" ||
+            action === "auth.2fa.success" ||
+            action === "auth.register")
+        ) {
+          void noteSignIn(actorId);
+        }
       }
 
       reply.status(response.status);

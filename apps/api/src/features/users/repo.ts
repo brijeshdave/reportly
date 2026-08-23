@@ -1,7 +1,7 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // User repository — the only code touching the users table for profile/admin
 // operations (better-auth owns auth-table writes). Services call these.
-import { and, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gt, inArray, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import {
@@ -44,6 +44,7 @@ export interface UserRow {
   telegramVerifiedAt: Date | null;
   discordVerifiedAt: Date | null;
   status: string;
+  lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +72,7 @@ const cols = {
   telegramVerifiedAt: users.telegramVerifiedAt,
   discordVerifiedAt: users.discordVerifiedAt,
   status: users.status,
+  lastLoginAt: users.lastLoginAt,
   createdAt: users.createdAt,
   updatedAt: users.updatedAt,
 };
@@ -84,15 +86,38 @@ const listConfig: ListConfig = {
     employeeId: users.employeeId,
     mobile: users.mobile,
     status: users.status,
+    lastLoginAt: users.lastLoginAt,
     createdAt: users.createdAt,
   },
   defaultSort: users.name,
 };
 
+/**
+ * "Signed in right now" is not a column, so it cannot ride the generic filter.
+ *
+ * It is a live fact about the sessions table, and the list builder silently drops
+ * a filter naming a field it does not know — so without this the toggle would look
+ * like it worked and change nothing, which is the worst of the three outcomes.
+ */
+function presenceCondition(query: ResolvedListQuery): SQL | undefined {
+  const filter = query.filters.find((entry) => entry.field === "signedIn");
+  if (!filter) return undefined;
+  const wanted = filter.value === true || filter.value === "true";
+
+  const live = sql`exists (
+    select 1 from ${sessions}
+    where ${sessions.userId} = ${users.id} and ${sessions.expiresAt} > now()
+  )`;
+  return wanted ? live : sql`not ${live}`;
+}
+
 export async function listUsers(
   query: ResolvedListQuery,
 ): Promise<{ rows: UserRow[]; total: number }> {
-  const { where, orderBy, limit, offset } = buildListParts(listConfig, query);
+  const parts = buildListParts(listConfig, query);
+  const presence = presenceCondition(query);
+  const where = presence ? and(parts.where, presence) : parts.where;
+  const { orderBy, limit, offset } = parts;
   const rows = await db
     .select(cols)
     .from(users)
@@ -106,6 +131,27 @@ export async function listUsers(
     .from(users)
     .where(where);
   return { rows, total: counted[0]?.count ?? 0 };
+}
+
+/**
+ * Which of these people have a session that has not expired.
+ *
+ * One query for the whole page rather than a lookup per row. A session row is
+ * deleted on sign-out, so "has a live row" is as close to "signed in now" as this
+ * app can honestly claim — it cannot know that somebody walked away from the desk.
+ */
+export async function signedInNow(userIds: string[]): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await db
+    .selectDistinct({ userId: sessions.userId })
+    .from(sessions)
+    .where(and(inArray(sessions.userId, userIds), gt(sessions.expiresAt, new Date())));
+  return new Set(rows.map((row) => row.userId));
+}
+
+/** Stamp a successful sign-in. */
+export async function touchLastLogin(userId: string): Promise<void> {
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
 }
 
 /** Every read of a user resolves their designation name through the catalogue. */
