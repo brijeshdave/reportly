@@ -226,6 +226,26 @@ production's, your development box is still holding production secrets and point
 at production's SMTP. And it restores the database only: attachments live in the
 file store, so downloads will 404 unless you restore that separately.
 
+## How email is sent
+
+`MAIL_TRANSPORT` chooses: `smtp` (the default, unchanged) or a provider's HTTP
+API — `resend`, `sendgrid`, `postmark` — each needing its own key
+(`RESEND_API_KEY`, `SENDGRID_API_KEY`, `POSTMARK_TOKEN`).
+
+**Prefer an API where you have one.** SMTP has no way to tell you _why_ it refused:
+a relay accepts the connection, accepts the message, and the rejection lands
+somewhere the app never sees. An API answers in the same breath, and that answer —
+"API key not authorized for this domain: example.com" — is kept verbatim in
+**System → Messages** and shown by a test send.
+
+Boot **refuses** a transport whose key is missing rather than falling back to SMTP:
+an installation that believes it is sending through Resend while posting to
+localhost:1025 is exactly the silent non-delivery this is meant to end.
+
+`cli doctor` reports which transport is configured and does not pretend to verify
+an API (there is no connection to open). Prove any of them with **Settings →
+Channels → Send a test message**.
+
 ## Controlling what Reportly sends
 
 **Settings → Channels → Transactional** carries one switch per kind of message,

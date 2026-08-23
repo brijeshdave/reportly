@@ -203,6 +203,23 @@ export const envSchema = z.object({
     .default("http://localhost:3000")
     .describe("The API's externally reachable origin, used to build auth callback URLs."),
 
+  /**
+   * How email leaves the building.
+   *
+   * `smtp` is the default and keeps every existing installation working untouched.
+   * The API transports exist because SMTP has no way to say "this key may not send
+   * for that domain" until it is far too late: a relay accepts the connection,
+   * accepts the message, and refuses it somewhere the app never sees. An HTTP API
+   * answers in the same breath, and that answer is kept in the message log.
+   */
+  MAIL_TRANSPORT: z
+    .enum(["smtp", "resend", "sendgrid", "postmark"])
+    .default("smtp")
+    .describe("How email is sent: smtp, or a provider's API (resend, sendgrid, postmark)."),
+  RESEND_API_KEY: z.string().optional().describe("API key when MAIL_TRANSPORT=resend."),
+  SENDGRID_API_KEY: z.string().optional().describe("API key when MAIL_TRANSPORT=sendgrid."),
+  POSTMARK_TOKEN: z.string().optional().describe("Server token when MAIL_TRANSPORT=postmark."),
+
   SMTP_HOST: z.string().default("localhost").describe("Outbound mail host (dev: Mailpit)."),
   SMTP_PORT: z.coerce.number().int().positive().default(1025).describe("Outbound mail port."),
   SMTP_SECURE: envBool(false).describe("Use TLS when connecting to SMTP."),
@@ -280,6 +297,30 @@ export function productionSecurityErrors(env: Env): string[] {
 }
 
 /**
+ * A mail transport chosen without the credential it needs.
+ *
+ * Fails the boot rather than falling back to SMTP. A silent fallback would be an
+ * installation that believes it is sending through Resend and is in fact posting
+ * to localhost:1025 — which is precisely the class of quiet non-delivery this
+ * whole area of the app exists to end.
+ */
+export function mailConfigErrors(env: Env): string[] {
+  const needed = {
+    resend: ["RESEND_API_KEY"],
+    sendgrid: ["SENDGRID_API_KEY"],
+    postmark: ["POSTMARK_TOKEN"],
+    smtp: [],
+  } as const;
+
+  return needed[env.MAIL_TRANSPORT]
+    .filter((key) => !env[key])
+    .map(
+      (key) =>
+        `MAIL_TRANSPORT is ${env.MAIL_TRANSPORT} but ${key} is not set — no email could be sent.`,
+    );
+}
+
+/**
  * Storage settings that are incomplete rather than insecure.
  *
  * Selecting the S3 backend without a bucket is not a thing to discover when the
@@ -319,6 +360,13 @@ function loadEnv(): Env {
   if (storage.length > 0) {
     throw new Error(
       `Invalid storage configuration:\n${storage.map((error) => `  - ${error}`).join("\n")}`,
+    );
+  }
+
+  const mail = mailConfigErrors(parsed.data);
+  if (mail.length > 0) {
+    throw new Error(
+      `Invalid mail configuration:\n${mail.map((error) => `  - ${error}`).join("\n")}`,
     );
   }
 

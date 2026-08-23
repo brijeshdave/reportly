@@ -36,6 +36,10 @@ to start when a required variable is missing or malformed.
 | `REDIS_URL` | no | `redis://localhost:6379` | Redis for sessions, caches, rate limits and the job queue. The `/N` db index is honoured. |
 | `BETTER_AUTH_SECRET` | no | `dev-only-insecure-secret-change-me` | Signs sessions and cookies. **Must** be replaced in every real environment. |
 | `BETTER_AUTH_URL` | no | `http://localhost:3000` | The API's externally reachable origin, used to build auth callback URLs. |
+| `MAIL_TRANSPORT` | no | `smtp` | How email is sent: smtp, or a provider's API (resend, sendgrid, postmark). |
+| `RESEND_API_KEY` | no | _unset_ | API key when MAIL_TRANSPORT=resend. |
+| `SENDGRID_API_KEY` | no | _unset_ | API key when MAIL_TRANSPORT=sendgrid. |
+| `POSTMARK_TOKEN` | no | _unset_ | Server token when MAIL_TRANSPORT=postmark. |
 | `SMTP_HOST` | no | `localhost` | Outbound mail host (dev: Mailpit). |
 | `SMTP_PORT` | no | `1025` | Outbound mail port. |
 | `SMTP_SECURE` | no | `false` | Use TLS when connecting to SMTP. |

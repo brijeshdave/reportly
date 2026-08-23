@@ -95,6 +95,16 @@ async function checkRedis(): Promise<Check> {
 }
 
 async function checkMail(): Promise<Check> {
+  // An API transport has no connection to open, so nothing here could pass or fail
+  // honestly. Say which one is configured and point at the check that sends.
+  if (env.MAIL_TRANSPORT !== "smtp") {
+    return ok(
+      "mail",
+      `${env.MAIL_TRANSPORT} API configured (nothing is opened to check — use ` +
+        "Settings → Channels → Send a test message to prove it can send)",
+    );
+  }
+
   try {
     await verifyMailer();
     // Deliberately not called "ok to send". This check opens a connection and
