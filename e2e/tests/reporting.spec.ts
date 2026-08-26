@@ -199,8 +199,10 @@ test("scores a resolved report, which locks it and pays out the points", async (
   await pickCompany(page);
   await fileReport(page, `Conveyor jam ${tag}`);
 
-  // Points are not offered on unfinished work.
-  await expect(page.getByText("Points are set once the report is resolved.")).toBeVisible();
+  // Points are not offered on unfinished work. The wording distinguishes the two
+  // ways an entry is unscoreable now: still open, or closed without being resolved
+  // — a cancelled or duplicate entry earns nothing.
+  await expect(page.getByText("Points are set once the entry is resolved.")).toBeVisible();
   await resolve(page);
 
   // The scoring grid replaced the single 0–10 mark: each person who worked the
@@ -210,6 +212,10 @@ test("scores a resolved report, which locks it and pays out the points", async (
   await expect(cell).toBeVisible();
   await cell.fill("8");
   await page.getByRole("button", { name: "Save points", exact: true }).click();
+
+  // A self split counts towards nobody until a manager reviews it, and the panel
+  // says so to the person whose work it is.
+  await expect(page.getByText(/counts towards nobody/i)).toBeVisible();
 
   // Scoring locks the content: a score must never end up describing work that
   // changed under it afterwards.
