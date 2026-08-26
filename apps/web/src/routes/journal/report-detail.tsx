@@ -750,6 +750,17 @@ function ScoringPanel({ report, isAuthor }: { report: JournalEntryDetail; isAuth
       <h2 className="text-sm font-semibold">Points</h2>
       {save.error ? <ErrorAlert error={save.error} /> : null}
 
+      {/* Said plainly to the person whose work it is. A self split used to count
+          the moment it was entered; now nothing counts until the manager settles
+          it, and somebody watching their total not move deserves to know why
+          rather than assume the entry was lost. */}
+      {myScoreTier === "self" || (isAuthor && !canSeeReview) ? (
+        <p className="text-xs text-muted-foreground">
+          Your own split is what you put forward. It counts towards nobody&apos;s total until your
+          manager reviews it — their number is the one that lands.
+        </p>
+      ) : null}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

@@ -358,8 +358,13 @@ describe("reports and scoring", () => {
     const reportId = await fileIssue(author.cookie, critical.id);
 
     // Official 7. Manager: 7 × 0.25 = 1.75 → 2. HOD: 7 × 0.25² = 0.4375 → 0.5.
+    //
+    // The review is what makes it official — a self split alone earns nothing now,
+    // so the manager confirms the author's number before anything reaches the
+    // ledger.
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [{ userId: author.id, points: 7 }]);
+    await score(manager.cookie, reportId, [{ userId: author.id, points: 7 }]);
 
     expect((await pointsOf(author.cookie)).own).toBe(7);
     expect((await pointsOf(manager.cookie)).rollup).toBe(2);
@@ -372,6 +377,8 @@ describe("reports and scoring", () => {
     const reportId = await fileIssue(author.cookie, critical.id);
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [{ userId: author.id, points: 8 }]);
+    // Reviewed, because only a review reaches the ledger.
+    await score(manager.cookie, reportId, [{ userId: author.id, points: 8 }]);
 
     const before = (await pointsOf(manager.cookie)).rollup;
     // The manager is the author's direct manager (depth 1): 0.25 × 8 = 2.

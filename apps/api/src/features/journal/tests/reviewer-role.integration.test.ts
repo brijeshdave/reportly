@@ -332,3 +332,30 @@ describe("what a severity is worth", () => {
     expect(severities.every((s) => s.maxPoints === 10)).toBe(true);
   });
 });
+
+describe("what reaches the leaderboard", () => {
+  it("counts nothing until a manager has reviewed it", async () => {
+    // Reported from use: "leaderboard should only calculate the points after that
+    // thing is get review by his manager and points as per him get committed, not
+    // the one user give him self". The ledger used to fall back to the self number,
+    // so points somebody gave themselves counted publicly straight away.
+    const { manager, author, reportId } = await chainWith("Journal reviewer");
+
+    await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 6 }],
+    });
+    const afterSelf = (await inject("GET", "/journal/points", author.cookie)).json() as {
+      own: number;
+    };
+    expect(afterSelf.own).toBe(0);
+
+    // The manager settles it, and now it counts — at the manager's number.
+    await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 4 }],
+    });
+    const afterReview = (await inject("GET", "/journal/points", author.cookie)).json() as {
+      own: number;
+    };
+    expect(afterReview.own).toBe(4);
+  });
+});

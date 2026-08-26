@@ -1742,10 +1742,20 @@ async function refreezeScores(row: JournalEntryRowRaw): Promise<void> {
     (s.tier === "self" ? selfOf : reviewOf).set(s.subjectUserId, s.points);
   }
 
-  // Official per worker: the review if there is one, else the self number.
+  // Official per worker: **the review, and only the review**.
+  //
+  // This used to fall back to the self number, so points somebody gave themselves
+  // reached the ledger and the leaderboard the moment they were entered, and stayed
+  // there unless a manager happened to disagree. Reported from use: "leaderboard
+  // should only calculate the points after that thing is get review by his manager
+  // and points as per him get committed, not the one user give him self".
+  //
+  // A worker still sees their own split on the entry and in My points, marked as
+  // not counted yet. Nothing is lost — it simply is not anybody's score until the
+  // person who reviews it says so.
   const official = new Map<string, number>();
-  for (const userId of new Set([...selfOf.keys(), ...reviewOf.keys()])) {
-    official.set(userId, reviewOf.get(userId) ?? selfOf.get(userId) ?? 0);
+  for (const [userId, points] of reviewOf) {
+    official.set(userId, points);
   }
 
   const awards: AwardInput[] = [];
