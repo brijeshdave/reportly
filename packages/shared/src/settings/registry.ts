@@ -764,6 +764,35 @@ export const TIMEZONE: SettingDef<typeof timezoneSchema> = {
   description: "The working day the server counts by — routines, points and month ends",
 };
 
+/**
+ * Whether the journal offers a second kind of entry beside a breakdown.
+ *
+ * An entry has a work-log timeline of its own — who did what, and when — so a
+ * separate `work` kind only ever meant "nothing broke here". Two different things
+ * shared the words "work log", and people filing ordinary work ended up with
+ * entries labelled Kind: WorkLog without meaning to.
+ *
+ * Off: everything filed is a breakdown, and the chooser is not drawn. On: the
+ * second kind returns, called **Planned work** so it no longer collides with the
+ * timeline every entry has.
+ *
+ * A switch rather than a deletion, because the distinction may be wanted again and
+ * the stored value has not changed — only what the screen offers.
+ */
+export const plannedWorkSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+export type PlannedWorkSettings = z.infer<typeof plannedWorkSchema>;
+
+export const PLANNED_WORK: SettingDef<typeof plannedWorkSchema> = {
+  namespace: "journal",
+  key: "plannedWork",
+  schema: plannedWorkSchema,
+  userOverridable: false,
+  companyOverridable: true,
+  description: "Offer 'Planned work' as a second kind of entry beside a breakdown",
+};
+
 export const CHANNEL_PROVIDERS: SettingDef<typeof channelProvidersSchema> = {
   namespace: "channels",
   key: "providers",
@@ -873,6 +902,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   SESSION_SETTINGS,
   AUTH_RATE_LIMIT,
   PASSWORD_RESET,
+  PLANNED_WORK,
   TIMEZONE,
   TRANSACTIONAL_MESSAGES,
   INVITE_SETTINGS,

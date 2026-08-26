@@ -98,6 +98,7 @@ function session(): Session {
     passwordExpired: false,
     queueAdmin: "off",
     modules: { parts: true },
+    plannedWork: false,
     systemRoles: true,
     twoFactor: { required: false, enrolled: false, deadline: null, overdue: false },
   };

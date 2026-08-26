@@ -75,6 +75,7 @@ function session(permissions: string[]): Session {
     passwordExpired: false,
     queueAdmin: "off",
     modules: { parts: false },
+    plannedWork: false,
     systemRoles: true,
     twoFactor: { required: false, enrolled: false, deadline: null, overdue: false },
   };

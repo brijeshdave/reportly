@@ -9,6 +9,7 @@ import { z } from "zod";
 import {
   ERROR_CODES,
   PARTS_MODULE,
+  PLANNED_WORK,
   SYSTEM_ROLES_SETTING,
   locationSchema,
   myDayQuerySchema,
@@ -167,6 +168,13 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
         ? await getEffectiveSetting(PARTS_MODULE, { companyId: ctx.companyId })
         : null;
 
+      // Whether this company still files a second kind of entry beside a
+      // breakdown. Not a permission and not a module — just what the form offers,
+      // and the form has to know before it draws the chooser.
+      const plannedWork = ctx.companyId
+        ? await getEffectiveSetting(PLANNED_WORK, { companyId: ctx.companyId })
+        : await getSystemSetting(PLANNED_WORK);
+
       // Whether the shipped roles grant anything. Sent for the same reason as the
       // module flags: a picker that offers a role conferring nothing is offering a
       // choice that does nothing, and there is no permission that says so.
@@ -192,6 +200,7 @@ export async function meRoutes(app: FastifyInstance): Promise<void> {
         // does this work at all. Off, and the word should not appear in their
         // sidebar however their grants read.
         modules: { parts: parts?.enabled ?? false },
+        plannedWork: plannedWork?.enabled ?? false,
         systemRoles: systemRoles.enabled,
         // What the banner counts down, and what sends somebody to the setup screen
         // once it runs out. Reported rather than inferred from `twoFactorEnabled`,

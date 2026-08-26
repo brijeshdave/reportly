@@ -48,6 +48,8 @@ const NAMESPACE_LABELS: Record<string, string> = {
   debug: "Debug",
   ui: "Appearance",
   access: "Access",
+  journal: "Journal",
+  general: "General",
 };
 
 /**

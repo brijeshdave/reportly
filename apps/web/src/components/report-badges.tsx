@@ -18,12 +18,23 @@ export function StatusBadge({ name, group }: { name: string | null; group: strin
 }
 
 /**
- * Issue vs work log. An issue is a problem to be solved, so it carries the brand
- * colour; a work log is a record of work done, so it takes the soft blue — a calm
- * accent that stays clearly visible in both light and dark without competing.
+ * A breakdown, or work that was planned.
+ *
+ * The second kind used to be called "Work log", which collided with the work-log
+ * timeline every entry has: people filing ordinary work ended up with entries
+ * labelled Kind: WorkLog without meaning to. It is "Planned work" now, and off by
+ * default — most installations file everything as an entry and record the work on
+ * it.
+ *
+ * A breakdown carries the brand colour, being a problem to solve; planned work
+ * takes the soft blue, a calm accent visible in both themes without competing.
  */
 export function KindBadge({ kind }: { kind: string }) {
-  return kind === "issue" ? <Badge tone="brand">Issue</Badge> : <Badge tone="info">Work log</Badge>;
+  return kind === "issue" ? (
+    <Badge tone="brand">Issue</Badge>
+  ) : (
+    <Badge tone="info">Planned work</Badge>
+  );
 }
 
 /** Draft vs submitted. A draft is the one that wants attention. */

@@ -178,6 +178,9 @@ function Editor({
   const [tagIds, setTagIds] = useState<string[]>(seedTagIds);
 
   const { data: session } = useQuery(sessionQuery);
+  // Whether this company still files a second kind of entry. Off, and everything
+  // filed is a breakdown — which is what the form then submits, without asking.
+  const plannedWork = session?.plannedWork ?? false;
   const me = session?.user;
 
   // The reporter's own departments — you cannot file for one you are not in.
@@ -294,7 +297,11 @@ function Editor({
         {save.error ? <ErrorAlert error={save.error} /> : null}
 
         <Card className="flex flex-col gap-4 p-6">
-          <div className="flex gap-2">
+          {/* Only when this company still files both. An entry carries its own
+              work-log timeline, so the second kind means no more than "nothing
+              broke here" — and the two sharing the words "work log" is what had
+              people filing ordinary work as Kind: WorkLog by accident. */}
+          <div className={plannedWork ? "flex gap-2" : "hidden"}>
             {(["issue", "work"] as const).map((kind) => (
               <button
                 key={kind}
@@ -306,7 +313,7 @@ function Editor({
                     : "border-border text-muted-foreground"
                 }`}
               >
-                {kind === "issue" ? "Issue / breakdown" : "Work log"}
+                {kind === "issue" ? "Issue / breakdown" : "Planned work"}
               </button>
             ))}
           </div>

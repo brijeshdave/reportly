@@ -63,6 +63,14 @@ export interface Session {
    */
   modules: { parts: boolean };
   /**
+   * Whether this company still offers a second kind of entry beside a breakdown.
+   *
+   * Not a module and not a permission — just what the entry form offers. Off, and
+   * everything filed is a breakdown, which is what most installations want: an
+   * entry already records the work done on it.
+   */
+  plannedWork: boolean;
+  /**
    * Whether the shipped system roles grant anything (Settings → Access).
    *
    * Not a permission: with them switched off a system role still exists and can

@@ -95,6 +95,12 @@ describe("describeSettingSchema", () => {
     );
 
     expect(stringFields).toEqual([
+      // An IANA timezone name. Genuinely free text: the list belongs to the
+      // runtime's own database, which is what the schema validates against, and
+      // shipping a copy of it here would age. A picker could be built from
+      // `Intl.supportedValuesOf("timeZone")` later; a text box that refuses an
+      // unknown zone is honest in the meantime.
+      "general.timezone.name",
       // Provider credentials and sender addresses — free text by nature.
       "channels.providers.twilioAccountSid",
       "channels.providers.twilioAuthToken",
