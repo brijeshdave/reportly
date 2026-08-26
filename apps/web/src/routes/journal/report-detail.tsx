@@ -670,9 +670,11 @@ function fromLocalInput(value: string): string | undefined {
 function ScoringPanel({ report, isAuthor }: { report: JournalEntryDetail; isAuthor: boolean }) {
   const queryClient = useQueryClient();
   const { scores, myScoreTier } = report;
-  // Terminal statuses (resolved/rejected) are the finished ones; only then is there
-  // work to score. The group is on the report, so no extra lookup.
-  const finished = report.statusGroup !== "open";
+  // **Resolved**, not merely finished. "Duplicate", "Not an issue" and "Cancelled"
+  // are terminal too, and treating them as scoreable meant a cancelled entry could
+  // pay the same as a repair. The server refuses them; this stops the screen
+  // offering a form that would be refused.
+  const resolved = report.statusGroup === "resolved";
   // The review and official columns exist only for someone who may see the review;
   // the server nulls them otherwise, so their presence is the signal to show them.
   const canSeeReview = myScoreTier === "review" || scores.some((s) => s.official !== null);
@@ -716,12 +718,14 @@ function ScoringPanel({ report, isAuthor }: { report: JournalEntryDetail; isAuth
     );
   }
 
-  if (!finished) {
+  if (!resolved) {
     return (
       <Card className="p-6">
         <h2 className="text-sm font-semibold">Points</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Points are set once the report is resolved.
+          {report.statusGroup === "open"
+            ? "Points are set once the entry is resolved."
+            : "This entry was closed without being resolved, so it earns no points."}
         </p>
       </Card>
     );

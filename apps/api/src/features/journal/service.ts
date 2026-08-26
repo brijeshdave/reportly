@@ -1516,15 +1516,19 @@ export async function setScores(
   }
   await assertPointsUnlocked(row, ctx);
 
-  // Points are for finished work: a report still in progress has not finished being
-  // done. The terminal group covers every way a report concludes, not only
-  // "Resolved" — checking something that turned out to be nothing was still work.
+  // Points are for work that was *done*, and only the resolved group means that.
+  //
+  // This used to accept any terminal status, on the reasoning that checking
+  // something which turned out to be nothing was still work. In practice that made
+  // "Duplicate", "Not an issue" and "Cancelled" scoreable and put them in every
+  // reviewer's queue, so a cancelled entry could pay the same as a repair. The
+  // owner's rule: points follow resolution.
   const status = row.statusId ? await getStatusRow(row.statusId) : null;
-  if (!status?.isTerminal) {
+  if (status?.group !== "resolved") {
     throw new AppError(
       400,
       ERROR_CODES.VALIDATION_ERROR,
-      "This report is not finished yet. Mark it resolved (or closed another way) before scoring it.",
+      "Only a resolved entry can be scored. Cancelled, duplicate and not-an-issue entries earn nothing.",
     );
   }
 

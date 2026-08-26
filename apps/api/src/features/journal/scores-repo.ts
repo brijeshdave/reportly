@@ -205,7 +205,9 @@ export async function awaitingReviewFor(callerId: string): Promise<AwaitingRow[]
     SELECT r.id AS report_id, r.title, r.kind, sev.name AS severity_name, r.submitted_at,
            mgr.name AS reviewer_name
     FROM journal_entries r
-    JOIN journal_statuses st ON st.id = r.status_id AND st.is_terminal = true
+    -- Resolved, not merely finished: a cancelled or duplicate entry is not work
+    -- anybody should be scoring, and it used to fill this queue.
+    JOIN journal_statuses st ON st.id = r.status_id AND st."group" = 'resolved'
     LEFT JOIN severities sev ON sev.id = r.severity_id
     LEFT JOIN LATERAL (
       SELECT u.name
@@ -262,7 +264,9 @@ export async function pendingFor(callerId: string): Promise<PendingRow[]> {
     FROM journal_entries r
     JOIN below b ON b.user_id = r.author_id
     JOIN users u ON u.id = r.author_id
-    JOIN journal_statuses st ON st.id = r.status_id AND st.is_terminal = true
+    -- Resolved, not merely finished: cancelled and duplicate entries are not work
+    -- anybody should be scoring, and they used to fill this queue.
+    JOIN journal_statuses st ON st.id = r.status_id AND st."group" = 'resolved'
     LEFT JOIN severities sev ON sev.id = r.severity_id
     WHERE r.state = 'submitted'
       AND NOT EXISTS (
