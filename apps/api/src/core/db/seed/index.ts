@@ -417,6 +417,29 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
     ],
   },
   {
+    // The missing middle. Scoring was reachable only through "Journal admin",
+    // which also hands over deletion, the shared vocabulary and comment
+    // moderation — so a line manager who should score their own team either got
+    // an administrator's powers or could not score at all. Reported from use:
+    // "as HOD I am able to review all journal points but the reporting managers
+    // should also be able to do that — for them there is no way to enter points".
+    //
+    // Reviewing is a *line* function, not an administrative one: who may score
+    // whom is already decided by the reporting line, and this role only says the
+    // person does that job. It deliberately excludes `journal:reject`, which
+    // voids somebody's points and stays with the HOD.
+    name: "Journal reviewer",
+    permissions: [
+      PERMISSIONS.JOURNAL_READ,
+      PERMISSIONS.JOURNAL_CREATE,
+      PERMISSIONS.JOURNAL_UPDATE,
+      PERMISSIONS.JOURNAL_APPRAISE,
+      PERMISSIONS.COMMENTS_UPDATE,
+      PERMISSIONS.ATTACHMENTS_READ,
+      PERMISSIONS.ATTACHMENTS_WRITE,
+    ],
+  },
+  {
     name: "Journal viewer",
     permissions: [PERMISSIONS.JOURNAL_READ, PERMISSIONS.ATTACHMENTS_READ],
   },
