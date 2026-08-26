@@ -60,6 +60,13 @@ test("enrols in two-factor, then requires a code on the next sign-in", async ({ 
   await expect(page.getByText(/Enter the 6-digit code/i)).toBeVisible();
   await page.getByLabel(/Authentication code/i).fill(totp(secret));
   await page.getByRole("button", { name: "Verify" }).click();
+
+  // Straight in, with no detour through the login screen. Reported from use: after
+  // a correct code the login page reappeared for a second or two before the
+  // dashboard, which reads as the code having failed. The session existed the whole
+  // time — the page navigated before its own session query had caught up, so the
+  // guard on the destination bounced it back here.
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 5000 });
   await expectSignedIn(page);
 
   // Leave the account as we found it, so a rerun starts from a clean state.

@@ -26,10 +26,23 @@ export function LoginPage() {
   const { redirect } = useSearch({ from: "/login" });
 
   // Sign-in happened somewhere in the machine; land the user where they meant to go.
+  //
+  // The refetch is **awaited** before navigating. Firing both at once started the
+  // navigation while the session query was still stale, so the guarded route
+  // decided there was no session and bounced straight back here — the login screen
+  // reappearing for a second or two after a correct two-factor code, which reads as
+  // the code having failed. The session exists the whole time; only this page's
+  // idea of it was behind.
   useEffect(() => {
     if (state.step !== "done") return;
-    void queryClient.invalidateQueries({ queryKey: queryKeys.session });
-    void navigate({ to: redirect ?? "/" });
+    let left = false;
+    void (async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.session });
+      if (!left) await navigate({ to: redirect ?? "/" });
+    })();
+    return () => {
+      left = true;
+    };
   }, [state.step, navigate, queryClient, redirect]);
 
   /** Runs `action`, showing its failure rather than letting it escape. */
