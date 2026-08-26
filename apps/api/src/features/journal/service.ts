@@ -95,7 +95,11 @@ import {
   setParticipants,
   type ParticipantRowRaw,
 } from "@/features/journal/collaboration-repo.js";
-import { firstStatusInGroup, getStatus as getStatusRow } from "@/features/journal-config/repo.js";
+import {
+  firstStatusInGroup,
+  getSeverity as getSeverityRow,
+  getStatus as getStatusRow,
+} from "@/features/journal-config/repo.js";
 import { insertStatusEvent, statusEventsFor } from "@/features/journal/status-events-repo.js";
 import { deleteCommentsFor } from "@/features/comments/repo.js";
 import { clearTags, tagsFor, tagsForMany } from "@/features/vocabulary/repo.js";
@@ -590,6 +594,7 @@ export async function getReport(
     canSeePointsHistory: boolean;
     myScoreTier: ScoreTier | null;
     reviewer: { id: string; name: string } | null;
+    pointsCeiling: number;
   }
 > {
   const row = await requireReport(id, ctx);
@@ -637,6 +642,9 @@ export async function getReport(
     // review it will sit unscored until the reporting line is fixed, and hiding
     // that makes it look fine.
     reviewer,
+    // What this entry's severity allows, so the form warns against the real
+    // number rather than a flat ten it may be nowhere near.
+    pointsCeiling: await severityCeiling(row.severityId),
   };
 }
 
@@ -1347,6 +1355,21 @@ function assertNotRejected(row: JournalEntryRowRaw, verb: string): void {
   );
 }
 
+/**
+ * The most this entry may pay, from its severity.
+ *
+ * Falls back to the flat maximum when the entry has no severity, or when the
+ * severity has somehow been removed — the number people were working with before
+ * ceilings existed. A missing setting should not make work unscoreable.
+ */
+async function severityCeiling(severityId: string | null): Promise<number> {
+  if (!severityId) return MAX_ENTRY_POINTS;
+  const severity = await getSeverityRow(severityId);
+  if (!severity) return MAX_ENTRY_POINTS;
+  const ceiling = Number(severity.maxPoints);
+  return Number.isFinite(ceiling) ? ceiling : MAX_ENTRY_POINTS;
+}
+
 /** Whether the caller may reject a report — a superior of its author holding the grant. */
 async function assertMayReject(
   row: JournalEntryRowRaw,
@@ -1583,14 +1606,27 @@ export async function setScores(
 
   const tier = await tierFor(row, ctx);
 
-  // One report is worth at most MAX_ENTRY_POINTS, shared out — the whole tier may
-  // total no more than that. Adding a name divides the ten; it never mints more.
+  // The severity says how much this entry is worth at most, shared out — the whole
+  // tier may total no more than that. Adding a name divides the ceiling; it never
+  // mints more.
+  //
+  // Reported from use: "each severity is having 10 points and all users are getting
+  // 10 points even if the issue is very small". Every entry was worth a flat ten
+  // whatever it was, because severity carried no weight at all. It is a ceiling
+  // rather than a fixed award, so two Major jobs of different difficulty can still
+  // score differently — the severity says what is available, judgement says how
+  // much of it was earned.
+  //
+  // An entry with no severity falls back to the flat maximum: that is what it was
+  // worth before, and refusing to score it would punish somebody for a field the
+  // form did not always ask for.
+  const ceiling = await severityCeiling(row.severityId);
   const total = input.scores.reduce((sum, s) => sum + s.points, 0);
-  if (total > MAX_ENTRY_POINTS) {
+  if (total > ceiling) {
     throw new AppError(
       400,
       ERROR_CODES.VALIDATION_ERROR,
-      `One report is worth at most ${MAX_ENTRY_POINTS} points across everyone who worked it. This adds up to ${total}.`,
+      `This entry's severity allows at most ${ceiling} points across everyone who worked it. This adds up to ${total}.`,
     );
   }
 

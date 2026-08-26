@@ -58,6 +58,8 @@ const reportWithScores = journalEntrySchema.extend({
    * set. Not the score itself, which stays blind upward: only who is waited on.
    */
   reviewer: z.object({ id: z.string(), name: z.string() }).nullable(),
+  /** The most this entry may pay, from its severity. */
+  pointsCeiling: z.number(),
 });
 
 function activeCompany(companyId: string | null): string {

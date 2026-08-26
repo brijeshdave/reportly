@@ -56,6 +56,9 @@ function serializeSeverity(row: SeverityRow): Severity {
     id: row.id,
     name: row.name,
     orderIndex: row.orderIndex,
+    // Postgres hands `numeric` back as a string; the cast alone would be an
+    // assertion, which is the trap this codebase has fallen into twice.
+    maxPoints: Number(row.maxPoints),
     status: row.status === "inactive" ? "inactive" : "active",
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

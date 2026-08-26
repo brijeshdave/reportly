@@ -35,6 +35,9 @@ export function SeveritiesTab({ canManage }: { canManage: boolean }) {
   const [draft, setDraft] = useState<CreateSeverity>({
     name: "",
     orderIndex: 0,
+    // Ten to begin with, like every severity that already exists — a new one is
+    // worth what an entry has always been worth until somebody decides otherwise.
+    maxPoints: 10,
     status: "active",
   });
 
@@ -46,7 +49,7 @@ export function SeveritiesTab({ canManage }: { canManage: boolean }) {
         orderIndex: severities.data?.length ?? 0,
       }),
     onSuccess: async () => {
-      setDraft({ name: "", orderIndex: 0, status: "active" });
+      setDraft({ name: "", orderIndex: 0, maxPoints: 10, status: "active" });
       await refresh();
     },
   });
@@ -57,14 +60,17 @@ export function SeveritiesTab({ canManage }: { canManage: boolean }) {
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        How serious an issue is, lowest first. Severity labels the entry and drives the reliability
-        figures; it does not change what the work is worth — an entry is scored on its own merits,
-        out of ten, by its author and again by their manager.
+        How serious an issue is, lowest first. Severity labels the entry, drives the reliability
+        figures, and sets <strong>the most that entry can be worth</strong> — a ceiling, not a fixed
+        award: the author splits what they think was earned, their manager confirms or nudges it,
+        and neither may go above the ceiling. Every severity starts at ten, which is what an entry
+        was worth before this existed.
       </p>
 
       <Card className="divide-y divide-border">
-        <div className="grid grid-cols-[1fr_5rem_auto] gap-3 px-4 py-2 text-xs font-medium text-muted-foreground">
+        <div className="grid grid-cols-[1fr_6rem_5rem_auto] gap-3 px-4 py-2 text-xs font-medium text-muted-foreground">
           <span>Name</span>
+          <span>Max points</span>
           <span>Status</span>
           <span />
         </div>
@@ -117,6 +123,7 @@ function SeverityRow({
   onChange: () => void;
 }) {
   const [name, setName] = useState(severity.name);
+  const [maxPoints, setMaxPoints] = useState(String(severity.maxPoints));
   const active = severity.status === "active";
 
   const save = useMutation({
@@ -128,12 +135,13 @@ function SeverityRow({
     onSuccess: onChange,
   });
 
-  const dirty = name.trim() !== severity.name;
+  const dirty = name.trim() !== severity.name || Number(maxPoints) !== severity.maxPoints;
 
   if (!canManage) {
     return (
-      <div className="grid grid-cols-[1fr_5rem_auto] items-center gap-3 px-4 py-2 text-sm">
+      <div className="grid grid-cols-[1fr_6rem_5rem_auto] items-center gap-3 px-4 py-2 text-sm">
         <span className="font-medium">{severity.name}</span>
+        <span className="text-muted-foreground">{severity.maxPoints}</span>
         <Badge tone={active ? "success" : "neutral"}>{active ? "active" : "retired"}</Badge>
         <span />
       </div>
@@ -141,8 +149,19 @@ function SeverityRow({
   }
 
   return (
-    <div className="grid grid-cols-[1fr_5rem_auto] items-center gap-3 px-4 py-2 text-sm">
+    <div className="grid grid-cols-[1fr_6rem_5rem_auto] items-center gap-3 px-4 py-2 text-sm">
       <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
+      {/* Half-point steps, like every other number in the scoring model. */}
+      <Input
+        type="number"
+        min="0"
+        max="10"
+        step="0.5"
+        value={maxPoints}
+        onChange={(event) => setMaxPoints(event.target.value)}
+        className="h-8"
+        aria-label={`Max points for ${severity.name}`}
+      />
       <button
         type="button"
         onClick={() => save.mutate({ status: active ? "inactive" : "active" })}
@@ -155,7 +174,7 @@ function SeverityRow({
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => save.mutate({ name: name.trim() })}
+            onClick={() => save.mutate({ name: name.trim(), maxPoints: Number(maxPoints) })}
             disabled={save.isPending}
           >
             Save

@@ -14,6 +14,8 @@ export interface SeverityRow {
   id: string;
   name: string;
   orderIndex: number;
+  /** The most an entry at this severity may be worth. A string: `numeric` from pg. */
+  maxPoints: string;
   status: string;
   createdAt: Date;
   updatedAt: Date;

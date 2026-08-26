@@ -120,6 +120,13 @@
       "when": 1786791600007,
       "tag": "0016_retire_work_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786791600008,
+      "tag": "0017_severity_max_points",
+      "breakpoints": true
     }
   ]
 }

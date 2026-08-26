@@ -37,6 +37,16 @@ export const severitySchema = z
     name: nameSchema,
     /** Where it sits in the ladder, low to high. */
     orderIndex: z.number().int(),
+    /**
+     * The most one entry at this severity may be worth, shared among everyone who
+     * worked it.
+     *
+     * A ceiling, not a fixed award: two Major jobs are not equally hard, so the
+     * severity says how much is available and judgement decides how much of it is
+     * earned. Ten everywhere until somebody sets it, which is what every entry was
+     * worth before this existed.
+     */
+    maxPoints: z.number().min(0).max(10),
     status: entityStatusSchema,
   })
   .merge(timestampsSchema);
@@ -46,6 +56,8 @@ export type Severity = z.infer<typeof severitySchema>;
 export const createSeveritySchema = z.object({
   name: nameSchema,
   orderIndex: z.number().int().default(0),
+  // In half-point steps like every other number in the scoring model.
+  maxPoints: z.number().min(0).max(10).multipleOf(0.5).default(10),
   status: entityStatusSchema.default("active"),
 });
 export type CreateSeverity = z.infer<typeof createSeveritySchema>;

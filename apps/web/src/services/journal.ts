@@ -32,6 +32,8 @@ export type JournalEntryDetail = JournalEntry & {
   myScoreTier: "self" | "review" | null;
   /** Who will score it — the author's reporting manager, or null when nobody is set. */
   reviewer: { id: string; name: string } | null;
+  /** The most this entry may pay, set by its severity. */
+  pointsCeiling: number;
 };
 
 export function fetchReport(id: string): Promise<JournalEntryDetail> {

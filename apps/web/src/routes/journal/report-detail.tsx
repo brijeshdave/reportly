@@ -7,7 +7,7 @@
 // You score a report from here too, in real points (0.5 steps). Which column you
 // may fill follows from who you are, decided by the server (myScoreTier). The first
 // score locks the report's content; re-opening it clears every score.
-import { MAX_ENTRY_POINTS, PERMISSIONS, formatDate, formatDateTime } from "@reportly/shared";
+import { PERMISSIONS, formatDate, formatDateTime } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Ban, Lock, Wrench } from "lucide-react";
@@ -690,9 +690,10 @@ function ScoringPanel({ report, isAuthor }: { report: JournalEntryDetail; isAuth
     const n = Number(draft[s.userId] ?? startFor(s));
     return Number.isFinite(n) ? n : 0;
   };
-  // The whole tier shares one pot: the column may total at most MAX_ENTRY_POINTS.
+  // The whole tier shares one pot, and how big it is comes from the severity: a
+  // trivial entry no longer offers the same ten as a critical one.
   const columnTotal = myScoreTier ? scores.reduce((sum, s) => sum + valueOf(s), 0) : 0;
-  const overBudget = columnTotal > MAX_ENTRY_POINTS;
+  const overBudget = columnTotal > report.pointsCeiling;
   const save = useMutation({
     mutationFn: () =>
       setScores(report.id, {
@@ -801,13 +802,13 @@ function ScoringPanel({ report, isAuthor }: { report: JournalEntryDetail; isAuth
             <span
               className={`shrink-0 text-xs tabular-nums ${overBudget ? "font-medium text-destructive" : "text-muted-foreground"}`}
             >
-              {fmtPoints(columnTotal)} / {MAX_ENTRY_POINTS}
+              {fmtPoints(columnTotal)} / {report.pointsCeiling}
             </span>
           </div>
           {overBudget ? (
             <p className="text-xs text-destructive">
-              One report is worth at most {MAX_ENTRY_POINTS} points across everyone. Bring the total
-              down to save.
+              This entry's severity allows at most {report.pointsCeiling} points across everyone.
+              Bring the total down to save.
             </p>
           ) : null}
           {/* "Save points", not "Save". The status control on the same page has its

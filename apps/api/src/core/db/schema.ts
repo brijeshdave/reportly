@@ -13,6 +13,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   real,
@@ -347,6 +348,12 @@ export const severities = pgTable("severities", {
   id: idPk(),
   name: text("name").notNull().unique(),
   orderIndex: integer("order_index").notNull().default(0),
+  /**
+   * The most one entry at this severity may be worth, shared among whoever worked
+   * it. Ten for every severity until somebody says otherwise, which is what the
+   * app did before this existed.
+   */
+  maxPoints: numeric("max_points", { precision: 4, scale: 1 }).notNull().default("10"),
   status: text("status").notNull().default("active"),
   ...timestamps,
 });

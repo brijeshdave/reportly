@@ -101,7 +101,7 @@ async function makeUser(admin: string, name: string, username: string, groupId: 
 }
 
 /** A manager holding `roleName`, with one person reporting to them, and a finished entry. */
-async function chainWith(roleName: string) {
+async function chainWith(roleName: string, severityId?: string) {
   const admin = await superadmin();
   const managerGroup = await makeGroup(admin, `${roleName} group`, roleName);
   const memberGroup = await makeGroup(admin, "Reporters", "Journal editor");
@@ -122,7 +122,7 @@ async function chainWith(roleName: string) {
     kind: "issue",
     title: "Conveyor jam",
     state: "submitted",
-    severityId: severities[0].id,
+    severityId: severityId ?? severities[0].id,
     issueSummary: "Belt seized",
   });
   expect(filed.statusCode).toBe(201);
@@ -293,5 +293,42 @@ describe("the self split comes first", () => {
       needsSelfScore: boolean;
     }[];
     expect(after.find((candidate) => candidate.reportId === reportId)?.needsSelfScore).toBe(false);
+  });
+});
+
+describe("what a severity is worth", () => {
+  it("refuses more points than the severity allows", async () => {
+    // Reported from use: "each severity is having 10 points and all users are
+    // getting 10 points even if the issue is very small". A ceiling per severity,
+    // enforced here — a column nothing checked is how the last weight field died.
+    const admin = await superadmin();
+    const severities = (await inject("GET", "/severities", admin)).json();
+    const lowest = severities[0];
+    await inject("PATCH", `/severities/${lowest.id}`, admin, { maxPoints: 3 });
+
+    const { manager, author, reportId } = await chainWith("Journal reviewer", lowest.id);
+    await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 1 }],
+    });
+
+    const tooMuch = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 4 }],
+    });
+    expect(tooMuch.statusCode).toBe(400);
+    expect(tooMuch.json().error.message).toContain("3");
+
+    const allowed = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
+    expect(allowed.statusCode).toBe(200);
+  });
+
+  it("leaves every severity at ten until somebody sets one", async () => {
+    // The upgrade must change nothing: ten is what an entry was worth before.
+    const admin = await superadmin();
+    const severities = (await inject("GET", "/severities", admin)).json() as {
+      maxPoints: number;
+    }[];
+    expect(severities.every((s) => s.maxPoints === 10)).toBe(true);
   });
 });
