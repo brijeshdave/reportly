@@ -150,7 +150,16 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
     <>
       <PageHeader
         title={r.title}
-        description={`${r.kind === "issue" ? "Issue" : "Work log"} · filed ${formatDate(r.reportDate)}`}
+        // The id is here because people quote it to each other — in a message, a
+        // ticket, a support mail — and could only get it out of the address bar.
+        description={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>
+              {r.kind === "issue" ? "Issue" : "Work log"} · filed {formatDate(r.reportDate)}
+            </span>
+            <span className="font-mono text-xs text-muted-foreground">{r.id}</span>
+          </span>
+        }
         actions={
           <div className="flex items-center gap-2">
             {r.state === "draft" ? <Badge tone="warning">draft</Badge> : null}

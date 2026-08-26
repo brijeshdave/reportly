@@ -2,7 +2,7 @@
 // JournalEntry repository — the only code touching the reports table. Reads resolve the
 // author, category, department, severity and status names in one join so a list or
 // a detail never needs a second round trip.
-import { type SQL, and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gte, ilike, inArray, lt, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
@@ -227,6 +227,28 @@ function awaitingReviewScope(query: ResolvedListQuery): SQL | undefined {
   )`;
 }
 
+/**
+ * One box that finds an entry by title *or* by id.
+ *
+ * People quote the id to each other and then have nowhere to paste it: typing a
+ * uuid into a title search matches nothing, which reads as "that entry is gone".
+ * A value that parses as a uuid is looked up as an id; anything else is a title
+ * search, which is what the box says it does.
+ *
+ * `contains` on the title, so a fragment works — the same behaviour the box had
+ * before this existed.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function searchScope(query: ResolvedListQuery): SQL | undefined {
+  const filter = query.filters.find((f) => f.field === "search");
+  const text = String(filter?.value ?? "").trim();
+  if (text === "") return undefined;
+
+  if (UUID.test(text)) return eq(journalEntries.id, text);
+  return ilike(journalEntries.title, `%${text}%`);
+}
+
 export async function getReport(id: string): Promise<JournalEntryRowRaw | null> {
   const [row] = await selectReports().where(eq(journalEntries.id, id));
   return row ?? null;
@@ -270,6 +292,7 @@ export async function listReports(
     locationScope,
     tagScopeFor(query),
     awaitingReviewScope(query),
+    searchScope(query),
     parts.where,
   );
 

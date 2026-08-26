@@ -309,7 +309,7 @@ export function JournalListPage({ authorId }: { authorId?: string } = {}) {
           columns={columns}
           filterDefs={filterDefs}
           initialColumnVisibility={initialColumnVisibility}
-          quickSearch={{ field: "title", placeholder: "Search entries" }}
+          quickSearch={{ field: "search", placeholder: "Search by title or id" }}
           emptyTitle="No entries yet"
           emptyDescription="Nothing in the last week from your team. Widen the date or the Whose filter."
         />

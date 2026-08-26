@@ -232,3 +232,32 @@ describe("the awaiting-review filter", () => {
     expect(waiting).not.toContain("Still a draft");
   });
 });
+
+describe("the search box", () => {
+  it("finds an entry by a fragment of its title, and by its id", async () => {
+    // People quote the id to each other and then had nowhere to paste it: a uuid
+    // typed into a title search matched nothing, which reads as "it is gone".
+    const admin = await superadmin();
+    const { hod, critical } = await buildChain(admin);
+    const id = await file(hod.cookie, "Conveyor jam on line 3", critical.id);
+    await file(hod.cookie, "Something else entirely", critical.id);
+
+    const byTitle = titles(
+      await inject(
+        "GET",
+        '/journal?filters=[{"field":"search","op":"contains","value":"conveyor"}]',
+        hod.cookie,
+      ),
+    );
+    expect(byTitle).toEqual(["Conveyor jam on line 3"]);
+
+    const byId = titles(
+      await inject(
+        "GET",
+        `/journal?filters=[{"field":"search","op":"contains","value":"${id}"}]`,
+        hod.cookie,
+      ),
+    );
+    expect(byId).toEqual(["Conveyor jam on line 3"]);
+  });
+});
