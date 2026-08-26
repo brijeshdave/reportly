@@ -281,10 +281,10 @@ function Editor({
     <>
       <PageHeader
         title={mode === "edit" ? "Edit entry" : "New entry"}
-        description="Everyone files reports of their work. Save a draft to finish later, or submit it for your managers to see and score."
+        description="Everyone files what they did here. Save a draft to finish later, or submit it for your managers to see and score."
         actions={
           <Button variant="secondary" size="sm" onClick={() => void navigate({ to: "/journal" })}>
-            Back to reports
+            Back to the journal
           </Button>
         }
       />
