@@ -88,10 +88,19 @@ export interface DataTableProps<T extends RowData> extends ListResource<T> {
   quickSearch?: QuickSearch;
   /** Mutually exclusive values as buttons — "All / System / Custom". */
   quickToggle?: QuickToggle;
+  /**
+   * Called the first time somebody opens the filter panel.
+   *
+   * For pages whose filters are fed by lookups — statuses, people, tags — so those
+   * requests happen when the panel is opened rather than on every visit to the
+   * table. The journal was firing seven of them before it could show a single row.
+   */
+  onFiltersOpen?: () => void;
 }
 
 export function DataTable<T extends RowData>({
   columns,
+  onFiltersOpen,
   filterDefs = [],
   emptyTitle = "Nothing here yet",
   emptyDescription,
@@ -162,7 +171,10 @@ export function DataTable<T extends RowData>({
           state={list.state}
           onFilterChange={list.onFilterChange}
           onFilterRemove={list.onFilterRemove}
-          onFiltersOpen={() => setFiltersOpen(true)}
+          onFiltersOpen={() => {
+            setFiltersOpen(true);
+            onFiltersOpen?.();
+          }}
           quickSearch={quickSearch}
           quickToggle={quickToggle}
           density={activeDensity}

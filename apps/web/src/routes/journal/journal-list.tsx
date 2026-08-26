@@ -6,7 +6,7 @@ import { PERMISSIONS, type JournalEntryRow, formatDate } from "@reportly/shared"
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { DATE_RANGE_PRESETS } from "@/lib/date-ranges.js";
 
@@ -170,21 +170,70 @@ export function JournalListPage({ authorId }: { authorId?: string } = {}) {
       : defaultState(),
   });
 
+  /**
+   * The lookup-fed filters are loaded when somebody asks for them.
+   *
+   * Seven of these fired on every visit to the journal — statuses, severities,
+   * categories, tags, departments, locations and every person in the organisation —
+   * purely to fill dropdowns in a panel most visits never open. Over a tunnel that
+   * is seven round trips in front of the one request the page is actually for,
+   * which is what "the journal page is very lagging" turned out to be with
+   * forty-nine entries.
+   *
+   * They also load when a filter that needs them is already applied, so a chip
+   * says "Critical" rather than showing a bare id while the panel stays shut.
+   */
+  const [filtersOpened, setFiltersOpened] = useState(false);
+  const usesLookup = list.state.filters.some((filter) =>
+    [
+      "statusName",
+      "severityName",
+      "categoryId",
+      "tag",
+      "departmentId",
+      "locationId",
+      "authorId",
+    ].includes(filter.field),
+  );
+  const wantOptions = filtersOpened || usesLookup;
+
   // Option lists for the select filters. The catalogues are small and cached, so a
   // filter offers exactly the values that exist rather than a free-text guess.
-  const statuses = useQuery({ queryKey: ["report-config", "statuses"], queryFn: fetchStatuses });
+  const statuses = useQuery({
+    queryKey: ["report-config", "statuses"],
+    queryFn: fetchStatuses,
+    enabled: wantOptions,
+  });
   const severities = useQuery({
     queryKey: ["report-config", "severities"],
     queryFn: fetchSeverities,
+    enabled: wantOptions,
   });
   const categories = useQuery({
     queryKey: ["report-config", "categories"],
     queryFn: () => fetchCategories(),
+    enabled: wantOptions,
   });
-  const tags = useQuery({ queryKey: ["vocabulary", "tags"], queryFn: () => fetchTags() });
-  const departments = useQuery({ queryKey: ["departments"], queryFn: fetchDepartments });
-  const locations = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
-  const people = useQuery({ queryKey: ["org", "people"], queryFn: fetchOrgPeople });
+  const tags = useQuery({
+    queryKey: ["vocabulary", "tags"],
+    queryFn: () => fetchTags(),
+    enabled: wantOptions,
+  });
+  const departments = useQuery({
+    queryKey: ["departments"],
+    queryFn: fetchDepartments,
+    enabled: wantOptions,
+  });
+  const locations = useQuery({
+    queryKey: ["locations"],
+    queryFn: fetchLocations,
+    enabled: wantOptions,
+  });
+  const people = useQuery({
+    queryKey: ["org", "people"],
+    queryFn: fetchOrgPeople,
+    enabled: wantOptions,
+  });
 
   const filterDefs = useMemo<FilterDef[]>(() => {
     // Finite, few options → a native select. Many options → a searchable combobox
@@ -312,6 +361,7 @@ export function JournalListPage({ authorId }: { authorId?: string } = {}) {
           filterDefs={filterDefs}
           initialColumnVisibility={initialColumnVisibility}
           quickSearch={{ field: "search", placeholder: "Search by title or id" }}
+          onFiltersOpen={() => setFiltersOpened(true)}
           emptyTitle="No entries yet"
           emptyDescription="Nothing in the last week from your team. Widen the date or the Whose filter."
         />
