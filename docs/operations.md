@@ -249,6 +249,21 @@ maintains. Regression tests pin each case.
 in the seed exists only on fresh databases — on every server that already exists it
 would be held by nobody, and the feature behind it would be silently switched off.
 
+## The working day
+
+`general.timezone` (**Settings → General**) is the day the _server_ counts by — an
+IANA name like `Asia/Kolkata`, defaulting to `UTC`, and settable per company for a
+group with sites in more than one country.
+
+Anything a person sees in a browser already follows their own clock: those windows
+are computed there and sent with the request. This is for the days the server
+decides with nobody's browser present — which day a routine occurrence belongs to,
+which day points were earned on, when the month-end award runs.
+
+Left at UTC, an installation at +05:30 files every night between midnight and 05:30
+under **yesterday**: a routine logged at 1am counts against the day before, and
+occurrences expire five and a half hours early.
+
 ## How email is sent
 
 `MAIL_TRANSPORT` chooses: `smtp` (the default, unchanged) or a provider's HTTP

@@ -7,6 +7,7 @@ import { Queue, Worker, type Job } from "bullmq";
 
 import { logger } from "@/core/logger.js";
 import { queueConnection } from "@/core/queue/connection.js";
+import { timezoneFor } from "@/core/timezone.js";
 import { awardAllCompaniesBefore, awardAllCompaniesForMonth } from "@/features/routines/service.js";
 
 export const ROUTINE_AWARD_QUEUE = "routine-award";
@@ -28,9 +29,14 @@ export function getRoutineAwardQueue(): Queue {
  * updates the one schedule. See the note in queue/backup.ts.
  */
 export async function scheduleRoutineAward(): Promise<void> {
+  // Midnight on the 2nd **where the installation works**, not where its container
+  // runs. A month-end job on UTC closes the month five and a half hours late for an
+  // Indian installation — harmless on the 2nd, and wrong the moment somebody moves
+  // it to the 1st.
+  const tz = await timezoneFor(null);
   await getRoutineAwardQueue().upsertJobScheduler(
     ROUTINE_AWARD_JOB,
-    { pattern: "0 0 2 * *" },
+    { pattern: "0 0 2 * *", tz },
     {
       name: ROUTINE_AWARD_JOB,
     },

@@ -7,6 +7,7 @@
 import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
+import { todayFor } from "@/core/timezone.js";
 import {
   consumables,
   pointAwards,
@@ -227,7 +228,10 @@ export async function reverseService(serviceEventId: string, companyId: string):
       // Dated today, not backdated to the original: the reversal is a thing that
       // happened now. Backdating would quietly rewrite a month that may already
       // have been reported on.
-      earnedOn: new Date().toISOString().slice(0, 10),
+      //
+      // Today *where the installation works*. `toISOString()` gives UTC's day, so
+      // at +05:30 everything between midnight and 05:30 was dated yesterday.
+      earnedOn: await todayFor(companyId),
       departmentId: original.departmentId,
       source: "service",
       reportId: null,
