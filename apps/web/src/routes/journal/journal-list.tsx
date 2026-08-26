@@ -161,7 +161,9 @@ function defaultState() {
 export function JournalListPage({ authorId }: { authorId?: string } = {}) {
   const navigate = useNavigate();
   const list = useListResource<JournalEntryRow>({
-    resource: "journal",
+    // Its own slot when a link names one person, so "their entries" never inherits
+    // the team view's filters — nor leaves them behind on the way out.
+    resource: authorId ? `journal:author:${authorId}` : "journal",
     path: "/journal",
     initial: authorId
       ? { filters: [{ field: "authorId", op: "eq", value: authorId }] }

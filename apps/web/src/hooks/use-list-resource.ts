@@ -3,7 +3,7 @@
 // query key, so changing a page or a filter refetches exactly that table.
 import type { Filter, PageSize, PaginatedResult, TableDensity } from "@reportly/shared";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   clearFilters,
@@ -52,6 +52,45 @@ export interface ListResource<T> {
   onExport: ((format: ExportFormat) => Promise<void>) | undefined;
 }
 
+/**
+ * Where a table's filters and sorting are kept between visits.
+ *
+ * Session storage, not local: a filter is part of what somebody is doing right
+ * now, and having last week's narrowing still applied on Monday would read as a
+ * broken table. It clears with the tab, like the train of thought it belongs to.
+ *
+ * Keyed by resource, so two tables never inherit each other's filters. A caller
+ * that wants its own slot (the journal, when a link names one author) puts that in
+ * the resource key.
+ */
+function stateKey(resource: string): string {
+  return `list-state:${resource}`;
+}
+
+function remembered(resource: string, initial?: Partial<ListState>): ListState {
+  const fallback = { ...initialListState, ...initial };
+  try {
+    const raw = sessionStorage.getItem(stateKey(resource));
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<ListState>;
+    // Merged onto the defaults rather than trusted whole: a stored shape from an
+    // older version must not leave a table with no page size.
+    return { ...fallback, ...parsed };
+  } catch {
+    // Private windows and blocked storage both throw. A table that cannot
+    // remember still has to work.
+    return fallback;
+  }
+}
+
+function remember(resource: string, state: ListState): void {
+  try {
+    sessionStorage.setItem(stateKey(resource), JSON.stringify(state));
+  } catch {
+    // Nothing to do: the table works, it just forgets.
+  }
+}
+
 export function useListResource<T>({
   resource,
   path,
@@ -59,7 +98,14 @@ export function useListResource<T>({
   initial,
   enabled = true,
 }: UseListResourceOptions): ListResource<T> {
-  const [state, setState] = useState<ListState>({ ...initialListState, ...initial });
+  const [state, setState] = useState<ListState>(() => remembered(resource, initial));
+
+  // Keep it for the trip to a record and back. Filters and sorting lived in this
+  // component's own state, so opening a row unmounted the table and threw them
+  // away — every question had to be asked again after reading one answer.
+  useEffect(() => {
+    remember(resource, state);
+  }, [resource, state]);
   const { data: preferences } = useQuery(preferencesQuery);
 
   const query = useQuery({
