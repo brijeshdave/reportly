@@ -48,6 +48,18 @@ export function ReviewPage() {
     enabled: canAppraise,
   });
   const mine = useQuery({ queryKey: ["journal", "awaiting-review"], queryFn: fetchAwaitingReview });
+
+  /**
+   * Two different jobs, split by depth.
+   *
+   * A head of department saw every entry from every level in one list — reported as
+   * "it shows all entries of my full nested downline team, but it should only show
+   * the entries of my direct reporting team". Depth 1 is theirs to score; anything
+   * deeper is somebody else's to score and theirs to chase, which is a different
+   * action and belongs under a different heading.
+   */
+  const direct = (pending.data ?? []).filter((entry: PendingAppraisal) => entry.depth <= 1);
+  const deeper = (pending.data ?? []).filter((entry: PendingAppraisal) => entry.depth > 1);
   const tasks = useQuery({
     queryKey: ["tasks", "assigned-open"],
     queryFn: fetchAssignedOpenTasks,
@@ -130,23 +142,21 @@ export function ReviewPage() {
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <ClipboardCheck className="h-4 w-4" />
               Journal entries awaiting your review
-              {pending.data && pending.data.length > 0 ? (
-                <Badge tone="brand">{pending.data.length}</Badge>
-              ) : null}
+              {direct.length > 0 ? <Badge tone="brand">{direct.length}</Badge> : null}
             </h2>
 
             {pending.isLoading ? <Spinner /> : null}
             {pending.error ? <ErrorAlert error={pending.error} /> : null}
-            {pending.data && pending.data.length === 0 ? (
+            {pending.data && direct.length === 0 ? (
               <EmptyState
                 icon={ClipboardCheck}
                 title="All caught up"
-                description="Nothing in your downline is waiting to be scored."
+                description="Nothing from your direct team is waiting to be scored."
               />
             ) : null}
 
             <ul className="flex flex-col gap-1">
-              {(pending.data ?? []).map((entry: PendingAppraisal) => (
+              {direct.map((entry: PendingAppraisal) => (
                 <li key={entry.reportId}>
                   <Link
                     to="/journal/$reportId"
@@ -157,6 +167,49 @@ export function ReviewPage() {
                       <span className="block truncate font-medium">{entry.title}</span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {entry.authorName}
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      {entry.severityName ? (
+                        <Badge tone="neutral">{entry.severityName}</Badge>
+                      ) : null}
+                      <KindBadge kind={entry.kind} />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
+
+        {canAppraise && deeper.length > 0 ? (
+          <Card className="flex flex-col gap-3 p-6">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <ClipboardCheck className="h-4 w-4" />
+              Waiting on your managers
+              <Badge tone="warning">{deeper.length}</Badge>
+            </h2>
+            {/* Not yours to score — theirs. Shown because only points that a manager
+                has reviewed count for anything, so an entry sitting unscored two
+                levels down is somebody's work quietly earning nothing, and the only
+                person who can see the whole picture is above them. */}
+            <p className="text-xs text-muted-foreground">
+              Further down your reporting line, and nobody has scored them yet. Points only count
+              once a manager reviews, so these are earning nothing in the meantime.
+            </p>
+
+            <ul className="flex flex-col gap-1">
+              {deeper.map((entry: PendingAppraisal) => (
+                <li key={entry.reportId}>
+                  <Link
+                    to="/journal/$reportId"
+                    params={{ reportId: entry.reportId }}
+                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{entry.title}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {entry.authorName} · {entry.depth} levels down
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">

@@ -70,11 +70,18 @@ export function LeaderboardPage() {
       ? financialYearLabel(fyStart)
       : `${monthLabel(month)} · ${financialYearLabel(fyStart)}`;
 
-  // The default department, once we know who the viewer is: their own when they are
-  // in exactly one and not management; otherwise "unset", so we prompt.
+  // The default department: their own.
+  //
+  // It used to default only for somebody in exactly one department who was not
+  // management — so a HOD, or anybody sitting in two, opened on a prompt and had to
+  // choose before seeing anything. Reported as "leaderboard page must have
+  // department of the user selected by default when page opens".
+  //
+  // The first of theirs when they are in several, and still only a default: the
+  // picker is right there, and management keeps its "all departments" choice.
   const [touched, setTouched] = useState(false);
   const mine = myDepartments.data ?? [];
-  const defaultDept = !isManagement && mine.length === 1 ? mine[0]!.departmentId : null;
+  const defaultDept = mine[0]?.departmentId ?? null;
   const effectiveDept = touched ? departmentId : (departmentId ?? defaultDept);
   const mustChoose = effectiveDept === null;
 
