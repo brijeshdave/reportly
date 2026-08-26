@@ -182,3 +182,65 @@ describe("a reporting manager who is not the HOD", () => {
     expect(detail.myScoreTier).toBeNull();
   });
 });
+
+describe("rejecting an entry", () => {
+  it("moves it out of Resolved and freezes it", async () => {
+    // Reported from use: "currently rejected stays with status of whatever it has
+    // even if it is resolved" — the entry read Resolved and rejected at once.
+    const { manager, reportId } = await chainWith("Journal reviewer");
+
+    const rejected = await inject("POST", `/journal/${reportId}/reject`, manager.cookie, {
+      reason: "Duplicate of last week's",
+    });
+    expect(rejected.statusCode).toBe(200);
+
+    const after = (await inject("GET", `/journal/${reportId}`, manager.cookie)).json();
+    expect(after.statusGroup).toBe("rejected");
+    expect(after.rejectedAt).not.toBeNull();
+
+    // Frozen: no walking it back into the workflow while it stands rejected.
+    const statuses = (await inject("GET", "/journal-statuses", manager.cookie)).json();
+    const open = statuses.find((s: { group: string }) => s.group === "open");
+    const moved = await inject("PATCH", `/journal/${reportId}/status`, manager.cookie, {
+      statusId: open.id,
+    });
+    expect(moved.statusCode).toBe(409);
+
+    const reopened = await inject("POST", `/journal/${reportId}/reopen`, manager.cookie);
+    expect(reopened.statusCode).toBe(409);
+  });
+
+  it("earns nothing while rejected", async () => {
+    const { manager, author, reportId } = await chainWith("Journal reviewer");
+    // Asserted, not assumed: `reason` is an optional *string*, so passing null is a
+    // 400 and the entry is never rejected — which made this test pass by testing
+    // nothing at all.
+    const rejected = await inject("POST", `/journal/${reportId}/reject`, manager.cookie, {
+      reason: "Not our work",
+    });
+    expect(rejected.statusCode).toBe(200);
+
+    const scored = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 4 }],
+    });
+    expect(scored.statusCode).toBeGreaterThanOrEqual(400);
+  });
+
+  it("puts it back where it was when the rejection is lifted", async () => {
+    // Not a guess at "Resolved": an entry rejected while still in progress should
+    // not come back resolved.
+    const { manager, reportId } = await chainWith("Journal reviewer");
+    const before = (await inject("GET", `/journal/${reportId}`, manager.cookie)).json();
+
+    const rejected = await inject("POST", `/journal/${reportId}/reject`, manager.cookie, {
+      reason: "Filed twice",
+    });
+    expect(rejected.statusCode).toBe(200);
+    const lifted = await inject("POST", `/journal/${reportId}/unreject`, manager.cookie);
+    expect(lifted.statusCode).toBe(200);
+
+    const after = (await inject("GET", `/journal/${reportId}`, manager.cookie)).json();
+    expect(after.statusId).toBe(before.statusId);
+    expect(after.rejectedAt).toBeNull();
+  });
+});

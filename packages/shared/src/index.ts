@@ -5,6 +5,7 @@
 
 export * from "@/errors.js";
 export * from "@/format/dates.js";
+export * from "@/civil-day.js";
 export * from "@/http/pagination.js";
 export * from "@/auth/permissions.js";
 export * from "@/auth/password.js";

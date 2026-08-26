@@ -434,6 +434,10 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.JOURNAL_CREATE,
       PERMISSIONS.JOURNAL_UPDATE,
       PERMISSIONS.JOURNAL_APPRAISE,
+      // Refusing the work and scoring it are the same judgement, so the person who
+      // reviews their team may also reject — it was HOD-only, which left a manager
+      // able to score work they could not refuse.
+      PERMISSIONS.JOURNAL_REJECT,
       PERMISSIONS.COMMENTS_UPDATE,
       PERMISSIONS.ATTACHMENTS_READ,
       PERMISSIONS.ATTACHMENTS_WRITE,

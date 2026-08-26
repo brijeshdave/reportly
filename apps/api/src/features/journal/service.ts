@@ -740,6 +740,7 @@ export async function changeStatus(
   const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
   await assertMayDriveStatus(row, ctx);
+  assertNotRejected(row, "move");
 
   if (row.statusId === statusId) {
     return serialize(row, await targetsFor(id), await tagsFor("report", id));
@@ -1294,10 +1295,20 @@ export async function reopenReport(id: string, ctx: AuthContext): Promise<Journa
   if (!isAuthor && !isManager && !ctx.isSuperadmin) {
     throw new AppError(403, ERROR_CODES.FORBIDDEN, "You cannot re-open this report");
   }
+  assertNotRejected(row, "re-open");
   // Re-opening a closed-period report re-opens its points for re-evaluation: flag it so it
   // may be re-scored despite the lock, and the badge shows a re-check is due.
   const locked = await isPeriodLocked(row.reportDate);
-  await updateReportRow(id, { lockedAt: null, ...(locked ? { pointsReviewNeeded: true } : {}) });
+  // And put it back in the open group. Re-opening cleared the scores and the lock
+  // but left the status alone, so a re-opened entry still read "Resolved" —
+  // visible mostly on work logs, which have no status dropdown to correct it by
+  // hand. Reported as "if i reopen it it stays resolved also".
+  const openStatus = await firstStatusInGroup("open");
+  await updateReportRow(id, {
+    lockedAt: null,
+    ...(locked ? { pointsReviewNeeded: true } : {}),
+    ...(openStatus ? { statusId: openStatus.id } : {}),
+  });
   // Points are for finished work. A report back in progress has none until it is
   // resolved and scored again, so its scores and ledger rows are cleared now rather
   // than left to describe a state the report has left.
@@ -1316,6 +1327,24 @@ export async function reopenReport(id: string, ctx: AuthContext): Promise<Journa
     entityId: id,
   });
   return serialize(await requireReport(id, ctx), await targetsFor(id));
+}
+
+/**
+ * A rejected entry is finished with.
+ *
+ * It counts for no points, and it should not be quietly walked back into the
+ * workflow either — moving it along or re-opening it would leave an entry that is
+ * rejected and in progress at the same time, which is the muddle rejecting was
+ * supposed to end. Lifting the rejection is the way back, and it is a deliberate
+ * act by somebody who may reject.
+ */
+function assertNotRejected(row: JournalEntryRowRaw, verb: string): void {
+  if (!row.rejectedAt) return;
+  throw new AppError(
+    409,
+    ERROR_CODES.CONFLICT,
+    `This entry was rejected, so it cannot be ${verb}d. Lift the rejection first.`,
+  );
 }
 
 /** Whether the caller may reject a report — a superior of its author holding the grant. */
@@ -1344,10 +1373,21 @@ export async function rejectReport(
   const row = await requireReport(id, ctx);
   await assertMayReject(row, ctx, "reject");
   await assertPointsUnlocked(row, ctx);
+  // Move it out of wherever it was. Rejecting used to set a flag and leave the
+  // status alone, so an entry read "Resolved" and "rejected" at once — two answers
+  // to the same question, and the resolved one is what every list showed.
+  //
+  // The workflow's own rejected group, whatever this organisation has named those
+  // statuses. Nothing is invented here: if they have no rejected status the flag
+  // still stands on its own rather than the rejection failing.
+  const rejectedStatus = await firstStatusInGroup("rejected");
   await updateReportRow(id, {
     rejectedAt: new Date(),
     rejectedById: ctx.userId,
     rejectionReason: reason,
+    ...(rejectedStatus && rejectedStatus.id !== row.statusId
+      ? { statusId: rejectedStatus.id, rejectedFromStatusId: row.statusId }
+      : {}),
   });
   await recordScoresCleared(id, ctx.userId, "rejected");
   await clearScores(id);
@@ -1370,7 +1410,16 @@ export async function rejectReport(
 export async function unrejectReport(id: string, ctx: AuthContext): Promise<JournalEntry> {
   const row = await requireReport(id, ctx);
   await assertMayReject(row, ctx, "un-reject");
-  await updateReportRow(id, { rejectedAt: null, rejectedById: null, rejectionReason: null });
+  await updateReportRow(id, {
+    rejectedAt: null,
+    rejectedById: null,
+    rejectionReason: null,
+    // Back where it stood, not to a guess: an entry rejected while still in
+    // progress should not come back "Resolved".
+    ...(row.rejectedFromStatusId
+      ? { statusId: row.rejectedFromStatusId, rejectedFromStatusId: null }
+      : {}),
+  });
   return serialize(await requireReport(id, ctx), await targetsFor(id));
 }
 

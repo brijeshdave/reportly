@@ -520,6 +520,14 @@ export const journalEntries = pgTable(
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
     rejectedById: text("rejected_by_id").references(() => users.id, { onDelete: "set null" }),
     rejectionReason: text("rejection_reason"),
+    /**
+     * Where the entry stood before it was rejected, so lifting the rejection puts
+     * it back. Guessing "Resolved" would be wrong for anything rejected while
+     * still in progress.
+     */
+    rejectedFromStatusId: uuid("rejected_from_status_id").references(() => journalStatuses.id, {
+      onDelete: "set null",
+    }),
 
     // Set when the status changed while the points period was locked — the points must
     // be re-evaluated, and may be re-scored despite the lock until they are.

@@ -61,6 +61,8 @@ export interface JournalEntryRowRaw {
   rejectedById: string | null;
   rejectedByName: string | null;
   rejectionReason: string | null;
+  /** Where it stood before rejection, so lifting one puts it back. */
+  rejectedFromStatusId: string | null;
   pointsReviewNeeded: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -111,6 +113,7 @@ const cols = {
   rejectedById: journalEntries.rejectedById,
   rejectedByName: rejecter.name,
   rejectionReason: journalEntries.rejectionReason,
+  rejectedFromStatusId: journalEntries.rejectedFromStatusId,
   pointsReviewNeeded: journalEntries.pointsReviewNeeded,
   createdAt: journalEntries.createdAt,
   updatedAt: journalEntries.updatedAt,
@@ -478,6 +481,7 @@ export type JournalEntryPatch = Partial<Omit<NewJournalEntry, "companyId" | "aut
   submittedAt?: Date | null;
   rejectedAt?: Date | null;
   rejectedById?: string | null;
+  rejectedFromStatusId?: string | null;
   rejectionReason?: string | null;
 };
 

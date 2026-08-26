@@ -719,6 +719,51 @@ export const TRANSACTIONAL_MESSAGES: SettingDef<typeof transactionalMessagesSche
   description: "Which kinds of message Reportly is allowed to send at all",
 };
 
+/**
+ * The civil day the installation runs on.
+ *
+ * Everything a person sees in a browser already follows their own clock — the day
+ * windows are computed there and sent with the request. But the server has plenty
+ * of days of its own to decide, with nobody's browser present: which day a routine
+ * occurrence belongs to, which day points were earned on, when a month closes. All
+ * of those read the *container's* clock, which is UTC, so an installation at
+ * +05:30 spent every night between midnight and 05:30 filing work under yesterday.
+ *
+ * An IANA name (`Asia/Kolkata`, `Europe/London`), because an offset alone cannot
+ * know about summer time. Validated against the runtime's own timezone database
+ * rather than a list shipped here, which would age.
+ */
+export const timezoneSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .max(64)
+    .refine(
+      (value) => {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: value });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: "Not a timezone this system knows — use an IANA name like Asia/Kolkata" },
+    )
+    .default("UTC"),
+});
+export type TimezoneSettings = z.infer<typeof timezoneSchema>;
+
+export const TIMEZONE: SettingDef<typeof timezoneSchema> = {
+  namespace: "general",
+  key: "timezone",
+  schema: timezoneSchema,
+  userOverridable: false,
+  // A group with sites in two countries has two working days, and the routine
+  // that rolls over at midnight should roll over at each site's midnight.
+  companyOverridable: true,
+  description: "The working day the server counts by — routines, points and month ends",
+};
+
 export const CHANNEL_PROVIDERS: SettingDef<typeof channelProvidersSchema> = {
   namespace: "channels",
   key: "providers",
@@ -828,6 +873,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   SESSION_SETTINGS,
   AUTH_RATE_LIMIT,
   PASSWORD_RESET,
+  TIMEZONE,
   TRANSACTIONAL_MESSAGES,
   INVITE_SETTINGS,
   CHANNEL_PROVIDERS,

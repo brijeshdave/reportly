@@ -24,6 +24,7 @@ import {
 import { toPaginatedResult } from "@reportly/shared";
 
 import { AppError } from "@/core/errors.js";
+import { todayFor } from "@/core/timezone.js";
 import { notify } from "@/core/queue/notifications.js";
 import { getDepartment } from "@/features/departments/repo.js";
 import { downlineUserIds } from "@/features/journal/hierarchy.js";
@@ -242,7 +243,15 @@ const recurrenceOf = (row: RoutineRow): RoutineRecurrence => ({
   startDate: row.startDate,
 });
 
-const today = () => new Date().toISOString().slice(0, 10);
+/**
+ * Today, where the installation lives — not where its container does.
+ *
+ * This was `new Date().toISOString().slice(0, 10)`, which is UTC's day. At +05:30
+ * that put every routine logged between midnight and 05:30 against yesterday's
+ * occurrence, and expired occurrences five and a half hours early. See the
+ * `general.timezone` setting.
+ */
+const today = (companyId: string | null = null) => todayFor(companyId);
 
 function serializeCompletion(row: CompletionRow, occurrenceDate: string): RoutineCompletion {
   return {
@@ -283,7 +292,7 @@ async function buildOccurrences(
     const key = `${c.routineId}|${c.occurrenceDate}`;
     byKey.set(key, [...(byKey.get(key) ?? []), c]);
   }
-  const now = today();
+  const now = await today(active[0]?.companyId ?? null);
   const out: RoutineOccurrence[] = [];
   for (const r of active) {
     const rec = recurrenceOf(r);
@@ -354,7 +363,7 @@ async function forLogging(
       "That day is not an occurrence of this routine",
     );
   }
-  if (isOccurrenceLocked(rec, date, routine.graceDays, today())) {
+  if (isOccurrenceLocked(rec, date, routine.graceDays, await today(routine.companyId))) {
     throw new AppError(
       403,
       ERROR_CODES.FORBIDDEN,
