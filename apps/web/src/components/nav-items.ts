@@ -34,6 +34,7 @@ import {
   Workflow,
   Settings,
   ShieldCheck,
+  Sun,
   SlidersHorizontal,
   Tags,
   TrendingUp,
@@ -68,6 +69,10 @@ export const NAV_GROUPS: NavGroup[] = [
     // The day-to-day work: what happened, what to do about it, and what it adds up to.
     label: "Work",
     items: [
+      // First, because it is what most people open the app to see: it was the
+      // journal's first tab, which put a screenful of tiles in front of anybody
+      // looking for an entry.
+      { label: "My day", to: "/my-day", icon: Sun, permission: PERMISSIONS.JOURNAL_READ },
       { label: "Journal", to: "/journal", icon: FileText, permission: PERMISSIONS.JOURNAL_READ },
       // Two halves: a manager's queue of entries awaiting their score, and
       // anybody's own work waiting on somebody else. The second is why this is

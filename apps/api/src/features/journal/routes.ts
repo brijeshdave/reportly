@@ -53,6 +53,11 @@ const reportWithScores = journalEntrySchema.extend({
   canSeePointsHistory: z.boolean(),
   /** Which scoring column this caller may fill: their self split, the review, or none. */
   myScoreTier: z.enum(["self", "review"]).nullable(),
+  /**
+   * Who will score it — the author's reporting manager, or null when nobody is
+   * set. Not the score itself, which stays blind upward: only who is waited on.
+   */
+  reviewer: z.object({ id: z.string(), name: z.string() }).nullable(),
 });
 
 function activeCompany(companyId: string | null): string {

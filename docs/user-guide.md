@@ -642,6 +642,27 @@ Do this after changing any mail setting. A relay can accept a connection and the
 refuse every message: that looks perfectly healthy from the outside and is
 invisible until somebody says they never got their invitation.
 
+### The journal, and whose entries you are looking at
+
+The journal opens on **the last week, newest first, your direct reporting team** —
+the question most people arrive with. It used to open on every entry anybody could
+see, in no particular order, which for a head of department is the whole
+organisation back to the beginning.
+
+Every one of those is an ordinary filter, so widen or clear them freely:
+
+- **Whose** — only mine, my direct team, two levels down, my whole team, or
+  everyone I can see. It can only ever _narrow_ what you may already see.
+- **Review** — "not yet reviewed" finds entries still sitting with a manager. It
+  does not show the score (scoring stays blind upward), only whether anybody has
+  looked yet.
+
+**My day** is its own page under Work now, rather than the journal's first tab, so
+opening the journal takes you to the entries.
+
+Each entry names the manager who will score it under **Reviewed by** — or says
+**Nobody set**, which means it will sit unscored until the reporting line is fixed.
+
 ### Finding a device
 
 **Devices** has a search box for the name, and filters for **department**,

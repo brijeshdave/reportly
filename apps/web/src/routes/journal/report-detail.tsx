@@ -128,6 +128,11 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
 
   const rows: [string, string | null][] = [
     ["Author", r.authorName],
+    // Who is waited on. People were asking each other this, which is the sign a
+    // screen is withholding something it knows. "Nobody set" is shown rather than
+    // left blank: it means the entry will sit unscored until somebody fixes the
+    // reporting line, and a blank reads as "fine".
+    ["Reviewed by", r.reviewer ? r.reviewer.name : "Nobody set"],
     ["Department", r.departmentName],
     ["Location", r.locationName],
     ["Category", r.categoryName],

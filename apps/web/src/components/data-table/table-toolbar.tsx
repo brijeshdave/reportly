@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { Input } from "@/components/ui/form.js";
+import { isoToDay } from "@/lib/date-ranges.js";
 import { Badge, Button } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
 import { filterFor, type ListState } from "@/lib/list-query.js";
@@ -249,6 +250,28 @@ export function TableToolbar<T extends RowData>({
 }) {
   const labelFor = (field: string) => filterDefs.find((def) => def.field === field)?.label ?? field;
 
+  /**
+   * What a chip shows for its value.
+   *
+   * The stored value is what the API wants — `direct`, an id, a `true` — and a chip
+   * printing that reads as debug output: "Whose direct" rather than "Whose My
+   * direct team". Where the filter offers options, the chosen option's label is the
+   * words somebody actually picked, so it is the words they get back.
+   */
+  const valueFor = (filter: { field: string; value: unknown }) => {
+    const def = filterDefs.find((candidate) => candidate.field === filter.field);
+    const values = Array.isArray(filter.value) ? filter.value : [filter.value];
+    const labels = values.map((value) => {
+      // A range stores full ISO instants so the day is inclusive in local time.
+      // Printing one on a chip gives "2026-08-20T06:00:00.000Z", which is the
+      // machine's business and not the reader's.
+      if (def?.kind === "daterange") return isoToDay(String(value)) || String(value);
+      const option = def?.options?.find((candidate) => candidate.value === String(value));
+      return option?.label ?? String(value);
+    });
+    return labels.filter((label) => label !== "").join(" – ");
+  };
+
   return (
     <div className="flex flex-col gap-3 px-4 py-3">
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -362,7 +385,7 @@ export function TableToolbar<T extends RowData>({
               className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-xs"
             >
               <span className="font-medium">{labelFor(filter.field)}</span>
-              <span className="text-muted-foreground">{String(filter.value)}</span>
+              <span className="text-muted-foreground">{valueFor(filter)}</span>
               <button
                 type="button"
                 onClick={() => onFilterRemove(filter.field)}

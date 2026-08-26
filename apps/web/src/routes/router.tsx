@@ -521,15 +521,27 @@ const reportsRoute = createRoute({
   path: "/journal",
   // An `authorId` in the URL pre-filters the table to one person's entries — this is
   // how the leaderboard links a name to "their reports".
-  validateSearch: (search: Record<string, unknown>): { authorId?: string; tab?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { authorId?: string } => ({
     authorId: typeof search.authorId === "string" ? search.authorId : undefined,
-    tab: typeof search.tab === "string" ? search.tab : undefined,
   }),
   beforeLoad: requirePermission(PERMISSIONS.JOURNAL_READ),
   component: function JournalList() {
-    const { authorId, tab } = reportsRoute.useSearch();
-    return <JournalListPage authorId={authorId} tab={tab ?? "today"} />;
+    const { authorId } = reportsRoute.useSearch();
+    return <JournalListPage authorId={authorId} />;
   },
+});
+
+/**
+ * "My day" was the journal's first tab, so every visit to the journal — including
+ * a link to a particular entry's list — landed on a screenful of summary tiles
+ * first. It answers a different question from "find me that entry", so it is its
+ * own page under Work.
+ */
+const myDayRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/my-day",
+  beforeLoad: requirePermission(PERMISSIONS.JOURNAL_READ),
+  component: lazyRouteComponent(() => import("@/routes/journal/my-day-page.js"), "MyDayPage"),
 });
 
 // Generated reports. The list and the run/view are reports:view; creating and
@@ -1005,6 +1017,7 @@ const routeTree = rootRoute.addChildren([
     roleCloneRoute,
     roleDetailRoute,
     reportsRoute,
+    myDayRoute,
     reviewRoute,
     reportsListRoute,
     reportNewRoute,

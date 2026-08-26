@@ -18,6 +18,30 @@ export type ReportKind = (typeof REPORT_KINDS)[number];
 export const reportKindSchema = z.enum(REPORT_KINDS);
 
 export const REPORT_STATES = ["draft", "submitted"] as const;
+
+/**
+ * Whose entries a listing is asking about, by the reporting line.
+ *
+ * A manager's default question is "what did my team file?", and the journal could
+ * only answer "everyone I may see" — which for a head of department is the whole
+ * nested organisation, and for anybody else is themselves. The levels are the
+ * reporting depth, because "my team" means the people who report to me and
+ * sometimes the people who report to them.
+ *
+ * `all` is not "everybody in the company": it is the caller's existing visibility,
+ * unnarrowed. Nothing here can widen what somebody may see.
+ */
+export const JOURNAL_TEAM_SCOPES = ["me", "direct", "two-levels", "downline", "all"] as const;
+export type JournalTeamScope = (typeof JOURNAL_TEAM_SCOPES)[number];
+
+/** How deep each scope reaches, or null for "no narrowing". */
+export const TEAM_SCOPE_DEPTH: Record<JournalTeamScope, number | null> = {
+  me: 0,
+  direct: 1,
+  "two-levels": 2,
+  downline: Number.POSITIVE_INFINITY,
+  all: null,
+};
 export type ReportState = (typeof REPORT_STATES)[number];
 export const reportStateSchema = z.enum(REPORT_STATES);
 

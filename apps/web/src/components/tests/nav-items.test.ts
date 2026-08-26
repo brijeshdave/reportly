@@ -83,6 +83,7 @@ describe("visibleNavGroups", () => {
     // work for the people who use them — sit directly under Work rather than
     // below reporting and scheduling.
     expect(labels).toEqual([
+      "My day",
       "Journal",
       "Reviews",
       "Tasks",

@@ -18,6 +18,8 @@ import {
   POINTS_LOCK_SETTINGS,
   REPORT_ENTRY_SETTINGS,
   SCORE_EVENT_REASONS,
+  TEAM_SCOPE_DEPTH,
+  type JournalTeamScope,
   type ScoreEvent,
   type AuthContext,
   ERROR_CODES,
@@ -79,7 +81,12 @@ import {
   workLogsFor,
   type WorkLogRow,
 } from "@/features/journal/work-log-repo.js";
-import { ancestorsOf, downlineUserIds } from "@/features/journal/hierarchy.js";
+import {
+  ancestorsOf,
+  downlineUserIds,
+  downlineUserIdsToDepth,
+  reviewerFor,
+} from "@/features/journal/hierarchy.js";
 import {
   addAuthorAsParticipant,
   handoversFor,
@@ -464,6 +471,30 @@ async function assertTaskIsMine(
   }
 }
 
+/**
+ * Narrow a listing to one part of the reporting line.
+ *
+ * Returns the author ids to allow, or null for "do not narrow". It only ever
+ * *narrows*: the caller's own visibility is applied on top, so asking for a team
+ * cannot show an entry they were not already allowed to see — including for a
+ * superadmin, who simply has nothing to be narrowed from.
+ */
+async function teamScopeAuthors(
+  query: ResolvedListQuery,
+  callerId: string,
+): Promise<string[] | null> {
+  const filter = query.filters.find((f) => f.field === "team");
+  if (!filter) return null;
+
+  const scope = String(filter.value) as JournalTeamScope;
+  const depth = TEAM_SCOPE_DEPTH[scope];
+  if (depth === undefined || depth === null) return null;
+
+  // The caller is always in their own team view. A manager looking at "my team"
+  // and not finding their own entries reads as a bug, not as a definition.
+  return [callerId, ...(await downlineUserIdsToDepth(callerId, depth))];
+}
+
 export async function listReports(
   query: ResolvedListQuery,
   ctx: AuthContext,
@@ -473,10 +504,20 @@ export async function listReports(
     ? null
     : [ctx.userId, ...(await downlineUserIds(ctx.userId))];
 
+  // A team scope narrows that set. Intersected rather than replacing it, so the
+  // filter can never widen what somebody may see.
+  const team = await teamScopeAuthors(query, ctx.userId);
+  const authors =
+    team === null
+      ? visibleAuthorIds
+      : visibleAuthorIds === null
+        ? team
+        : team.filter((id) => visibleAuthorIds.includes(id));
+
   const { rows, total } = await listReportRows(
     query,
     ctx.userId,
-    visibleAuthorIds,
+    authors,
     ctx.companyId,
     null,
     withLocationsNullable(ctx, reportsTable.locationId),
@@ -548,17 +589,21 @@ export async function getReport(
     canReopen: boolean;
     canSeePointsHistory: boolean;
     myScoreTier: ScoreTier | null;
+    reviewer: { id: string; name: string } | null;
   }
 > {
   const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
 
-  const [participants, scores, targets, tags, isAbove] = await Promise.all([
+  const [participants, scores, targets, tags, isAbove, reviewer] = await Promise.all([
     participantsFor(id),
     scoresFor(id),
     targetsFor(id),
     tagsFor("report", id),
     isAboveAuthor(ctx.userId, row.authorId),
+    // Who will score it. Asked for in as many words: people could not tell who
+    // they were waiting on, so they asked each other.
+    reviewerFor(row.authorId),
   ]);
   const hasReview = scores.some((s) => s.tier === "review");
   const canSeeReview = ctx.isSuperadmin || isAbove;
@@ -588,6 +633,10 @@ export async function getReport(
     // Which scoring column this caller may fill, if any — the author's self split,
     // a manager's review, or nothing. Server-computed for the same reason.
     myScoreTier,
+    // Null is a real answer and is shown as one: an entry with nobody set to
+    // review it will sit unscored until the reporting line is fixed, and hiding
+    // that makes it look fine.
+    reviewer,
   };
 }
 

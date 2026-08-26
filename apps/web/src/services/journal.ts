@@ -30,6 +30,8 @@ export type JournalEntryDetail = JournalEntry & {
   canSeePointsHistory: boolean;
   /** Which scoring column this caller may fill: their self split, the review, or none. */
   myScoreTier: "self" | "review" | null;
+  /** Who will score it — the author's reporting manager, or null when nobody is set. */
+  reviewer: { id: string; name: string } | null;
 };
 
 export function fetchReport(id: string): Promise<JournalEntryDetail> {

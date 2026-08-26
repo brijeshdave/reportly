@@ -8,11 +8,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useMemo } from "react";
 
+import { DATE_RANGE_PRESETS } from "@/lib/date-ranges.js";
+
 import { Can } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
-import { MyDay } from "@/components/my-day.js";
-import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { KindBadge, StateBadge, StatusBadge } from "@/components/report-badges.js";
 import { TagList } from "@/components/tag-chip.js";
 import { Button, PageHeader } from "@/components/ui/primitives.js";
@@ -119,26 +119,53 @@ const initialColumnVisibility = {
   tags: false,
 };
 
-// A leaderboard link lands here with `?authorId=`, so the table opens filtered to
-// that person's entries. The filter is seeded once, then editable like any other.
-// My day first, and the default: most visits are somebody checking what is on
-// their plate rather than hunting a particular entry, and the tab is in the URL
-// so a link to the table stays a link to the table.
-const TABS = [
-  { id: "today", label: "My day" },
-  { id: "entries", label: "Entries" },
-];
+/**
+ * The last seven days — the same range the "Last 7 days" button applies.
+ *
+ * Taken from the preset rather than computed here, because the filter stores full
+ * ISO instants and renders them back in *local* time. A bare `YYYY-MM-DD` parses as
+ * UTC midnight, so west of Greenwich the chip said one date and the date box below
+ * it said the day before. Using the preset also means the button shows as active,
+ * which is true: it is exactly what was applied.
+ */
+function lastWeek(): [string, string] {
+  const preset = DATE_RANGE_PRESETS.find((candidate) => candidate.id === "7d");
+  return (preset?.range(new Date()) ?? ["", ""]) as [string, string];
+}
 
-export function JournalListPage({
-  authorId,
-  tab = "today",
-}: { authorId?: string; tab?: string } = {}) {
-  const activeTab = TABS.some((candidate) => candidate.id === tab) ? tab : "today";
+/**
+ * What the journal opens on.
+ *
+ * Newest first, the last week, and the caller's direct reporting team — the
+ * question people actually arrive with. It opened on every entry anyone could see,
+ * in no particular order, which for a head of department is the whole organisation
+ * back to the beginning.
+ *
+ * Defaults, not locks: every one of them is a normal filter, editable and
+ * clearable like any other, and a link carrying its own filters wins.
+ */
+function defaultState() {
+  return {
+    sortBy: "reportDate",
+    sortDir: "desc" as const,
+    filters: [
+      { field: "reportDate", op: "between" as const, value: lastWeek() },
+      { field: "team", op: "eq" as const, value: "direct" },
+    ],
+  };
+}
+
+// A leaderboard link lands here with `?authorId=`, so the table opens filtered to
+// that person's entries. That is a deliberate question about one person, so it
+// replaces the team default rather than fighting it.
+export function JournalListPage({ authorId }: { authorId?: string } = {}) {
   const navigate = useNavigate();
   const list = useListResource<JournalEntryRow>({
     resource: "journal",
     path: "/journal",
-    initial: authorId ? { filters: [{ field: "authorId", op: "eq", value: authorId }] } : undefined,
+    initial: authorId
+      ? { filters: [{ field: "authorId", op: "eq", value: authorId }] }
+      : defaultState(),
   });
 
   // Option lists for the select filters. The catalogues are small and cached, so a
@@ -172,6 +199,28 @@ export function JournalListPage({
 
     return [
       { field: "reportDate", label: "Date", kind: "daterange" },
+      {
+        // Whose entries, by the reporting line. The names say what they mean to
+        // the person reading them, not what the query does.
+        field: "team",
+        label: "Whose",
+        kind: "select",
+        options: [
+          { value: "me", label: "Only mine" },
+          { value: "direct", label: "My direct team" },
+          { value: "two-levels", label: "Two levels down" },
+          { value: "downline", label: "My whole team" },
+          { value: "all", label: "Everyone I can see" },
+        ],
+      },
+      {
+        // "Has anybody looked at this yet." Not the score — scoring is blind
+        // upward — but whether it is still sitting with a manager.
+        field: "awaitingReview",
+        label: "Review",
+        kind: "select",
+        options: [{ value: "true", label: "Not yet reviewed" }],
+      },
       { field: "title", label: "Title", kind: "text" },
       {
         field: "kind",
@@ -254,34 +303,17 @@ export function JournalListPage({
         }
       />
 
-      {/* The table and the day's summary were stacked, which meant scrolling
-          past a screenful of tiles to reach the thing most people came for. They
-          answer different questions — "what is on my plate today" and "find me
-          that entry" — so they are two views rather than one long page. */}
-      <PageTabs
-        tabs={TABS}
-        active={activeTab}
-        onSelect={(id) => void navigate({ to: "/journal", search: { authorId, tab: id } })}
-      />
-
-      <TabPanel id="entries" active={activeTab}>
-        <div className="pt-4">
-          <DataTable
-            {...list}
-            columns={columns}
-            filterDefs={filterDefs}
-            initialColumnVisibility={initialColumnVisibility}
-            emptyTitle="No entries yet"
-            emptyDescription="File your first entry to get started."
-          />
-        </div>
-      </TabPanel>
-
-      <TabPanel id="today" active={activeTab}>
-        <div className="pt-4">
-          <MyDay />
-        </div>
-      </TabPanel>
+      <div className="pt-4">
+        <DataTable
+          {...list}
+          columns={columns}
+          filterDefs={filterDefs}
+          initialColumnVisibility={initialColumnVisibility}
+          quickSearch={{ field: "title", placeholder: "Search entries" }}
+          emptyTitle="No entries yet"
+          emptyDescription="Nothing in the last week from your team. Widen the date or the Whose filter."
+        />
+      </div>
     </>
   );
 }

@@ -204,6 +204,29 @@ function tagScopeFor(query: ResolvedListQuery): SQL | undefined {
   )`;
 }
 
+/**
+ * "Show me what is still sitting with my manager."
+ *
+ * Submitted, finished, and carrying no review score — the same condition
+ * `awaitingReviewFor` uses for one person, offered here as a filter so it can be
+ * combined with a date range or a team. A worker cannot see the review itself
+ * (scoring is blind upward), but "has anybody looked at this yet" is not the score
+ * and is exactly what people were asking each other in person.
+ */
+function awaitingReviewScope(query: ResolvedListQuery): SQL | undefined {
+  const filter = query.filters.find((f) => f.field === "awaitingReview");
+  if (!filter) return undefined;
+  if (filter.value !== true && filter.value !== "true") return undefined;
+
+  return sql`(
+    ${journalEntries.state} = 'submitted'
+    AND NOT EXISTS (
+      SELECT 1 FROM journal_scores s
+      WHERE s.report_id = ${journalEntries.id} AND s.tier = 'review'
+    )
+  )`;
+}
+
 export async function getReport(id: string): Promise<JournalEntryRowRaw | null> {
   const [row] = await selectReports().where(eq(journalEntries.id, id));
   return row ?? null;
@@ -240,7 +263,15 @@ export async function listReports(
   // Location narrows on top of authorship/downline visibility; it never widens it.
   // Both must hold, so a report by someone you manage at a site you cannot reach
   // stays hidden.
-  const where = and(scope, companyScope, restrict, locationScope, tagScopeFor(query), parts.where);
+  const where = and(
+    scope,
+    companyScope,
+    restrict,
+    locationScope,
+    tagScopeFor(query),
+    awaitingReviewScope(query),
+    parts.where,
+  );
 
   const rows = await selectReports()
     .where(where)
