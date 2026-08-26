@@ -102,6 +102,41 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    // Recurring team duties, and the record of who kept up.
+    label: "Routines",
+    items: [
+      {
+        label: "My routines",
+        to: "/routines",
+        icon: ListChecks,
+        permission: PERMISSIONS.ROUTINES_READ,
+      },
+      {
+        label: "Team routines",
+        to: "/routines/manage",
+        icon: Repeat,
+        permission: PERMISSIONS.ROUTINES_MANAGE,
+      },
+    ],
+  },
+  {
+    // An optional module. Both entries disappear entirely for a company that has
+    // not switched it on — see `visibleNavGroups`, and the API's 404.
+    label: "Cartridges",
+    items: [
+      { label: "Cartridges", to: "/cartridges", icon: Printer, permission: PERMISSIONS.PARTS_READ },
+      {
+        label: "Cartridge setup",
+        to: "/cartridges/setup",
+        icon: SlidersHorizontal,
+        // Read, not configure: somebody who may see the catalogues but not edit
+        // them still has a reason to look at what a refill is worth. The buttons
+        // inside are what `parts:configure` gates.
+        permission: PERMISSIONS.PARTS_READ,
+      },
+    ],
+  },
+  {
     // Generated reports — the shaped, printable/exportable views over the journal.
     // One entry today (the reports library); as more named reports are saved they
     // appear on that page, and can be promoted here later.
@@ -155,46 +190,11 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Recurring team duties, and the record of who kept up.
-    label: "Routines",
-    items: [
-      {
-        label: "My routines",
-        to: "/routines",
-        icon: ListChecks,
-        permission: PERMISSIONS.ROUTINES_READ,
-      },
-      {
-        label: "Team routines",
-        to: "/routines/manage",
-        icon: Repeat,
-        permission: PERMISSIONS.ROUTINES_MANAGE,
-      },
-    ],
-  },
-  {
     // The physical things reports are about.
     label: "Assets",
     items: [
       { label: "Assets", to: "/assets", icon: Factory, permission: PERMISSIONS.ASSETS_READ },
       { label: "Devices", to: "/devices", icon: HardDrive, permission: PERMISSIONS.DEVICES_READ },
-    ],
-  },
-  {
-    // An optional module. Both entries disappear entirely for a company that has
-    // not switched it on — see `visibleNavGroups`, and the API's 404.
-    label: "Cartridges",
-    items: [
-      { label: "Cartridges", to: "/cartridges", icon: Printer, permission: PERMISSIONS.PARTS_READ },
-      {
-        label: "Cartridge setup",
-        to: "/cartridges/setup",
-        icon: SlidersHorizontal,
-        // Read, not configure: somebody who may see the catalogues but not edit
-        // them still has a reason to look at what a refill is worth. The buttons
-        // inside are what `parts:configure` gates.
-        permission: PERMISSIONS.PARTS_READ,
-      },
     ],
   },
   {

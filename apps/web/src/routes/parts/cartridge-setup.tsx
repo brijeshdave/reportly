@@ -25,6 +25,8 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
+import { ExclusivePanels, useExclusivePanel } from "@/routes/parts/use-exclusive-panel.js";
+
 import { Can } from "@/components/can.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
@@ -196,7 +198,7 @@ function CompatibilityEditor({
   loading: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useExclusivePanel(`${model.id}:fits`);
   const [selected, setSelected] = useState<string[]>(model.compatibleDeviceTypeIds);
 
   const save = useMutation({
@@ -255,7 +257,7 @@ function CompatibilityEditor({
  */
 function ModelDetailsEditor({ model }: { model: PartModel }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useExclusivePanel(`${model.id}:edit`);
   const [name, setName] = useState(model.name);
   const [cycleLimit, setCycleLimit] = useState(model.cycleLimit?.toString() ?? "");
   const [ratedPageYield, setRatedPageYield] = useState(model.ratedPageYield?.toString() ?? "");
@@ -383,148 +385,151 @@ function ModelsTab() {
   });
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          A kind of cartridge, what it fits, and how many services its maker rates it for.
-        </p>
-        <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-          <Button size="sm" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" />
-            Add model
-          </Button>
-        </Can>
-      </div>
-
-      {adding ? (
-        <Card className="space-y-3 p-4">
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Name">
-              {(props) => (
-                <Input
-                  {...props}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="HP 12A Toner"
-                />
-              )}
-            </Field>
-            <Field
-              label="Rated cycles"
-              hint="Optional. Passing it warns and never refuses — the figure is the maker's opinion."
-            >
-              {(props) => (
-                <Input
-                  {...props}
-                  type="number"
-                  min="1"
-                  value={cycleLimit}
-                  onChange={(e) => setCycleLimit(e.target.value)}
-                />
-              )}
-            </Field>
-            <Field
-              label="Rated pages"
-              hint="Optional. What one charge should produce, to compare each tour against. Leave it empty and you get page counts without a comparison."
-            >
-              {(props) => (
-                <Input
-                  {...props}
-                  type="number"
-                  min="1"
-                  value={ratedPageYield}
-                  onChange={(e) => setRatedPageYield(e.target.value)}
-                />
-              )}
-            </Field>
-          </div>
-          <DeviceTypePicker
-            types={deviceTypes.data ?? []}
-            selected={typeIds}
-            onChange={setTypeIds}
-            loading={deviceTypes.isLoading}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setAdding(false)}>
-              Cancel
+    <ExclusivePanels>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            A kind of cartridge, what it fits, and how many services its maker rates it for.
+          </p>
+          <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <Plus className="h-4 w-4" />
+              Add model
             </Button>
-            <Button
-              size="sm"
-              disabled={!name.trim() || create.isPending}
-              onClick={() => create.mutate()}
-            >
-              Add
-            </Button>
-          </div>
-        </Card>
-      ) : null}
+          </Can>
+        </div>
 
-      {models.isLoading ? <Spinner /> : null}
-      {models.error ? <ErrorAlert error={models.error} /> : null}
+        {adding ? (
+          <Card className="space-y-3 p-4">
+            {create.error ? <ErrorAlert error={create.error} /> : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Name">
+                {(props) => (
+                  <Input
+                    {...props}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="HP 12A Toner"
+                  />
+                )}
+              </Field>
+              <Field
+                label="Rated cycles"
+                hint="Optional. Passing it warns and never refuses — the figure is the maker's opinion."
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    type="number"
+                    min="1"
+                    value={cycleLimit}
+                    onChange={(e) => setCycleLimit(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field
+                label="Rated pages"
+                hint="Optional. What one charge should produce, to compare each tour against. Leave it empty and you get page counts without a comparison."
+              >
+                {(props) => (
+                  <Input
+                    {...props}
+                    type="number"
+                    min="1"
+                    value={ratedPageYield}
+                    onChange={(e) => setRatedPageYield(e.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+            <DeviceTypePicker
+              types={deviceTypes.data ?? []}
+              selected={typeIds}
+              onChange={setTypeIds}
+              loading={deviceTypes.isLoading}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setAdding(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={!name.trim() || create.isPending}
+                onClick={() => create.mutate()}
+              >
+                Add
+              </Button>
+            </div>
+          </Card>
+        ) : null}
 
-      <ul className="divide-y divide-border rounded-lg border border-border">
-        {(models.data ?? []).map((model) => (
-          <li key={model.id} className="space-y-2 p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">
-                  {model.name}{" "}
-                  {model.status === "inactive" ? (
-                    <Badge tone="neutral">no longer offered</Badge>
-                  ) : null}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {model.cycleLimit ? `rated for ${model.cycleLimit} services` : "no rated limit"} ·{" "}
-                  {model.ratedPageYield
-                    ? `${model.ratedPageYield.toLocaleString()} rated pages`
-                    : "no rated pages"}{" "}
-                  ·{" "}
-                  {/* Named rather than counted. "0 compatible types" is a number
+        {models.isLoading ? <Spinner /> : null}
+        {models.error ? <ErrorAlert error={models.error} /> : null}
+
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {(models.data ?? []).map((model) => (
+            <li key={model.id} className="space-y-2 p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {model.name}{" "}
+                    {model.status === "inactive" ? (
+                      <Badge tone="neutral">no longer offered</Badge>
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {model.cycleLimit ? `rated for ${model.cycleLimit} services` : "no rated limit"}{" "}
+                    ·{" "}
+                    {model.ratedPageYield
+                      ? `${model.ratedPageYield.toLocaleString()} rated pages`
+                      : "no rated pages"}{" "}
+                    ·{" "}
+                    {/* Named rather than counted. "0 compatible types" is a number
                       somebody has to interpret; "fits nothing yet" is the answer
                       to why every install of this model is being refused. */}
-                  {model.compatibleDeviceTypeIds.length === 0
-                    ? "fits nothing yet"
-                    : `fits ${typeNames(model.compatibleDeviceTypeIds, deviceTypes.data ?? [])}`}
-                </p>
-              </div>
-              <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-                {/* `contents` rather than a box: an open editor panel is rendered by one
+                    {model.compatibleDeviceTypeIds.length === 0
+                      ? "fits nothing yet"
+                      : `fits ${typeNames(model.compatibleDeviceTypeIds, deviceTypes.data ?? [])}`}
+                  </p>
+                </div>
+                <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
+                  {/* `contents` rather than a box: an open editor panel is rendered by one
                     of these buttons, and inside a shrink-to-fit group its `w-full`
                     resolved against the group — which then claimed the row's width
                     and squeezed the name beside it into a column of single letters.
                     With the group's box gone the panel is a child of the wrapping
                     row, where `order-last` puts it on a line of its own beneath. */}
-                <div className="contents">
-                  <CompatibilityEditor
-                    model={model}
-                    types={deviceTypes.data ?? []}
-                    loading={deviceTypes.isLoading}
-                  />
-                  <ModelDetailsEditor model={model} />
-                  <RatesEditor model={model} />
-                  <StatusButton
-                    status={model.status}
-                    busy={toggle.isPending}
-                    onToggle={() => toggle.mutate(model)}
-                  />
-                </div>
-              </Can>
-            </div>
-          </li>
-        ))}
-      </ul>
-      {!models.isLoading && (models.data ?? []).length === 0 ? (
-        <p className="text-sm text-muted-foreground">No models yet.</p>
-      ) : null}
-    </div>
+                  <div className="contents">
+                    <CompatibilityEditor
+                      model={model}
+                      types={deviceTypes.data ?? []}
+                      loading={deviceTypes.isLoading}
+                    />
+                    <ModelDetailsEditor model={model} />
+                    <RatesEditor model={model} />
+                    <StatusButton
+                      status={model.status}
+                      busy={toggle.isPending}
+                      onToggle={() => toggle.mutate(model)}
+                    />
+                  </div>
+                </Can>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {!models.isLoading && (models.data ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">No models yet.</p>
+        ) : null}
+      </div>
+    </ExclusivePanels>
   );
 }
 
 /** What one model pays for one kind of service, overriding the kind's default. */
 function RatesEditor({ model }: { model: PartModel }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useExclusivePanel(`${model.id}:rates`);
   const [draft, setDraft] = useState<Record<string, string>>({});
 
   const kinds = useQuery({
@@ -608,7 +613,7 @@ function RatesEditor({ model }: { model: PartModel }) {
  */
 function KindConsumablesEditor({ kind }: { kind: ServiceKind }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useExclusivePanel(`${kind.id}:uses`);
   const [rules, setRules] = useState<ServiceKindConsumable[]>(kind.consumables);
 
   const consumables = useQuery({
@@ -761,103 +766,105 @@ function KindsTab() {
   });
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        What can be done to a part — Refill, Repair, whatever you call it — and what one is worth by
-        default. <strong>Uses</strong> is where you say which consumables each one may take: set it
-        and the service form offers only those, so a Refill can be toner and nothing else. A kind
-        with no rules offers everything.
-      </p>
+    <ExclusivePanels>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          What can be done to a part — Refill, Repair, whatever you call it — and what one is worth
+          by default. <strong>Uses</strong> is where you say which consumables each one may take:
+          set it and the service form offers only those, so a Refill can be toner and nothing else.
+          A kind with no rules offers everything.
+        </p>
 
-      <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-        <Card className="flex flex-wrap items-end gap-3 p-4">
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="min-w-40 flex-1">
-            <Field label="Name">
-              {(props) => (
-                <Input
-                  {...props}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Refill"
-                />
-              )}
-            </Field>
-          </div>
-          <div className="w-32">
-            <Field label="Default points">
-              {(props) => (
-                <Input
-                  {...props}
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={points}
-                  onChange={(e) => setPoints(e.target.value)}
-                />
-              )}
-            </Field>
-          </div>
-          <Button
-            size="sm"
-            disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate()}
-          >
-            Add
-          </Button>
-        </Card>
-      </Can>
+        <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
+          <Card className="flex flex-wrap items-end gap-3 p-4">
+            {create.error ? <ErrorAlert error={create.error} /> : null}
+            <div className="min-w-40 flex-1">
+              <Field label="Name">
+                {(props) => (
+                  <Input
+                    {...props}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Refill"
+                  />
+                )}
+              </Field>
+            </div>
+            <div className="w-32">
+              <Field label="Default points">
+                {(props) => (
+                  <Input
+                    {...props}
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={points}
+                    onChange={(e) => setPoints(e.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+            <Button
+              size="sm"
+              disabled={!name.trim() || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              Add
+            </Button>
+          </Card>
+        </Can>
 
-      {kinds.isLoading ? <Spinner /> : null}
-      {kinds.error ? <ErrorAlert error={kinds.error} /> : null}
+        {kinds.isLoading ? <Spinner /> : null}
+        {kinds.error ? <ErrorAlert error={kinds.error} /> : null}
 
-      <ul className="divide-y divide-border rounded-lg border border-border">
-        {(kinds.data ?? []).map((kind) => (
-          <li key={kind.id} className="space-y-2 p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">
-                  {kind.name}{" "}
-                  {kind.status === "inactive" ? (
-                    <Badge tone="neutral">no longer offered</Badge>
-                  ) : null}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {kind.defaultPoints} points by default ·{" "}
-                  {kind.consumables.length === 0
-                    ? "offers every consumable — set Uses to narrow it"
-                    : `uses ${consumableNames(kind.consumables, allConsumables)}`}
-                </p>
-              </div>
-              <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-                {/* `contents` rather than a box: an open editor panel is rendered by one
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {(kinds.data ?? []).map((kind) => (
+            <li key={kind.id} className="space-y-2 p-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {kind.name}{" "}
+                    {kind.status === "inactive" ? (
+                      <Badge tone="neutral">no longer offered</Badge>
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {kind.defaultPoints} points by default ·{" "}
+                    {kind.consumables.length === 0
+                      ? "offers every consumable — set Uses to narrow it"
+                      : `uses ${consumableNames(kind.consumables, allConsumables)}`}
+                  </p>
+                </div>
+                <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
+                  {/* `contents` rather than a box: an open editor panel is rendered by one
                     of these buttons, and inside a shrink-to-fit group its `w-full`
                     resolved against the group — which then claimed the row's width
                     and squeezed the name beside it into a column of single letters.
                     With the group's box gone the panel is a child of the wrapping
                     row, where `order-last` puts it on a line of its own beneath. */}
-                <div className="contents">
-                  <KindDetailsEditor kind={kind} />
-                  <KindConsumablesEditor kind={kind} />
-                  <StatusButton
-                    status={kind.status}
-                    busy={toggle.isPending}
-                    onToggle={() => toggle.mutate(kind)}
-                  />
-                </div>
-              </Can>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+                  <div className="contents">
+                    <KindDetailsEditor kind={kind} />
+                    <KindConsumablesEditor kind={kind} />
+                    <StatusButton
+                      status={kind.status}
+                      busy={toggle.isPending}
+                      onToggle={() => toggle.mutate(kind)}
+                    />
+                  </div>
+                </Can>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </ExclusivePanels>
   );
 }
 
 /** A service kind's own facts: its name and what it pays by default. */
 function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useExclusivePanel(`${kind.id}:edit`);
   const [name, setName] = useState(kind.name);
   const [points, setPoints] = useState(String(kind.defaultPoints));
 
@@ -925,7 +932,7 @@ function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
 /** A consumable's own facts: its name and the unit it is measured in. */
 function ConsumableDetailsEditor({ consumable }: { consumable: Consumable }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useExclusivePanel(`${consumable.id}:edit`);
   const [name, setName] = useState(consumable.name);
   const [unit, setUnit] = useState<ConsumableUnit>(consumable.unit);
 
@@ -1024,92 +1031,94 @@ function ConsumablesTab() {
   });
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        What gets used up: toner powder, drums, blades, chips. A list of names and their unit, and
-        nothing else — there are no stock levels anywhere in this module, because it records what a
-        job consumed rather than what is left in the cupboard.
-      </p>
+    <ExclusivePanels>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          What gets used up: toner powder, drums, blades, chips. A list of names and their unit, and
+          nothing else — there are no stock levels anywhere in this module, because it records what
+          a job consumed rather than what is left in the cupboard.
+        </p>
 
-      <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-        <Card className="flex flex-wrap items-end gap-3 p-4">
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="min-w-40 flex-1">
-            <Field label="Name">
-              {(props) => (
-                <Input
-                  {...props}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Toner powder"
-                />
-              )}
-            </Field>
-          </div>
-          <div className="w-40">
-            <Field label="Counted in">
-              {(props) => (
-                <Select
-                  {...props}
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value as ConsumableUnit)}
-                >
-                  {CONSUMABLE_UNITS.map((value) => (
-                    <option key={value} value={value}>
-                      {CONSUMABLE_UNIT_LABELS[value]}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-          </div>
-          <Button
-            size="sm"
-            disabled={!name.trim() || create.isPending}
-            onClick={() => create.mutate()}
-          >
-            Add
-          </Button>
-        </Card>
-      </Can>
-
-      {consumables.isLoading ? <Spinner /> : null}
-      {consumables.error ? <ErrorAlert error={consumables.error} /> : null}
-
-      <ul className="divide-y divide-border rounded-lg border border-border">
-        {(consumables.data ?? []).map((consumable) => (
-          <li key={consumable.id} className="flex flex-wrap items-center gap-3 p-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
-                {consumable.name}{" "}
-                {consumable.status === "inactive" ? (
-                  <Badge tone="neutral">no longer offered</Badge>
-                ) : null}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                counted in {CONSUMABLE_UNIT_LABELS[consumable.unit]}
-              </p>
+        <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
+          <Card className="flex flex-wrap items-end gap-3 p-4">
+            {create.error ? <ErrorAlert error={create.error} /> : null}
+            <div className="min-w-40 flex-1">
+              <Field label="Name">
+                {(props) => (
+                  <Input
+                    {...props}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Toner powder"
+                  />
+                )}
+              </Field>
             </div>
-            <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-              {/* `contents` rather than a box: an open editor panel is rendered by one
+            <div className="w-40">
+              <Field label="Counted in">
+                {(props) => (
+                  <Select
+                    {...props}
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value as ConsumableUnit)}
+                  >
+                    {CONSUMABLE_UNITS.map((value) => (
+                      <option key={value} value={value}>
+                        {CONSUMABLE_UNIT_LABELS[value]}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+            <Button
+              size="sm"
+              disabled={!name.trim() || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              Add
+            </Button>
+          </Card>
+        </Can>
+
+        {consumables.isLoading ? <Spinner /> : null}
+        {consumables.error ? <ErrorAlert error={consumables.error} /> : null}
+
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {(consumables.data ?? []).map((consumable) => (
+            <li key={consumable.id} className="flex flex-wrap items-center gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">
+                  {consumable.name}{" "}
+                  {consumable.status === "inactive" ? (
+                    <Badge tone="neutral">no longer offered</Badge>
+                  ) : null}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  counted in {CONSUMABLE_UNIT_LABELS[consumable.unit]}
+                </p>
+              </div>
+              <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
+                {/* `contents` rather than a box: an open editor panel is rendered by one
                     of these buttons, and inside a shrink-to-fit group its `w-full`
                     resolved against the group — which then claimed the row's width
                     and squeezed the name beside it into a column of single letters.
                     With the group's box gone the panel is a child of the wrapping
                     row, where `order-last` puts it on a line of its own beneath. */}
-              <div className="contents">
-                <ConsumableDetailsEditor consumable={consumable} />
-                <StatusButton
-                  status={consumable.status}
-                  busy={toggle.isPending}
-                  onToggle={() => toggle.mutate(consumable)}
-                />
-              </div>
-            </Can>
-          </li>
-        ))}
-      </ul>
-    </div>
+                <div className="contents">
+                  <ConsumableDetailsEditor consumable={consumable} />
+                  <StatusButton
+                    status={consumable.status}
+                    busy={toggle.isPending}
+                    onToggle={() => toggle.mutate(consumable)}
+                  />
+                </div>
+              </Can>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </ExclusivePanels>
   );
 }
 

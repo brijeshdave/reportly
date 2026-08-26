@@ -642,6 +642,14 @@ Do this after changing any mail setting. A relay can accept a connection and the
 refuse every message: that looks perfectly healthy from the outside and is
 invisible until somebody says they never got their invitation.
 
+### Finding a device
+
+**Devices** has a search box for the name, and filters for **department**,
+**location**, the **asset** it stands at, and when it was **added** — alongside the
+asset tag, tag/serial and status. The API always answered those questions; the page
+simply never asked them, so the only way to see one department's machines was to
+read the whole register.
+
 ### See when somebody was last here, and who is signed in now
 
 **Users** shows a **Last seen** column with a **Signed in** badge for anybody

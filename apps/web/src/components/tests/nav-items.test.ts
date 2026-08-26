@@ -77,6 +77,11 @@ describe("visibleNavGroups", () => {
     const groups = visibleNavGroups({ permissions: [], isSuperadmin: true });
     const labels = groups.flatMap((group) => group.items.map((item) => item.label));
     // Locations are absent on purpose: they live inside a company's detail page.
+    //
+    // The order is asserted, not just the membership: the sidebar is arranged by
+    // how often somebody reaches for a thing, so routines and cartridges — daily
+    // work for the people who use them — sit directly under Work rather than
+    // below reporting and scheduling.
     expect(labels).toEqual([
       "Journal",
       "Reviews",
@@ -84,21 +89,21 @@ describe("visibleNavGroups", () => {
       "Downtime",
       "Analytics",
       "Insights",
+      "My routines",
+      "Team routines",
+      // Present for a superadmin here because this call passes no disabled list.
+      // In the app the shell passes one, and a company without the cartridges
+      // module never sees these two however its permissions read.
+      "Cartridges",
+      "Cartridge setup",
       "Reports",
       "Leaderboard",
       "My points",
       "Schedule",
       "Shift change",
       "Shifts",
-      "My routines",
-      "Team routines",
       "Assets",
       "Devices",
-      // Present for a superadmin here because this call passes no disabled list.
-      // In the app the shell passes one, and a company without the cartridges
-      // module never sees these two however its permissions read.
-      "Cartridges",
-      "Cartridge setup",
       "Companies",
       "Departments",
       "Organisation",

@@ -5,7 +5,7 @@
 // "issues under Line 3" still find it.
 import { PERMISSIONS, type Device } from "@reportly/shared";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Building2, Download, Plus, Upload } from "lucide-react";
 
@@ -17,6 +17,7 @@ import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { Badge, Button, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
+import { useOptions } from "@/hooks/use-options.js";
 
 const columns: TableColumn<Device>[] = [
   {
@@ -98,28 +99,59 @@ const columns: TableColumn<Device>[] = [
   },
 ];
 
-const filterDefs: FilterDef[] = [
-  { field: "name", label: "Device", kind: "text" },
-  // Both identifiers are filterable server-side, and people search by whichever
-  // one their organisation actually stencils on the machine.
-  { field: "assetTag", label: "Asset ID", kind: "text" },
-  { field: "identifier", label: "Tag / serial", kind: "text" },
-  {
-    field: "status",
-    label: "Status",
-    kind: "select",
-    options: [
-      { value: "active", label: "Active" },
-      { value: "inactive", label: "Retired" },
-    ],
-  },
-];
+/**
+ * The registry is asked questions about *where* a device is at least as often as
+ * what it is called, and the API has always been able to answer them — `assetId`,
+ * `departmentId` and `locationId` are filterable columns. The page simply never
+ * offered them, so the only way to see one department's machines was to read the
+ * whole table.
+ */
+function filterDefsFor(
+  departments: { id: string; name: string }[],
+  locations: { id: string; name: string }[],
+  assets: { id: string; name: string }[],
+): FilterDef[] {
+  const options = (rows: { id: string; name: string }[]) =>
+    rows.map((row) => ({ value: row.id, label: row.name }));
+
+  return [
+    { field: "name", label: "Device", kind: "text" },
+    // Both identifiers are filterable server-side, and people search by whichever
+    // one their organisation actually stencils on the machine.
+    { field: "assetTag", label: "Asset tag", kind: "text" },
+    { field: "identifier", label: "Tag / serial", kind: "text" },
+    {
+      field: "status",
+      label: "Status",
+      kind: "select",
+      options: [
+        { value: "active", label: "Active" },
+        { value: "inactive", label: "Retired" },
+      ],
+    },
+    // Comboboxes rather than selects: an installation has a handful of companies
+    // and hundreds of assets, and the same name can appear in two places, so the
+    // id is what travels.
+    { field: "departmentId", label: "Department", kind: "combobox", options: options(departments) },
+    { field: "locationId", label: "Location", kind: "combobox", options: options(locations) },
+    { field: "assetId", label: "Asset", kind: "combobox", options: options(assets) },
+    { field: "createdAt", label: "Added", kind: "daterange" },
+  ];
+}
 
 export function DevicesListPage() {
   const navigate = useNavigate();
   const [importing, setImporting] = useState(false);
   const { data: session } = useSuspenseQuery(sessionQuery);
   const list = useListResource<Device>({ resource: "devices", path: "/devices" });
+
+  const departments = useOptions<{ id: string; name: string }>("departments", "/departments");
+  const locations = useOptions<{ id: string; name: string }>("locations", "/locations");
+  const assets = useOptions<{ id: string; name: string }>("assets", "/assets");
+  const filterDefs = useMemo(
+    () => filterDefsFor(departments.data ?? [], locations.data ?? [], assets.data ?? []),
+    [departments.data, locations.data, assets.data],
+  );
 
   // The registry belongs to a company; without one the request can only 400.
   if (!session.companyId) {
@@ -171,6 +203,8 @@ export function DevicesListPage() {
         {...list}
         columns={columns}
         filterDefs={filterDefs}
+        // The one thing people type constantly, without opening the panel first.
+        quickSearch={{ field: "name", placeholder: "Search devices" }}
         // Site and Department are off by default rather than absent: eight columns
         // crowd the table, and the Columns menu is where somebody who wants them
         // goes. Everything the device carries is now offered there.
