@@ -159,6 +159,8 @@ export interface AwaitingRow {
   submittedAt: string | null;
   /** Who it is waiting on; null when the author has no manager in the line. */
   reviewerName: string | null;
+  /** True when it is in fact waiting on *you* to split the points first. */
+  needsSelfScore: boolean;
 }
 
 export interface PendingRow {
@@ -201,9 +203,14 @@ export async function awaitingReviewFor(callerId: string): Promise<AwaitingRow[]
     severity_name: string | null;
     submitted_at: string | null;
     reviewer_name: string | null;
+    needs_self_score: boolean;
   }>(sql`
     SELECT r.id AS report_id, r.title, r.kind, sev.name AS severity_name, r.submitted_at,
-           mgr.name AS reviewer_name
+           mgr.name AS reviewer_name,
+           NOT EXISTS (
+             SELECT 1 FROM journal_scores s
+             WHERE s.report_id = r.id AND s.tier = 'self'
+           ) AS needs_self_score
     FROM journal_entries r
     -- Resolved, not merely finished: a cancelled or duplicate entry is not work
     -- anybody should be scoring, and it used to fill this queue.
@@ -231,6 +238,7 @@ export async function awaitingReviewFor(callerId: string): Promise<AwaitingRow[]
     severityName: row.severity_name,
     submittedAt: row.submitted_at ? new Date(row.submitted_at).toISOString() : null,
     reviewerName: row.reviewer_name,
+    needsSelfScore: Boolean(row.needs_self_score),
   }));
 }
 
@@ -269,6 +277,14 @@ export async function pendingFor(callerId: string): Promise<PendingRow[]> {
     JOIN journal_statuses st ON st.id = r.status_id AND st."group" = 'resolved'
     LEFT JOIN severities sev ON sev.id = r.severity_id
     WHERE r.state = 'submitted'
+      -- The self split comes first. A review is a manager confirming or nudging a
+      -- number the worker put forward, so an entry the author has not scored is
+      -- not yet anybody else's to score — it was filling reviewers' queues with
+      -- work that was waiting on the person who filed it.
+      AND EXISTS (
+        SELECT 1 FROM journal_scores s
+        WHERE s.report_id = r.id AND s.tier = 'self'
+      )
       AND NOT EXISTS (
         SELECT 1 FROM journal_scores s
         WHERE s.report_id = r.id AND s.tier = 'review' AND s.rater_id = ${callerId}

@@ -221,8 +221,16 @@ describe("reports and scoring", () => {
     const beforeResolve = (await inject("GET", "/journal/pending", manager.cookie)).json();
     expect(beforeResolve.some((p: { reportId: string }) => p.reportId === draftId)).toBe(false);
 
-    // Resolve it, and now it awaits the manager's review.
+    // Resolve it — still not the manager's, because the self split comes first: a
+    // review confirms a number the worker has put forward.
     await finish(manager.cookie, draftId);
+    const beforeSelf = (await inject("GET", "/journal/pending", manager.cookie)).json();
+    expect(beforeSelf.some((p: { reportId: string }) => p.reportId === draftId)).toBe(false);
+
+    // The author splits the points, and now it awaits the manager's review.
+    await inject("PUT", `/journal/${draftId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 2 }],
+    });
     const pending = (await inject("GET", "/journal/pending", manager.cookie)).json();
     expect(pending.some((p: { reportId: string }) => p.reportId === draftId)).toBe(true);
   });
@@ -549,6 +557,11 @@ describe("reports and scoring", () => {
     expect(
       (await inject("GET", `/journal/${reportId}`, manager.cookie)).json().pointsReviewNeeded,
     ).toBe(true);
+
+    // Re-opening now returns the entry to the open group — that is what re-opening
+    // means, and it used to leave "Resolved" in place. So it has to be finished
+    // again before anybody can score it: points follow resolution.
+    await finish(author.cookie, reportId);
 
     // Re-scoring is allowed despite the lock; the review settles the re-check.
     await score(author.cookie, reportId, [{ userId: author.id, points: 5 }]);

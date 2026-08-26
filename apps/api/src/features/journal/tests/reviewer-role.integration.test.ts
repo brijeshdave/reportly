@@ -154,6 +154,11 @@ describe("a reporting manager who is not the HOD", () => {
     // The other half of the report. The queue walks the reporting line, so it is
     // the manager's to clear — not only the HOD's.
     const { author, manager, reportId } = await chainWith("Journal reviewer");
+    // The author splits the points first — a review confirms a number somebody put
+    // forward, so nothing reaches a reviewer's queue before that.
+    await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
 
     const pending = (await inject("GET", "/journal/pending", manager.cookie)).json() as {
       reportId: string;
@@ -242,5 +247,51 @@ describe("rejecting an entry", () => {
     const after = (await inject("GET", `/journal/${reportId}`, manager.cookie)).json();
     expect(after.statusId).toBe(before.statusId);
     expect(after.rejectedAt).toBeNull();
+  });
+});
+
+describe("the self split comes first", () => {
+  it("keeps an unscored entry out of the reviewer's queue", async () => {
+    // Reported from use: "journal should only be shown to reviewer if self
+    // appraisal is done". A review is a manager confirming or nudging a number the
+    // worker put forward, so until that number exists there is nothing to review.
+    const { manager, author, reportId } = await chainWith("Journal reviewer");
+
+    const before = (await inject("GET", "/journal/pending", manager.cookie)).json() as {
+      reportId: string;
+    }[];
+    expect(before.map((row) => row.reportId)).not.toContain(reportId);
+
+    // The author splits the points; now it is the manager's to review.
+    const self = await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
+    expect(self.statusCode).toBe(200);
+
+    const after = (await inject("GET", "/journal/pending", manager.cookie)).json() as {
+      reportId: string;
+    }[];
+    expect(after.map((row) => row.reportId)).toContain(reportId);
+  });
+
+  it("tells the author it is waiting on them, not on their manager", async () => {
+    const { author, reportId } = await chainWith("Journal reviewer");
+
+    const mine = (await inject("GET", "/journal/awaiting-review", author.cookie)).json() as {
+      reportId: string;
+      needsSelfScore: boolean;
+    }[];
+    const row = mine.find((candidate) => candidate.reportId === reportId);
+    expect(row?.needsSelfScore).toBe(true);
+
+    await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
+
+    const after = (await inject("GET", "/journal/awaiting-review", author.cookie)).json() as {
+      reportId: string;
+      needsSelfScore: boolean;
+    }[];
+    expect(after.find((candidate) => candidate.reportId === reportId)?.needsSelfScore).toBe(false);
   });
 });

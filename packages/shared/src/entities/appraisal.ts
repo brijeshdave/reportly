@@ -74,6 +74,15 @@ export const awaitingReviewSchema = z.object({
   submittedAt: z.string().datetime().nullable(),
   /** Null when no manager is set on your line — a real state, not an error. */
   reviewerName: z.string().nullable(),
+  /**
+   * True when *you* have not split the points yet.
+   *
+   * The self split comes first: a manager reviews a number the worker has already
+   * put forward, so until it exists there is nothing to review. Without this the
+   * entry sat in "waiting on somebody else" while in fact it was waiting on the
+   * person reading the screen.
+   */
+  needsSelfScore: z.boolean(),
 });
 export type AwaitingReview = z.infer<typeof awaitingReviewSchema>;
 

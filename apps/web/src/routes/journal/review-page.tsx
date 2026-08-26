@@ -102,13 +102,20 @@ export function ReviewPage() {
                       {/* Named, so it is a person to go and ask rather than
                           "somebody". No manager set is said outright — it means
                           nobody is going to score this until one is. */}
-                      {entry.reviewerName
-                        ? `with ${entry.reviewerName}`
-                        : "no manager set on your reporting line"}
+                      {/* It may not be waiting on anybody else at all: the self
+                          split comes first, and until it exists there is nothing
+                          for a manager to review. Saying "with Asha" then would
+                          send somebody to chase work they are holding themselves. */}
+                      {entry.needsSelfScore
+                        ? "waiting on you — split the points first"
+                        : entry.reviewerName
+                          ? `with ${entry.reviewerName}`
+                          : "no manager set on your reporting line"}
                       {entry.submittedAt ? ` · filed ${formatDate(entry.submittedAt)}` : ""}
                     </span>
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
+                    {entry.needsSelfScore ? <Badge tone="warning">your turn</Badge> : null}
                     {entry.severityName ? <Badge tone="neutral">{entry.severityName}</Badge> : null}
                     <KindBadge kind={entry.kind} />
                   </span>
