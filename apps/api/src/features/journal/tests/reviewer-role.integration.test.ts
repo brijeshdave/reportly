@@ -359,3 +359,65 @@ describe("what reaches the leaderboard", () => {
     expect(afterReview.own).toBe(4);
   });
 });
+
+describe("lowering a ceiling under an entry that is already half-scored", () => {
+  it("leaves the self split alone and caps the review at the new number", async () => {
+    // His question: what happens to an entry whose author has split the points but
+    // whose review is still pending, when the severity's ceiling is then lowered
+    // below that split?
+    const admin = await superadmin();
+    const severities = (await inject("GET", "/severities", admin)).json();
+    const severity = severities[0];
+
+    const { manager, author, reportId } = await chainWith("Journal reviewer", severity.id);
+    await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 8 }],
+    });
+
+    // The ceiling drops to 3, under the 8 already put forward.
+    await inject("PATCH", `/severities/${severity.id}`, admin, { maxPoints: 3 });
+
+    // The split stands as filed — nothing rewrites history.
+    const detail = (await inject("GET", `/journal/${reportId}`, manager.cookie)).json();
+    expect(detail.scores.find((s: { userId: string }) => s.userId === author.id).self).toBe(8);
+    // But the entry now says what it may pay.
+    expect(detail.pointsCeiling).toBe(3);
+
+    // A review at the old number is refused...
+    const tooMuch = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 8 }],
+    });
+    expect(tooMuch.statusCode).toBe(400);
+
+    // ...and the new ceiling is what can be awarded and what counts.
+    const ok = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(
+      ((await inject("GET", "/journal/points", author.cookie)).json() as { own: number }).own,
+    ).toBe(3);
+  });
+
+  it("does not disturb an entry that was already reviewed and paid", async () => {
+    // The other half of his instruction: "any changes will not affect old records".
+    const admin = await superadmin();
+    const severities = (await inject("GET", "/severities", admin)).json();
+    const severity = severities[0];
+
+    const { manager, author, reportId } = await chainWith("Journal reviewer", severity.id);
+    await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 8 }],
+    });
+    await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 8 }],
+    });
+
+    await inject("PATCH", `/severities/${severity.id}`, admin, { maxPoints: 3 });
+
+    // Frozen at what it was worth when it was scored.
+    expect(
+      ((await inject("GET", "/journal/points", author.cookie)).json() as { own: number }).own,
+    ).toBe(8);
+  });
+});
