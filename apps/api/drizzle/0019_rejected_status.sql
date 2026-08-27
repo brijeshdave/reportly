@@ -15,4 +15,10 @@ SELECT 'Rejected', 'rejected', true,
        COALESCE((SELECT MAX(order_index) FROM journal_statuses), 0) + 1
  WHERE NOT EXISTS (
    SELECT 1 FROM journal_statuses WHERE lower(name) = 'rejected'
- );
+ )
+   -- **Only on a database that already has a workflow.** The seed skips statuses
+   -- when the table is not empty, so inserting into an empty one on a fresh
+   -- install left exactly this row and no others — every entry created with no
+   -- status at all. A fresh database gets its statuses, this one among them, from
+   -- the seed; this statement is for installs that were seeded before it existed.
+   AND EXISTS (SELECT 1 FROM journal_statuses);

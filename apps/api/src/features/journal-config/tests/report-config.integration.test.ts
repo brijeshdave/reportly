@@ -82,11 +82,16 @@ describe("report config", () => {
     expect(byName["Resolved"]).toMatchObject({ group: "resolved", isTerminal: true });
     expect(byName["Not an issue"]).toMatchObject({ group: "rejected", isTerminal: true });
 
-    // Eight, not eleven. The ladder carried three different terminal "done"
-    // states with no rule for choosing between them, and a "Partially completed"
-    // that meant the same as "In progress" — every extra status is a decision
-    // somebody has to get right.
-    expect(statuses).toHaveLength(8);
+    // Nine, not eleven. The ladder carried three different terminal "done" states
+    // with no rule for choosing between them, and a "Partially completed" that
+    // meant the same as "In progress" — every extra status is a decision somebody
+    // has to get right, which is why this number is asserted at all.
+    //
+    // The ninth is "Rejected", and it earns its place: refusing an entry used to
+    // move it to whichever rejected status sorted first, which was "Duplicate" —
+    // so a manager refusing sloppy work declared it a duplicate of nothing.
+    expect(statuses).toHaveLength(9);
+    expect(byName["Rejected"]).toMatchObject({ group: "rejected", isTerminal: true });
     expect(byName["Completed"]).toBeUndefined();
     expect(byName["Closed"]).toBeUndefined();
     expect(byName["Partially completed"]).toBeUndefined();
