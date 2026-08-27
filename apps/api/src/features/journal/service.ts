@@ -19,6 +19,7 @@ import {
   REPORT_ENTRY_SETTINGS,
   SCORE_EVENT_REASONS,
   TEAM_SCOPE_DEPTH,
+  civilDay,
   type JournalTeamScope,
   type ScoreEvent,
   type AuthContext,
@@ -45,6 +46,7 @@ import {
 import { mayUseLocation, withLocationsNullable } from "@/core/db/scoped.js";
 import { journalEntries as reportsTable } from "@/core/db/schema.js";
 import { AppError } from "@/core/errors.js";
+import { timezoneFor } from "@/core/timezone.js";
 import { notify } from "@/core/queue/notifications.js";
 import { getSystemSetting } from "@/core/settings/service.js";
 import { removeAttachmentsFor } from "@/features/attachments/cleanup.js";
@@ -1726,7 +1728,11 @@ async function pruneScoresToParticipants(id: string, raterId: string): Promise<v
 async function refreezeScores(row: JournalEntryRowRaw): Promise<void> {
   const meta = {
     companyId: row.companyId,
-    earnedOn: row.reportDate.toISOString().slice(0, 10),
+    // The day this counts for, where the company works — not where the container
+    // does. `report_date` is a timestamptz, so slicing its ISO string gave UTC's
+    // day: at +05:30 an entry filed at 02:00 was credited to *yesterday*, which at
+    // a month boundary puts the points in the previous month's standings.
+    earnedOn: civilDay(row.reportDate, await timezoneFor(row.companyId)),
     departmentId: row.departmentId,
   };
   const scores = await scoresFor(row.id);

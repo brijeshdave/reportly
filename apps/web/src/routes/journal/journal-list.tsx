@@ -5,6 +5,8 @@
 import { PERMISSIONS, type JournalEntryRow, formatDate } from "@reportly/shared";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+
+import { sessionQuery } from "@/lib/queries.js";
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -235,6 +237,8 @@ export function JournalListPage({ authorId }: { authorId?: string } = {}) {
     enabled: wantOptions,
   });
 
+  const plannedWork = useQuery(sessionQuery).data?.plannedWork ?? false;
+
   const filterDefs = useMemo<FilterDef[]>(() => {
     // Finite, few options → a native select. Many options → a searchable combobox
     // keyed by id, so the same name in two places is never ambiguous.
@@ -273,15 +277,22 @@ export function JournalListPage({ authorId }: { authorId?: string } = {}) {
         options: [{ value: "true", label: "Not yet reviewed" }],
       },
       { field: "title", label: "Title", kind: "text" },
-      {
-        field: "kind",
-        label: "Kind",
-        kind: "select",
-        options: [
-          { value: "issue", label: "Issue" },
-          { value: "work", label: "Work log" },
-        ],
-      },
+      // Only where a second kind still exists. With it retired every entry is an
+      // issue, so the filter offers a choice of one — and offering the retired name
+      // was worse than that.
+      ...(plannedWork
+        ? ([
+            {
+              field: "kind",
+              label: "Kind",
+              kind: "select",
+              options: [
+                { value: "issue", label: "Issue" },
+                { value: "work", label: "Planned work" },
+              ],
+            },
+          ] satisfies FilterDef[])
+        : []),
       { field: "statusName", label: "Status", kind: "select", options: nameOptions(statuses.data) },
       {
         field: "severityName",

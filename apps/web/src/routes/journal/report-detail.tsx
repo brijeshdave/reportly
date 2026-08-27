@@ -155,7 +155,7 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
         description={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>
-              {r.kind === "issue" ? "Issue" : "Work log"} · filed {formatDate(r.reportDate)}
+              {r.kind === "issue" ? "Issue" : "Planned work"} · filed {formatDate(r.reportDate)}
             </span>
             <span className="font-mono text-xs text-muted-foreground">{r.id}</span>
           </span>
