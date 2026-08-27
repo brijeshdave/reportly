@@ -134,6 +134,13 @@
       "when": 1786791600009,
       "tag": "0018_tasks_create_own",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786791600010,
+      "tag": "0019_rejected_status",
+      "breakpoints": true
     }
   ]
 }

@@ -1379,12 +1379,17 @@ export async function seedDatabase(database: Database = db): Promise<void> {
           { name: "In progress", group: "open", isTerminal: false, orderIndex: 2 },
           { name: "On hold", group: "open", isTerminal: false, orderIndex: 3 },
           { name: "Resolved", group: "resolved", isTerminal: true, orderIndex: 4 },
-          { name: "Duplicate", group: "rejected", isTerminal: true, orderIndex: 5 },
+          // First of the rejected group, and deliberately so: this is where an
+          // entry goes when a manager refuses it, and rejecting used to take
+          // whichever of these sorted first — which was "Duplicate", a claim about
+          // the entry that nobody had made.
+          { name: "Rejected", group: "rejected", isTerminal: true, orderIndex: 5 },
+          { name: "Duplicate", group: "rejected", isTerminal: true, orderIndex: 6 },
           // "Not an issue" rather than "False complaint": the old name blamed the
           // person who reported it, which discourages the reporting the whole app
           // exists to encourage.
-          { name: "Not an issue", group: "rejected", isTerminal: true, orderIndex: 6 },
-          { name: "Cancelled", group: "rejected", isTerminal: true, orderIndex: 7 },
+          { name: "Not an issue", group: "rejected", isTerminal: true, orderIndex: 7 },
+          { name: "Cancelled", group: "rejected", isTerminal: true, orderIndex: 8 },
         ])
         .onConflictDoNothing({ target: journalStatuses.name });
     }

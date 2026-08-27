@@ -201,6 +201,9 @@ describe("rejecting an entry", () => {
 
     const after = (await inject("GET", `/journal/${reportId}`, manager.cookie)).json();
     expect(after.statusGroup).toBe("rejected");
+    // By name, not merely by group. Taking whichever rejected status sorted first
+    // landed on "Duplicate" — a claim about the entry that nobody made.
+    expect(after.statusName).toBe("Rejected");
     expect(after.rejectedAt).not.toBeNull();
 
     // Frozen: no walking it back into the workflow while it stands rejected.
@@ -419,5 +422,53 @@ describe("lowering a ceiling under an entry that is already half-scored", () => 
     expect(
       ((await inject("GET", "/journal/points", author.cookie)).json() as { own: number }).own,
     ).toBe(8);
+  });
+});
+
+describe("what a severity may be worth", () => {
+  it("accepts a ceiling above the old global maximum of ten", async () => {
+    // Reported from use: "for severity settings it is not allowing me to set points
+    // more than 10. there should not be any cap on that." Ten was the *old* global
+    // maximum, and keeping it as the limit on its replacement left the ceiling
+    // unable to rise above the thing it replaced.
+    const admin = await superadmin();
+    const severities = (await inject("GET", "/severities", admin)).json();
+
+    const raised = await inject("PATCH", `/severities/${severities[0].id}`, admin, {
+      maxPoints: 50,
+    });
+    expect(raised.statusCode).toBe(200);
+    expect(raised.json().maxPoints).toBe(50);
+  });
+
+  it("still refuses a negative ceiling and a quarter point", async () => {
+    const admin = await superadmin();
+    const severities = (await inject("GET", "/severities", admin)).json();
+
+    expect(
+      (await inject("PATCH", `/severities/${severities[0].id}`, admin, { maxPoints: -1 }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await inject("PATCH", `/severities/${severities[0].id}`, admin, { maxPoints: 2.25 }))
+        .statusCode,
+    ).toBe(400);
+  });
+
+  it("lets a review award the whole of a raised ceiling", async () => {
+    // The number has to survive the schema, the route and the scoring rule — the
+    // ceiling being settable is no use if the score is still measured against ten.
+    const admin = await superadmin();
+    const severities = (await inject("GET", "/severities", admin)).json();
+    await inject("PATCH", `/severities/${severities[0].id}`, admin, { maxPoints: 40 });
+
+    const { manager, author, reportId } = await chainWith("Journal reviewer", severities[0].id);
+    await inject("PUT", `/journal/${reportId}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 30 }],
+    });
+    const reviewed = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 35 }],
+    });
+    expect(reviewed.statusCode).toBe(200);
   });
 });

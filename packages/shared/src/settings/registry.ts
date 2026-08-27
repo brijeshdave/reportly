@@ -37,6 +37,15 @@ export interface SettingDef<S extends z.ZodTypeAny = z.ZodTypeAny> {
    * the form nothing, and the form guessing would be a second source of truth.
    */
   keyOptions?: Record<string, readonly string[]>;
+  /**
+   * Where a string field's choices come from, when they are too many — or too
+   * changeable — to write down here.
+   *
+   * `timezones` means the runtime's own database, read at render. Shipping six
+   * hundred zone names in this package would put a list that ages with every
+   * daylight-saving amendment inside a package that ships once.
+   */
+  optionSource?: Record<string, "timezones">;
 }
 
 // --- auth ---
@@ -762,6 +771,10 @@ export const TIMEZONE: SettingDef<typeof timezoneSchema> = {
   // that rolls over at midnight should roll over at each site's midnight.
   companyOverridable: true,
   description: "The working day the server counts by — routines, points and month ends",
+  // Chosen from a list, not typed: "Asia/Kolkata" is easy to get slightly wrong,
+  // and a zone the runtime does not know is refused on save — which is a poor way
+  // to learn how it is spelled.
+  optionSource: { name: "timezones" },
 };
 
 /**

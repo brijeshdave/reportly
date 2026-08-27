@@ -17,6 +17,11 @@ export interface SettingField {
   /** Allowed values for `kind: "enum"`, and for a record's values. */
   options?: readonly string[];
   /**
+   * A string field that should be *chosen* rather than typed, its choices coming
+   * from the runtime rather than the schema — see `SettingDef.optionSource`.
+   */
+  optionSource?: "timezones";
+  /**
    * Suggested KEYS for `kind: "record"` — the values go in `options`.
    *
    * Suggestions, not a closed list: a record keyed by a plain string accepts

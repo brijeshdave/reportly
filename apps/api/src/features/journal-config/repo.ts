@@ -2,7 +2,7 @@
 // JournalEntry-config repository — the only code touching the severities, journal_statuses
 // and categories tables. Three small catalogues that make the reports domain
 // org-agnostic.
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import { categories, departments, journalStatuses, severities, tags } from "@/core/db/schema.js";
@@ -89,6 +89,33 @@ export async function firstStatusInGroup(group: string): Promise<StatusRow | nul
     .orderBy(asc(journalStatuses.orderIndex), asc(journalStatuses.name))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * The status to move an entry to when it is rejected.
+ *
+ * One named "Rejected" if the organisation has one — and it does unless they
+ * removed it — else whichever rejected-group status sorts first. Preferring the
+ * name matters: on a default install the first by order is **Duplicate**, so a
+ * manager refusing sloppy work marked it a duplicate of nothing, which is a
+ * statement about the entry that nobody made.
+ *
+ * Still a fallback rather than a requirement, because the workflow's vocabulary is
+ * the organisation's: somebody who renamed theirs to "Struck out" gets that.
+ */
+export async function rejectionStatus(): Promise<StatusRow | null> {
+  const [named] = await db
+    .select()
+    .from(journalStatuses)
+    .where(
+      and(
+        eq(journalStatuses.group, "rejected"),
+        eq(journalStatuses.status, "active"),
+        sql`lower(${journalStatuses.name}) = 'rejected'`,
+      ),
+    )
+    .limit(1);
+  return named ?? firstStatusInGroup("rejected");
 }
 
 export async function getStatus(id: string): Promise<StatusRow | null> {

@@ -101,6 +101,7 @@ import {
   firstStatusInGroup,
   getSeverity as getSeverityRow,
   getStatus as getStatusRow,
+  rejectionStatus,
 } from "@/features/journal-config/repo.js";
 import { insertStatusEvent, statusEventsFor } from "@/features/journal/status-events-repo.js";
 import { deleteCommentsFor } from "@/features/comments/repo.js";
@@ -1405,7 +1406,9 @@ export async function rejectReport(
   // The workflow's own rejected group, whatever this organisation has named those
   // statuses. Nothing is invented here: if they have no rejected status the flag
   // still stands on its own rather than the rejection failing.
-  const rejectedStatus = await firstStatusInGroup("rejected");
+  // Named "Rejected" where the organisation has one, else the first of that group.
+  // Taking the first outright landed on "Duplicate" on a default install.
+  const rejectedStatus = await rejectionStatus();
   await updateReportRow(id, {
     rejectedAt: new Date(),
     rejectedById: ctx.userId,

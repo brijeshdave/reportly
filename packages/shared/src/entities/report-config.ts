@@ -45,8 +45,15 @@ export const severitySchema = z
      * severity says how much is available and judgement decides how much of it is
      * earned. Ten everywhere until somebody sets it, which is what every entry was
      * worth before this existed.
+     *
+     * **No upper bound.** Ten was the old global maximum, and keeping it here made
+     * the ceiling unable to rise above the thing it replaced: an organisation that
+     * wants a Critical breakdown worth fifty could not say so. Asked for in as many
+     * words — "there should not be any cap on that" — so the only rules left are
+     * that it is not negative and moves in half points, like every other number in
+     * the scoring model.
      */
-    maxPoints: z.number().min(0).max(10),
+    maxPoints: z.number().min(0),
     status: entityStatusSchema,
   })
   .merge(timestampsSchema);
@@ -56,8 +63,9 @@ export type Severity = z.infer<typeof severitySchema>;
 export const createSeveritySchema = z.object({
   name: nameSchema,
   orderIndex: z.number().int().default(0),
-  // In half-point steps like every other number in the scoring model.
-  maxPoints: z.number().min(0).max(10).multipleOf(0.5).default(10),
+  // In half-point steps like every other number in the scoring model, and with no
+  // ceiling of its own — see the note on `severitySchema.maxPoints`.
+  maxPoints: z.number().min(0).multipleOf(0.5).default(10),
   status: entityStatusSchema.default("active"),
 });
 export type CreateSeverity = z.infer<typeof createSeveritySchema>;

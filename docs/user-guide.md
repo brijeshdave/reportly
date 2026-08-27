@@ -642,6 +642,18 @@ Do this after changing any mail setting. A relay can accept a connection and the
 refuse every message: that looks perfectly healthy from the outside and is
 invisible until somebody says they never got their invitation.
 
+### Setting the working day and the points a severity is worth
+
+**Settings → General → Timezone** is chosen from a searchable list of every zone
+your browser knows — search by city, "Kolkata" finds `Asia/Kolkata`. It decides the
+day the _server_ counts by: which day a routine occurrence belongs to, which day
+points were earned on, when a month closes. Anything you see in a browser already
+follows your own clock.
+
+**The most points an entry can be worth is set per severity**, under **System →
+JournalEntry setup → Severities** — not under Settings. A tier may share its ceiling
+among several people; it can never exceed it.
+
 ### Giving yourself work
 
 **Tasks → New task** lets anybody plan their own day: a task assigned to themselves,

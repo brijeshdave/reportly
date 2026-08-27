@@ -6,6 +6,7 @@ import { describeSettingSchema, type SettingDef, type SettingField } from "@repo
 import { Plus, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
+import { SearchableSelect } from "@/components/searchable-select.js";
 import { Alert, Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
 import { Button, Card } from "@/components/ui/primitives.js";
 import { errorMessage } from "@/lib/error-message.js";
@@ -222,6 +223,28 @@ function FieldControl({
     );
   }
 
+  // A string the runtime enumerates: hundreds of choices, so a searchable list
+  // rather than a `<select>` — and rather than a text box, where "Asia/Kolkatta"
+  // is only refused on save, which is a poor way to learn the spelling.
+  if (field.optionSource === "timezones") {
+    return (
+      // "Name" is what the schema key humanises to, and means nothing here.
+      <Field label="Timezone" hint="Your working day. Search by city or region.">
+        {(props) => (
+          <SearchableSelect
+            {...props}
+            value={String(value ?? "")}
+            onChange={onChange}
+            options={timezoneOptions()}
+            disabled={disabled}
+            ariaLabel="Timezone"
+            placeholder="Choose a timezone"
+          />
+        )}
+      </Field>
+    );
+  }
+
   if (field.kind === "enum") {
     return (
       <Field label={field.label}>
@@ -287,6 +310,23 @@ function FieldControl({
   );
 }
 
+/**
+ * Every timezone this browser knows, newest list wins.
+ *
+ * From the runtime rather than a list shipped in the app: zone names and their
+ * rules change with each tzdata release, and a hard-coded list would quietly go
+ * stale between releases. `supportedValuesOf` is not in older engines, so UTC is
+ * the floor — a box with one right answer beats a crash.
+ */
+function timezoneOptions(): { value: string; label: string }[] {
+  const zones =
+    typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["UTC"];
+  return ["UTC", ...zones.filter((zone) => zone !== "UTC")].map((zone) => ({
+    value: zone,
+    label: zone.replace(/_/g, " "),
+  }));
+}
+
 export function SettingForm({
   def,
   value,
@@ -304,7 +344,13 @@ export function SettingForm({
     // attached here.
     f.kind === "record" && def.keyOptions?.[f.key]
       ? { ...f, keyOptions: def.keyOptions[f.key] }
-      : f,
+      : // The same attaching for a string whose choices come from the runtime.
+        // Declaring the branch that renders it without wiring this left the field
+        // a plain text box — the setting said "choose from a list" and the screen
+        // never heard.
+        def.optionSource?.[f.key]
+        ? { ...f, optionSource: def.optionSource[f.key] }
+        : f,
   );
   const [draft, setDraft] = useState<SettingValue>(value);
   const [busy, setBusy] = useState(false);

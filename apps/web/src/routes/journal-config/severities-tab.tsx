@@ -151,11 +151,12 @@ function SeverityRow({
   return (
     <div className="grid grid-cols-[1fr_6rem_5rem_auto] items-center gap-3 px-4 py-2 text-sm">
       <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
-      {/* Half-point steps, like every other number in the scoring model. */}
+      {/* Half-point steps, like every other number in the scoring model — and no
+          upper bound: ten was the old global maximum, and enforcing it here left
+          the ceiling unable to rise above the thing it replaced. */}
       <Input
         type="number"
         min="0"
-        max="10"
         step="0.5"
         value={maxPoints}
         onChange={(event) => setMaxPoints(event.target.value)}
