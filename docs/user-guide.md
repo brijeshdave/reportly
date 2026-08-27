@@ -642,6 +642,22 @@ Do this after changing any mail setting. A relay can accept a connection and the
 refuse every message: that looks perfectly healthy from the outside and is
 invisible until somebody says they never got their invitation.
 
+### Giving yourself work
+
+**Tasks → New task** lets anybody plan their own day: a task assigned to themselves,
+which they complete like any other. Completing it opens an entry pre-filled from the
+task, so the work still reaches the journal and is still scored there — a self-made
+task is worth exactly what the same work would be worth if a manager had asked for
+it.
+
+**It can only ever be for yourself.** Handing work to somebody else needs
+`tasks:create`, which managers hold; an ordinary person holds `tasks:create-own` and
+the assignee is fixed to them. That is true even for somebody who has people
+reporting to them without being a manager in the app — the narrow grant means
+_yourself_, not _yourself or anyone below you_.
+
+Assigning something to yourself sends you no notification. You know.
+
 ### The journal, and whose entries you are looking at
 
 The journal opens on **the last week, newest first, your direct reporting team** —

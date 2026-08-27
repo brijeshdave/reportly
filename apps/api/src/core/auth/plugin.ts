@@ -183,6 +183,8 @@ declare module "fastify" {
     authenticate: preHandlerHookHandler;
     companyContext: preHandlerHookHandler;
     requirePermission: (permission: Permission) => preHandlerHookHandler;
+    /** Admit a caller holding **any** of these — see the decorator for when that is right. */
+    requireAnyPermission: (permissions: Permission[]) => preHandlerHookHandler;
   }
 }
 
@@ -377,6 +379,31 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
         throw new AppError(401, ERROR_CODES.UNAUTHENTICATED, "Authentication required");
       }
       if (!can(ctx, permission)) {
+        throw new AppError(403, ERROR_CODES.FORBIDDEN, "Insufficient permissions");
+      }
+    };
+  });
+
+  /**
+   * One route, two ways in.
+   *
+   * For an endpoint a permission opens *wider* and another opens *narrower* — task
+   * creation admits `tasks:create` (yourself or anyone below you) and
+   * `tasks:create-own` (yourself alone). Guarding on either one would shut out half
+   * the people meant to use it.
+   *
+   * The guard only decides whether the door opens. **What the caller may then do is
+   * still the service's business**, and it must be: this says nothing about which
+   * of the two they hold, so a route relying on it alone would let the narrow grant
+   * act like the wide one.
+   */
+  app.decorate("requireAnyPermission", (permissions: Permission[]): preHandlerHookHandler => {
+    return async function (request: FastifyRequest) {
+      const ctx = request.ctx;
+      if (!ctx) {
+        throw new AppError(401, ERROR_CODES.UNAUTHENTICATED, "Authentication required");
+      }
+      if (!permissions.some((permission) => can(ctx, permission))) {
         throw new AppError(403, ERROR_CODES.FORBIDDEN, "Insufficient permissions");
       }
     };

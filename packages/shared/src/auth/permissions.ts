@@ -323,6 +323,16 @@ export const PERMISSIONS = {
   // lets someone edit a stranger's task.
   TASKS_READ: "tasks:read",
   TASKS_CREATE: "tasks:create",
+  /**
+   * Give yourself work — and only yourself.
+   *
+   * `tasks:create` means "yourself or anyone below you", which cannot express
+   * "myself only": somebody who happens to have a person under them in the
+   * reporting line would be able to hand work down with it. This is the narrow
+   * half, so a member may plan their own day while their manager keeps assigning
+   * down as before. The same shape as `routines:log` beside `routines:manage`.
+   */
+  TASKS_CREATE_OWN: "tasks:create-own",
   TASKS_UPDATE: "tasks:update",
   TASKS_DELETE: "tasks:delete",
 

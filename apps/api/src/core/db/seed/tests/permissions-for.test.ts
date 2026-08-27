@@ -48,6 +48,9 @@ describe("permissionsFor", () => {
       "downtime:write",
       "attachments:write",
       "tasks:update",
+      // Their own day: a member may give themselves work, and only themselves.
+      // `tasks:create` (yourself *or anyone below you*) stays a manager's.
+      "tasks:create-own",
       "comments:update",
       // Members log their own routine occurrences.
       "routines:log",

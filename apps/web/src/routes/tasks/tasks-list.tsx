@@ -9,7 +9,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useMemo } from "react";
 
-import { Can } from "@/components/can.js";
+import { usePermission } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
@@ -147,18 +147,25 @@ export function TasksListPage() {
     },
   });
 
+  const mayAssign = usePermission(PERMISSIONS.TASKS_CREATE);
+  const mayCreateOwn = usePermission(PERMISSIONS.TASKS_CREATE_OWN);
+
   return (
     <>
       <PageHeader
         title="Tasks"
         description="Work you have been asked to do, and work you have asked of others. Completing a task opens a report pre-filled from it, so the work still gets logged."
         actions={
-          <Can permission={PERMISSIONS.TASKS_CREATE}>
+          // Two grants reach this screen, and they mean different things: a manager
+          // assigns work, a member gives themselves work and cannot hand it to
+          // anybody. The button says which one this is, rather than one wording
+          // that is wrong for half the people reading it.
+          mayAssign || mayCreateOwn ? (
             <Button size="sm" onClick={() => void navigate({ to: "/tasks/new" })}>
               <Plus className="h-4 w-4" />
-              Assign a task
+              {mayAssign ? "Assign a task" : "New task"}
             </Button>
-          </Can>
+          ) : null
         }
       />
 

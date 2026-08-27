@@ -102,6 +102,10 @@ export function permissionsFor(
       PERMISSIONS.JOURNAL_APPRAISE,
       // A manager/HOD may reject an entry filed by their downline, striking its points.
       PERMISSIONS.JOURNAL_REJECT,
+      // Redundant beside `tasks:create`, which already covers assigning to
+      // yourself — and held anyway, because the tiers nest: promoting somebody
+      // from Member must never take a grant away from them.
+      PERMISSIONS.TASKS_CREATE_OWN,
       PERMISSIONS.DOWNTIME_WRITE,
       PERMISSIONS.ATTACHMENTS_WRITE,
       // A manager owns the line, so they get its reliability figures. `:view` sits
@@ -171,6 +175,9 @@ export function permissionsFor(
     PERMISSIONS.DOWNTIME_WRITE,
     PERMISSIONS.ATTACHMENTS_WRITE,
     PERMISSIONS.TASKS_UPDATE,
+    // Their own day, and nobody else's: a member may give themselves work, and
+    // `tasks:create-own` refuses any assignee but themselves.
+    PERMISSIONS.TASKS_CREATE_OWN,
     PERMISSIONS.COMMENTS_UPDATE,
     // Members complete the routines assigned to them (their own occurrences only).
     PERMISSIONS.ROUTINES_LOG,

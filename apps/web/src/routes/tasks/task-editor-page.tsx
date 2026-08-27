@@ -4,11 +4,12 @@
 // The assignee list is your downline plus yourself — read from the same reporting
 // line the server checks against, so the picker cannot offer somebody the API will
 // refuse. It is a list of who works for you, not a list of everyone.
-import { type TaskPriority, type CreateTask } from "@reportly/shared";
+import { PERMISSIONS, type TaskPriority, type CreateTask } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import { usePermission } from "@/components/can.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
@@ -32,6 +33,9 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
   const queryClient = useQueryClient();
   const { data: session } = useQuery(sessionQuery);
   const me = session?.user;
+  // Which of the two grants brought them here: assigning down the line, or giving
+  // themselves work and nobody else.
+  const mayAssign = usePermission(PERMISSIONS.TASKS_CREATE);
 
   const [title, setTitle] = useState("");
   const [detail, setDetail] = useState("");
@@ -106,8 +110,14 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
   return (
     <>
       <PageHeader
-        title={mode === "create" ? "Assign a task" : "Edit task"}
-        description="Hand a job to yourself or to someone below you in the reporting line. When they complete it, a report opens pre-filled so the work gets logged."
+        // The page says the same thing the button did: somebody who may only give
+        // themselves work should not be told they can hand it down the line.
+        title={mode === "create" ? (mayAssign ? "Assign a task" : "New task") : "Edit task"}
+        description={
+          mayAssign
+            ? "Hand a job to yourself or to someone below you in the reporting line. When they complete it, a report opens pre-filled so the work gets logged."
+            : "Work you are giving yourself. When you complete it, an entry opens pre-filled, so it is logged and scored like any other."
+        }
         actions={
           <Button size="sm" variant="secondary" onClick={() => void navigate({ to: "/tasks" })}>
             Back to tasks
@@ -147,18 +157,29 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
           <Field
             label="Assign to"
             hint={
-              people.length <= 1 ? "Nobody reports to you yet, so this is yours to do." : undefined
+              !mayAssign
+                ? "Work you are giving yourself. Your manager assigns work to anybody else."
+                : people.length <= 1
+                  ? "Nobody reports to you yet, so this is yours to do."
+                  : undefined
             }
           >
-            {(props) => (
-              <SearchableSelect
-                {...props}
-                value={assigneeId}
-                onChange={setAssigneeId}
-                options={people}
-                placeholder="Choose who does it"
-              />
-            )}
+            {(props) =>
+              // Without `tasks:create`, this person may only ever pick themselves.
+              // A picker that lists names and then answers 403 is worse than no
+              // picker: it offers a choice that was never on the table.
+              mayAssign ? (
+                <SearchableSelect
+                  {...props}
+                  value={assigneeId}
+                  onChange={setAssigneeId}
+                  options={people}
+                  placeholder="Choose who does it"
+                />
+              ) : (
+                <Input {...props} value={me ? `${me.name} (you)` : "You"} readOnly />
+              )
+            }
           </Field>
 
           <Field label="Priority">

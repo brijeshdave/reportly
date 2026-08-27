@@ -443,3 +443,73 @@ describe("tasks", () => {
     ).toBe(403);
   });
 });
+
+describe("giving yourself work", () => {
+  it("lets a member create a task for themselves", async () => {
+    // Asked for from use: "a user should be alowed to create task for him self and
+    // can not be assigned to others by him but his upper level can do so."
+    const admin = await superadmin();
+    const { operator } = await buildChain(admin);
+
+    const created = await inject("POST", "/tasks", operator.cookie, {
+      title: "Tidy the spares shelf",
+      assigneeId: operator.id,
+      priority: "normal",
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().assigneeId).toBe(operator.id);
+    expect(created.json().assignerId).toBe(operator.id);
+  });
+
+  it("refuses to let them hand it to anybody else", async () => {
+    const admin = await superadmin();
+    const { operator, lead } = await buildChain(admin);
+
+    const refused = await inject("POST", "/tasks", operator.cookie, {
+      title: "You do it",
+      assigneeId: lead.id,
+      priority: "normal",
+    });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error.message).toContain("only create work for yourself");
+  });
+
+  it("refuses even for somebody below them in the line", async () => {
+    // The reason this needed a second permission rather than a wider grant.
+    // `tasks:create` means "yourself *or anyone below you*", so a member who
+    // happens to have a person under them would have been able to hand work down
+    // — the opposite of what was asked for.
+    const admin = await superadmin();
+    const { operator } = await buildChain(admin);
+
+    // Give the operator somebody of their own, while they stay a plain Member.
+    const memberGroup = await makeGroup(admin, "More reporters", "Member");
+    const junior = await makeUser(admin, "Dev Junior", "dev", memberGroup);
+    const dept = (await inject("POST", "/departments", admin, { name: "Spares" })).json();
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: operator.id, rank: "lead" },
+        { userId: junior.id, rank: "member", reportsToId: operator.id },
+      ],
+    });
+
+    const refused = await inject("POST", "/tasks", operator.cookie, {
+      title: "Down the line",
+      assigneeId: junior.id,
+      priority: "normal",
+    });
+    expect(refused.statusCode).toBe(403);
+  });
+
+  it("leaves a manager assigning down the line exactly as before", async () => {
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+
+    const created = await inject("POST", "/tasks", lead.cookie, {
+      title: "Please check the pump",
+      assigneeId: operator.id,
+      priority: "normal",
+    });
+    expect(created.statusCode).toBe(201);
+  });
+});

@@ -10,6 +10,8 @@ import {
   type AuthContext,
   type CreateTask,
   ERROR_CODES,
+  PERMISSIONS,
+  can,
   type Task,
   type TaskPrefill,
   type TaskPriority,
@@ -169,7 +171,25 @@ export async function createTask(input: CreateTask, ctx: AuthContext): Promise<T
   if (!ctx.companyId) {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "X-Company-Id header is required");
   }
-  if (!ctx.isSuperadmin && !(await assignableTo(ctx)).has(input.assigneeId)) {
+  // Two ways to be here, and they are not the same right.
+  //
+  // `tasks:create` hands work to yourself or anyone below you — a manager planning
+  // their team's day. `tasks:create-own` is the narrow half: your own day and
+  // nobody else's, however the reporting line happens to be shaped around you.
+  // Asked for exactly that way: "a user should be alowed to create task for him
+  // self and can not be assigned to others by him but his upper level can do so."
+  //
+  // Checked here rather than at the route, because the route guard only decides
+  // whether the door opens — it cannot see *which* grant let the caller through.
+  if (!ctx.isSuperadmin && !can(ctx, PERMISSIONS.TASKS_CREATE)) {
+    if (input.assigneeId !== ctx.userId) {
+      throw new AppError(
+        403,
+        ERROR_CODES.FORBIDDEN,
+        "You can only create work for yourself. Ask your manager to assign it to somebody else.",
+      );
+    }
+  } else if (!ctx.isSuperadmin && !(await assignableTo(ctx)).has(input.assigneeId)) {
     throw new AppError(
       403,
       ERROR_CODES.FORBIDDEN,

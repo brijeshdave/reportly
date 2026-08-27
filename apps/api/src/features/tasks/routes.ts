@@ -79,10 +79,18 @@ export async function tasksRoutes(fastify: FastifyInstance): Promise<void> {
   app.post(
     "/tasks",
     {
-      preHandler: guard(PERMISSIONS.TASKS_CREATE),
+      // Either grant opens this door: `tasks:create` to hand work down the line,
+      // `tasks:create-own` to give yourself work and nobody else. Which one the
+      // caller holds decides what they may then do, and that is the service's
+      // business — the guard cannot see it.
+      preHandler: [
+        app.authenticate,
+        app.companyContext,
+        app.requireAnyPermission([PERMISSIONS.TASKS_CREATE, PERMISSIONS.TASKS_CREATE_OWN]),
+      ],
       schema: {
         tags: ["Tasks"],
-        summary: "Assign a task to yourself or someone below you in the reporting line",
+        summary: "Create a task for yourself, or assign one to somebody below you",
         body: createTaskSchema,
         response: { 201: taskSchema },
       },

@@ -127,6 +127,13 @@
       "when": 1786791600008,
       "tag": "0017_severity_max_points",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786791600009,
+      "tag": "0018_tasks_create_own",
+      "breakpoints": true
     }
   ]
 }
