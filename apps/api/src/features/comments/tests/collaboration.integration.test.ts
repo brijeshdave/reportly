@@ -646,7 +646,7 @@ describe("status changes", () => {
 describe("participants and scoring", () => {
   it("puts the author on the list at creation, so a solo self-score pays them in full", async () => {
     const admin = await superadmin();
-    const { author } = await buildTeam(admin);
+    const { author, manager } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
     const list = (await inject("GET", `/journal/${reportId}/participants`, author.cookie)).json();
@@ -656,12 +656,15 @@ describe("participants and scoring", () => {
     // The author is the only worker: their self score is their official figure.
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [{ userId: author.id, points: 8 }]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [{ userId: author.id, points: 8 }]);
     expect(await ownPoints(author.cookie)).toBe(8);
   });
 
   it("gives each worker the points the self split names them", async () => {
     const admin = await superadmin();
-    const { author, mate } = await buildTeam(admin);
+    const { author, mate, manager } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
     await inject("PUT", `/journal/${reportId}/participants`, author.cookie, {
@@ -673,6 +676,12 @@ describe("participants and scoring", () => {
       { userId: author.id, points: 4 },
       { userId: mate.id, points: 4 },
     ]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [
+      { userId: author.id, points: 4 },
+      { userId: mate.id, points: 4 },
+    ]);
 
     expect(await ownPoints(author.cookie)).toBe(4);
     expect(await ownPoints(mate.cookie)).toBe(4);
@@ -680,7 +689,7 @@ describe("participants and scoring", () => {
 
   it("lets the self split be uneven, in half-point steps", async () => {
     const admin = await superadmin();
-    const { author, mate } = await buildTeam(admin);
+    const { author, mate, manager } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
     await inject("PUT", `/journal/${reportId}/participants`, author.cookie, {
@@ -691,6 +700,12 @@ describe("participants and scoring", () => {
       { userId: author.id, points: 6 },
       { userId: mate.id, points: 2.5 },
     ]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [
+      { userId: author.id, points: 6 },
+      { userId: mate.id, points: 2.5 },
+    ]);
 
     expect(await ownPoints(author.cookie)).toBe(6);
     expect(await ownPoints(mate.cookie)).toBe(2.5);
@@ -698,7 +713,7 @@ describe("participants and scoring", () => {
 
   it("lets the author name somebody without paying them", async () => {
     const admin = await superadmin();
-    const { author, mate } = await buildTeam(admin);
+    const { author, mate, manager } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
     await inject("PUT", `/journal/${reportId}/participants`, author.cookie, {
@@ -707,6 +722,12 @@ describe("participants and scoring", () => {
     await finish(author.cookie, reportId);
     // Zero is a real statement: on the record as having taken part, and not paid.
     await score(author.cookie, reportId, [
+      { userId: author.id, points: 8 },
+      { userId: mate.id, points: 0 },
+    ]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [
       { userId: author.id, points: 8 },
       { userId: mate.id, points: 0 },
     ]);
@@ -731,6 +752,12 @@ describe("participants and scoring", () => {
       { userId: author.id, points: 4 },
       { userId: mate.id, points: 4 },
     ]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [
+      { userId: author.id, points: 4 },
+      { userId: mate.id, points: 4 },
+    ]);
 
     // Both workers report to the same manager, who earns from each: 4 × 0.25 twice = 2.
     expect((await inject("GET", "/journal/points", manager.cookie)).json().rollup).toBeCloseTo(
@@ -749,6 +776,12 @@ describe("participants and scoring", () => {
     });
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [
+      { userId: author.id, points: 6 },
+      { userId: mate.id, points: 2 },
+    ]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [
       { userId: author.id, points: 6 },
       { userId: mate.id, points: 2 },
     ]);
@@ -771,7 +804,7 @@ describe("participants and scoring", () => {
 
   it("caps a report at ten points across everyone who worked it", async () => {
     const admin = await superadmin();
-    const { author, mate } = await buildTeam(admin);
+    const { author, mate, manager } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
     await inject("PUT", `/journal/${reportId}/participants`, author.cookie, {
@@ -793,6 +826,12 @@ describe("participants and scoring", () => {
       { userId: author.id, points: 6 },
       { userId: mate.id, points: 4 },
     ]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [
+      { userId: author.id, points: 6 },
+      { userId: mate.id, points: 4 },
+    ]);
     expect(await ownPoints(author.cookie)).toBe(6);
   });
 
@@ -802,6 +841,9 @@ describe("participants and scoring", () => {
     const reportId = await fileReport(author.cookie);
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [{ userId: author.id, points: 5 }]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [{ userId: author.id, points: 5 }]);
 
     // The manager reviews it.
     await score(manager.cookie, reportId, [{ userId: author.id, points: 8 }]);
@@ -825,6 +867,9 @@ describe("participants and scoring", () => {
     const reportId = await fileReport(author.cookie);
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [{ userId: author.id, points: 5 }]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [{ userId: author.id, points: 5 }]);
     await score(manager.cookie, reportId, [{ userId: author.id, points: 8 }]);
     expect(await ownPoints(author.cookie)).toBe(8);
 
@@ -844,12 +889,15 @@ describe("participants and scoring", () => {
     // And the author may set the split again once it is resolved anew.
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [{ userId: author.id, points: 3 }]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [{ userId: author.id, points: 3 }]);
     expect(await ownPoints(author.cookie)).toBe(3);
   });
 
   it("keeps the author on the list even when a save leaves them off", async () => {
     const admin = await superadmin();
-    const { author, mate } = await buildTeam(admin);
+    const { author, mate, manager } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
     // The author sets a list that names only their mate — themselves left off. The
@@ -865,6 +913,12 @@ describe("participants and scoring", () => {
     // And so they can score themselves.
     await finish(author.cookie, reportId);
     await score(author.cookie, reportId, [
+      { userId: author.id, points: 5 },
+      { userId: mate.id, points: 5 },
+    ]);
+    // The manager confirms the split: only a review reaches the ledger now, so
+    // a self score alone earns nobody anything.
+    await score(manager.cookie, reportId, [
       { userId: author.id, points: 5 },
       { userId: mate.id, points: 5 },
     ]);

@@ -571,6 +571,11 @@ describe("reports", () => {
     await inject("PUT", `/journal/${report.id}/scores`, lead.cookie, {
       scores: [{ userId: lead.id, points: 8 }],
     });
+    // Reviewed, because only a review reaches the ledger the leaderboard reads. The
+    // superadmin stands outside the reporting line, which is a review.
+    await inject("PUT", `/journal/${report.id}/scores`, admin, {
+      scores: [{ userId: lead.id, points: 8 }],
+    });
 
     const res = await inject("POST", "/reports/run", lead.cookie, {
       definition: { ...WIDE, source: "leaderboard", grouping: "none" },
@@ -613,6 +618,11 @@ describe("reports", () => {
     await inject("PUT", `/journal/${report.id}/scores`, lead.cookie, {
       scores: [{ userId: lead.id, points: 8 }],
     });
+    // Reviewed, because only a review reaches the ledger the leaderboard reads. The
+    // superadmin stands outside the reporting line, which is a review.
+    await inject("PUT", `/journal/${report.id}/scores`, admin, {
+      scores: [{ userId: lead.id, points: 8 }],
+    });
 
     // FIXED_DATE (May 2026) is in financial year 2026. Company-wide as superadmin.
     const before = await inject("GET", "/reports/leaderboard?fyStart=2026&limit=10", admin);
@@ -643,6 +653,11 @@ describe("reports", () => {
     const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
     await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, { statusId: resolved.id });
     await inject("PUT", `/journal/${report.id}/scores`, lead.cookie, {
+      scores: [{ userId: lead.id, points: 8 }],
+    });
+    // Reviewed, because only a review reaches the ledger the leaderboard reads. The
+    // superadmin stands outside the reporting line, which is a review.
+    await inject("PUT", `/journal/${report.id}/scores`, admin, {
       scores: [{ userId: lead.id, points: 8 }],
     });
 

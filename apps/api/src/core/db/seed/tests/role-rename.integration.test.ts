@@ -105,6 +105,12 @@ describe("three-tier area roles", () => {
       // which the seed derives rather than declares.
       const expected = ["admin", "editor", "viewer"];
       if (tiers.includes("superadmin")) expected.push("superadmin");
+      // The journal has a fourth: **reviewer**. Scoring somebody else's work is not
+      // a step on the read/write ladder — it is a different job, held by the line
+      // manager who does it. Before it existed, appraising was reachable only
+      // through Journal admin, so a manager either gained deletion, the shared
+      // vocabulary and comment moderation, or could not score their own team.
+      if (area === "Journal" && tiers.includes("reviewer")) expected.push("reviewer");
       expect([...tiers].sort(), `${area} is missing a tier`).toEqual([...expected].sort());
     }
   });
