@@ -27,6 +27,18 @@ export const sessionQuery = queryOptions({
   // A 401 is a normal signed-out state, not a transient failure.
   retry: false,
   staleTime: 30_000,
+  /**
+   * The one query that refetches when the tab is focused again.
+   *
+   * `refetchOnWindowFocus` is off across the app on purpose — the API is the source
+   * of truth and does not need asking on every alt-tab. This is the exception,
+   * because it carries what the person is *allowed to do*: when an administrator
+   * grants a site or a role, the change is live on the server immediately (the auth
+   * context is read per request, never cached), and the only thing left holding the
+   * old answer is this cache. Coming back to the tab is exactly when somebody
+   * expects "they just fixed my access" to have taken effect.
+   */
+  refetchOnWindowFocus: true,
 });
 
 export const preferencesQuery = queryOptions({

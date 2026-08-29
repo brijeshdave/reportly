@@ -141,6 +141,20 @@
       "when": 1786791600010,
       "tag": "0019_rejected_status",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786791600011,
+      "tag": "0020_shift_roles_see_sites",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786791600012,
+      "tag": "0021_shifts_delete",
+      "breakpoints": true
     }
   ]
 }

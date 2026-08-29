@@ -245,6 +245,32 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
     },
   );
 
+  app.delete(
+    "/schedules/:id",
+    {
+      // Its own permission, not `shifts:manage`: building a rota and destroying a
+      // published one are different acts, and `:delete` is a superadmin's by the
+      // tier rules. Reported from use — there was no way to remove a month started
+      // by mistake, so it stayed on the calendar for ever.
+      preHandler: guard(PERMISSIONS.SHIFTS_DELETE),
+      schema: {
+        tags: ["Shifts"],
+        summary: "Delete a month's schedule and every shift in it",
+        params: z.object({ id: z.string() }),
+        response: { 204: z.null() },
+      },
+    },
+    async (request, reply) => {
+      const companyId = activeCompany(request.ctx!.companyId);
+      const deleted = await schedule.deleteSchedule(request.ctx!, companyId, request.params.id);
+      // The whole row, not the id: "which month, whose department, which site" is
+      // what somebody asks a week later, and an id answers none of it.
+      await recordAudit(request, request.ctx!, { action: "schedule.delete", before: deleted });
+      reply.status(204);
+      return null;
+    },
+  );
+
   app.post(
     "/schedules/:id/assign",
     {

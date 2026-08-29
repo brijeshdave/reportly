@@ -23,11 +23,13 @@ import {
   Building2,
   Download,
   Printer,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 
 import { usePermission } from "@/components/can.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { Alert } from "@/components/ui/form.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Select, Spinner } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
@@ -40,6 +42,7 @@ import {
   exportSchedule,
   fetchSchedule,
   lockSchedule,
+  deleteSchedule,
   publishSchedule,
   unlockSchedule,
 } from "@/services/shifts.js";
@@ -64,7 +67,14 @@ export function SchedulePage() {
   });
   // Scoped by the API to the sites this person's groups reach, which is what makes
   // the rota picker show only the plants they may actually roster.
-  const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
+  const sites = useQuery({
+    queryKey: ["locations"],
+    queryFn: fetchLocations,
+    // Which sites this person may roster follows their access, so it is refreshed
+    // on focus like the session itself: granting somebody a site should show up
+    // here without them reloading the page or signing out.
+    refetchOnWindowFocus: true,
+  });
 
   const now = new Date();
   const [departmentId, setDepartmentId] = useState<string | null>(null);
@@ -121,6 +131,19 @@ export function SchedulePage() {
       ? ""
       : (membership.locationIds[0] ?? activeSites[0]?.id ?? "")
     : (activeSites[0]?.id ?? "");
+
+  /**
+   * Somebody who belongs to a site, on a page that can only offer the central rota.
+   *
+   * The empty selection *is* the central rota, so when the site list comes back
+   * empty this page used to open a real rota for the wrong people — and the central
+   * rota only ever holds staff flagged central, so their team was simply missing.
+   * That is what happened in production, and the cause was a missing
+   * `locations:read` grant rather than anything on this screen. Said out loud now,
+   * because a wrong answer that looks like an answer costs a month of rosters.
+   */
+  const strandedOnCentral =
+    membership !== null && !membership.isCentral && activeSites.length === 0;
   const effectiveSite = siteTouched ? locationId : derivedSite;
 
   // Which rota every mutation is about. One place, because three buttons start a
@@ -152,6 +175,19 @@ export function SchedulePage() {
     mutationFn: (scheduleId: string) => publishSchedule(scheduleId),
     onSuccess: invalidate,
   });
+  /**
+   * Remove this month's rota outright.
+   *
+   * Confirmed first, and only offered to somebody holding `shifts:delete` — a
+   * superadmin by the role tiers. It takes every shift in the month with it, which
+   * is a month of somebody's planning, so the confirmation names what is going.
+   */
+  const remove = useMutation({
+    mutationFn: (scheduleId: string) => deleteSchedule(scheduleId),
+    onSuccess: invalidate,
+  });
+  const canDelete = usePermission(PERMISSIONS.SHIFTS_DELETE);
+
   const lock = useMutation({
     mutationFn: ({ scheduleId, locked }: { scheduleId: string; locked: boolean }) =>
       locked ? lockSchedule(scheduleId) : unlockSchedule(scheduleId),
@@ -277,6 +313,18 @@ export function SchedulePage() {
           </div>
         }
       />
+
+      {/* Said out loud rather than shown as a rota. The empty selection is the
+          central rota, so a scheduler with no sites to choose from was quietly
+          handed somebody else's — and the central rota holds only staff flagged
+          central, so their own team was missing from it. */}
+      {strandedOnCentral ? (
+        <Alert tone="warning">
+          You are shown the central rota because no sites are available to choose. Your department
+          works at a site, so this is not your team's rota — ask an administrator to grant your role{" "}
+          <code>locations:read</code>.
+        </Alert>
+      ) : null}
 
       {effectiveDept === null ? (
         <EmptyState
@@ -447,10 +495,32 @@ export function SchedulePage() {
                   </Button>
                 </>
               ) : null}
+              {canDelete ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    // Named, because "are you sure?" answers nothing: a month of
+                    // shifts goes with it and there is no undo.
+                    const label = new Date(year, month - 1).toLocaleString(undefined, {
+                      month: "long",
+                      year: "numeric",
+                    });
+                    if (window.confirm(`Delete the ${label} rota and every shift in it?`)) {
+                      remove.mutate(schedule.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete rota
+                </Button>
+              ) : null}
             </div>
           </div>
 
           {publish.error ? <ErrorAlert error={publish.error} /> : null}
+          {remove.error ? <ErrorAlert error={remove.error} /> : null}
           {lock.error ? <ErrorAlert error={lock.error} /> : null}
 
           <ScheduleGridView

@@ -247,6 +247,15 @@ export const PERMISSIONS = {
   SHIFTS_READ: "shifts:read",
   SHIFTS_MANAGE: "shifts:manage",
   SHIFTS_APPROVE: "shifts:approve",
+  /**
+   * Delete a month's rota outright — the plan and every cell in it.
+   *
+   * Its own permission, and deliberately not part of `shifts:manage`: building a
+   * rota and destroying a published one are different acts, and the second takes a
+   * month of somebody's planning with it. Granted to Superadmin alone, on his
+   * instruction, so a scheduler who can build cannot also erase.
+   */
+  SHIFTS_DELETE: "shifts:delete",
 
   // Team routines — recurring duties a manager gives their team. `routines:read` ends
   // in `:read` so Members get it (they see and complete the routines assigned to them);

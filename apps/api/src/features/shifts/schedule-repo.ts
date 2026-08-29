@@ -117,6 +117,16 @@ export async function insertSchedule(
   return row!;
 }
 
+/**
+ * Remove a month's rota outright.
+ *
+ * Its cells go with it: `schedule_entries.schedule_id` cascades, so this is one
+ * statement rather than a two-step that could leave orphans if it failed halfway.
+ */
+export async function deleteSchedule(id: string, companyId: string): Promise<void> {
+  await db.delete(schedules).where(and(eq(schedules.id, id), eq(schedules.companyId, companyId)));
+}
+
 export async function listEntries(scheduleId: string): Promise<EntryRow[]> {
   return db
     .select(entryCols)

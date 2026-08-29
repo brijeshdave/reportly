@@ -80,6 +80,11 @@ export function bulkAssign(scheduleId: string, input: BulkAssign): Promise<{ cou
   return http.post<{ count: number }>(`/schedules/${scheduleId}/assign-bulk`, input);
 }
 
+/** Remove a month's rota and every shift in it. Superadmin only — see shifts:delete. */
+export function deleteSchedule(scheduleId: string): Promise<void> {
+  return http.delete<void>(`/schedules/${scheduleId}`);
+}
+
 export function publishSchedule(scheduleId: string): Promise<Schedule> {
   return http.post<Schedule>(`/schedules/${scheduleId}/publish`, {});
 }

@@ -642,6 +642,22 @@ Do this after changing any mail setting. A relay can accept a connection and the
 refuse every message: that looks perfectly healthy from the outside and is
 invisible until somebody says they never got their invitation.
 
+### Rotas: which site, and removing one
+
+A rota belongs to **a department at a site**. The empty site selection is the
+**central rota** — the one for people who travel — and it holds only staff flagged
+central, so a site team will not appear on it.
+
+If your site picker is empty, that is a **permission**, not an empty organisation:
+the picker reads the locations list, which needs `locations:read`. Without it the
+page falls back to the central rota and quietly shows the wrong team's calendar. The
+shipped shift roles grant it; a hand-built role may not, and the page now says so
+rather than pretending.
+
+**Deleting a rota** removes the month and every shift in it, and it cannot be
+undone. It needs `shifts:delete`, which is a superadmin's alone — building a rota
+and destroying a published one are different acts.
+
 ### Setting the working day and the points a severity is worth
 
 **Settings → General → Timezone** is chosen from a searchable list of every zone

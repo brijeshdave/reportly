@@ -342,7 +342,6 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.COMPANIES_CREATE,
       PERMISSIONS.COMPANIES_UPDATE,
       PERMISSIONS.COMPANIES_DELETE,
-      PERMISSIONS.LOCATIONS_READ,
       PERMISSIONS.LOCATIONS_CREATE,
       PERMISSIONS.LOCATIONS_UPDATE,
       PERMISSIONS.LOCATIONS_DELETE,
@@ -543,6 +542,12 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.SHIFTS_MANAGE,
       PERMISSIONS.SHIFTS_APPROVE,
       PERMISSIONS.DEPARTMENTS_READ,
+      // A rota belongs to a site, so somebody who builds rotas has to be able to
+      // name one. Without this the site picker comes back empty and the page falls
+      // back to the central rota — which is a real rota, so it looks like an
+      // answer rather than a missing permission. It reveals nothing extra: the
+      // list is already scoped to the sites this person may reach.
+      PERMISSIONS.LOCATIONS_READ,
       // Run the scheduling reports (roster, changes, coverage, attendance) — they
       // live in the Reports area, so a scheduler needs reports:view to open them.
       ...ALL_REPORT_VIEW_PERMISSIONS,

@@ -296,6 +296,37 @@ export async function myEntries(
   }));
 }
 
+/**
+ * Delete a month's rota — the plan and every cell in it.
+ *
+ * Asked for from production: there was no way to remove one, so a month started by
+ * mistake stayed on the calendar for ever.
+ *
+ * Behind its own permission rather than `shifts:manage`, because building a rota
+ * and destroying a published one are different acts: the second takes a month of
+ * somebody's planning with it. The permission ends in `:delete`, which the role
+ * tiers already reserve for a superadmin.
+ *
+ * Returns what was deleted so the audit row says which month, department and site
+ * went — an id alone would be unreadable a week later.
+ */
+export async function deleteSchedule(
+  ctx: AuthContext,
+  companyId: string,
+  id: string,
+): Promise<Schedule> {
+  const row = await repo.getScheduleById(id, companyId);
+  if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Schedule not found");
+  await assertCanRead(ctx, row.departmentId);
+
+  const dept = await requireDepartment(companyId, row.departmentId);
+  const site = await requireSite(companyId, ctx, row.locationId);
+  const deleted = serializeSchedule(row, dept.name, site?.name ?? null);
+
+  await repo.deleteSchedule(id, companyId);
+  return deleted;
+}
+
 export async function createSchedule(
   ctx: AuthContext,
   companyId: string,

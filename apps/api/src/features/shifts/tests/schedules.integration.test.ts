@@ -747,3 +747,72 @@ describe("schedules", () => {
     expect(grid.entries).toHaveLength(1);
   });
 });
+
+describe("deleting a rota", () => {
+  it("takes the month and every shift in it, for a superadmin", async () => {
+    // Reported from use: "there is no way to delete a schedule once created."
+    const admin = await superadmin();
+    const { dept, site, morning, inside } = await fixture(admin);
+
+    const schedule = (
+      await inject("POST", "/schedules", admin, {
+        departmentId: dept.id,
+        locationId: site.id,
+        year: 2026,
+        month: 9,
+      })
+    ).json();
+    await inject("POST", `/schedules/${schedule.id}/assign`, admin, {
+      userId: inside.id,
+      date: "2026-09-01",
+      shiftId: morning.id,
+    });
+
+    expect((await inject("DELETE", `/schedules/${schedule.id}`, admin)).statusCode).toBe(204);
+
+    // Gone, and its cells with it — the entries cascade rather than being orphaned.
+    const after = await inject(
+      "GET",
+      `/schedules?departmentId=${dept.id}&locationId=${site.id}&year=2026&month=9`,
+      admin,
+    );
+    expect(after.json().schedule).toBeNull();
+  });
+
+  it("is refused to a scheduler, who may build one but not destroy it", async () => {
+    // His instruction: deletion is a superadmin's. Building a rota and erasing a
+    // published one are different acts, and the second takes a month of planning.
+    const admin = await superadmin();
+    const { dept, site } = await fixture(admin);
+    const schedulerGroup = await makeGroup(admin, "Planners", "Shifts admin");
+    const scheduler = await makeUser(admin, "asha", schedulerGroup);
+
+    const schedule = (
+      await inject("POST", "/schedules", admin, {
+        departmentId: dept.id,
+        locationId: site.id,
+        year: 2026,
+        month: 9,
+      })
+    ).json();
+
+    expect((await inject("DELETE", `/schedules/${schedule.id}`, scheduler.cookie)).statusCode).toBe(
+      403,
+    );
+  });
+
+  it("lets a scheduler see the sites they roster", async () => {
+    // The production report: a user in two sites "is being shown central schedule
+    // but he is not in central... he has no option to select those in menu". The
+    // site picker reads GET /locations, and "Shifts admin" lacked locations:read —
+    // so it came back empty and the page fell back to the central rota, which is a
+    // real rota for the wrong people.
+    const admin = await superadmin();
+    const schedulerGroup = await makeGroup(admin, "Planners", "Shifts admin");
+    const scheduler = await makeUser(admin, "asha", schedulerGroup);
+
+    const sites = await inject("GET", "/locations", scheduler.cookie);
+    expect(sites.statusCode).toBe(200);
+    expect((sites.json() as unknown[]).length).toBeGreaterThan(0);
+  });
+});
