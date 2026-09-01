@@ -10,6 +10,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { DataTable } from "@/components/data-table/data-table.js";
 import { FilterSidebar, type FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { initialListState } from "@/lib/list-query.js";
 import type { Filter } from "@reportly/shared";
@@ -95,5 +96,40 @@ describe("a multi-select filter", () => {
     openSidebar();
     expect(screen.getByLabelText("Actor ID")).toBeInTheDocument();
     expect(screen.getByLabelText("Actor")).toBeInTheDocument();
+  });
+});
+
+describe("a list the server refuses", () => {
+  it("offers a way to clear the filter that broke it", () => {
+    // Reported from production: a severity filter returned 500, and because filters
+    // are remembered per person the page failed the same way on every visit —
+    // signing out and back in did not help, since the filter outlives the session.
+    // The only escape found was deleting a session-storage key in devtools.
+    const onFiltersClear = vi.fn();
+    render(
+      <DataTable
+        {...({
+          state: { ...initialListState, filters: [{ field: "action", op: "eq", value: "x" }] },
+          result: undefined,
+          isLoading: false,
+          isFetching: false,
+          error: new Error("Something went wrong"),
+          pageSize: 20,
+          density: "comfortable",
+          onPageChange: vi.fn(),
+          onPageSizeChange: vi.fn(),
+          onSortChange: vi.fn(),
+          onFilterChange: vi.fn(),
+          onFilterRemove: vi.fn(),
+          onFiltersClear,
+          onExport: undefined,
+          refetch: vi.fn(),
+        } as unknown as Parameters<typeof DataTable>[0])}
+        columns={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(onFiltersClear).toHaveBeenCalled();
   });
 });

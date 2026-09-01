@@ -141,9 +141,21 @@ export function DataTable<T extends RowData>({
           title="Couldn't load this list"
           description={errorMessage(list.error)}
           action={
-            <Button size="sm" variant="secondary" onClick={list.refetch}>
-              Try again
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={list.refetch}>
+                Try again
+              </Button>
+              {/* The escape hatch. Filters are remembered per person, so a filter
+                  the server refuses fails again on every visit — signing out and
+                  back in does not help, because the filter outlives the session.
+                  One report ended with somebody deleting a session-storage key by
+                  hand in devtools; "Try again" alone just repeats the failure. */}
+              {list.state.filters.length > 0 ? (
+                <Button size="sm" onClick={list.onFiltersClear}>
+                  Clear filters
+                </Button>
+              ) : null}
+            </div>
           }
         />
       </div>

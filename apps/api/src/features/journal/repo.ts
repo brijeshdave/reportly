@@ -137,6 +137,27 @@ export function visibilityScope(callerId: string, visibleAuthorIds: string[] | n
 }
 
 /** The report select, with every name resolved by a left join. */
+/**
+ * The same shape as `selectReports`, counting instead of selecting.
+ *
+ * Every join is a `leftJoin` bar the author, so joining them costs nothing in rows
+ * — and a filter naming any of their columns is then valid, which is the whole
+ * point. Written beside `selectReports` so the two cannot drift apart.
+ */
+export function countReports() {
+  return db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(journalEntries)
+    .innerJoin(author, eq(author.id, journalEntries.authorId))
+    .leftJoin(assignee, eq(assignee.id, journalEntries.assigneeId))
+    .leftJoin(categories, eq(categories.id, journalEntries.categoryId))
+    .leftJoin(departments, eq(departments.id, journalEntries.departmentId))
+    .leftJoin(locations, eq(locations.id, journalEntries.locationId))
+    .leftJoin(severities, eq(severities.id, journalEntries.severityId))
+    .leftJoin(journalStatuses, eq(journalStatuses.id, journalEntries.statusId))
+    .leftJoin(tasks, eq(tasks.id, journalEntries.taskId));
+}
+
 export function selectReports() {
   return (
     db
@@ -305,10 +326,20 @@ export async function listReports(
     .limit(parts.limit)
     .offset(parts.offset);
 
-  const [counted] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(journalEntries)
-    .where(where);
+  // Counted through the **same joins** the rows use.
+  //
+  // This counted `from(journalEntries)` alone while the filter could name a joined
+  // column — `severityName` is `severities.name`, and so are status, category,
+  // department and location. Postgres then threw "missing FROM-clause entry for
+  // table severities", which surfaced as a 500 on the journal for anybody who
+  // filtered by severity. Worse, the filter is remembered per person, so the page
+  // failed the same way on every visit and there was no way to clear it from the
+  // screen that was broken — one report ended with somebody deleting a session-
+  // storage key by hand in devtools.
+  //
+  // `countReports` reuses `selectReports()`'s joins rather than repeating them,
+  // because two lists of joins that must agree are two lists that will not.
+  const [counted] = await countReports().where(where);
 
   return { rows, total: counted?.count ?? 0 };
 }

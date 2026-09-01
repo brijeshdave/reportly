@@ -261,3 +261,47 @@ describe("the search box", () => {
     expect(byId).toEqual(["Conveyor jam on line 3"]);
   });
 });
+
+describe("filtering by a joined column", () => {
+  it("does not 500 when the filter names a severity", async () => {
+    // Reported from production: applying the severity filter returned 500, and the
+    // filter is remembered per person — so the page failed the same way on every
+    // visit, including after signing out and back in. The only escape was deleting
+    // a session-storage key in devtools.
+    //
+    // The cause was the count query: rows were selected through the catalogue
+    // joins, the count was not, so Postgres refused the filter with "missing
+    // FROM-clause entry for table severities".
+    const admin = await superadmin();
+    const { hod, critical } = await buildChain(admin);
+    await file(hod.cookie, "Filterable", critical.id);
+
+    const res = await inject(
+      "GET",
+      `/journal?filters=[{"field":"severityName","op":"eq","value":"${critical.name}"}]`,
+      hod.cookie,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json().total).toBeGreaterThan(0);
+    expect(titles(res)).toContain("Filterable");
+  });
+
+  it("counts correctly through every other joined column too", async () => {
+    // The same fault applied to status, category, department and location — all of
+    // them live on joined tables, so all of them broke the count the same way.
+    const admin = await superadmin();
+    const { hod, critical } = await buildChain(admin);
+    await file(hod.cookie, "Filterable", critical.id);
+
+    for (const filter of [
+      '{"field":"statusName","op":"eq","value":"Open"}',
+      '{"field":"severityName","op":"eq","value":"nonexistent"}',
+    ]) {
+      const res = await inject("GET", `/journal?filters=[${filter}]`, hod.cookie);
+      expect(res.statusCode, filter).toBe(200);
+      // The total has to agree with the page, or the pager sends people to a page
+      // that is not there.
+      expect(res.json().total, filter).toBe(res.json().data.length);
+    }
+  });
+});
