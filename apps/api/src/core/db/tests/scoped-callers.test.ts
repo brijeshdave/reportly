@@ -35,7 +35,33 @@ const LOCATION_SCOPED_REPOS = [
   "devices/repo.ts",
   "journal/repo.ts",
   "downtime/repo.ts",
+  // Cartridges carry a `location_id` and nothing read it: the register showed
+  // every plant's stock to everybody, and the install picker offered printers at
+  // sites the person had never been to. It was missing from this list for as long
+  // as the module existed — which is the fault the next test exists to end.
+  "parts/parts-repo.ts",
 ];
+
+/**
+ * Every table with a location column, read out of the schema.
+ *
+ * The list above is hand-kept, and a hand-kept list of "things that must be
+ * checked" fails in exactly one way: somebody adds a location-bearing table and
+ * does not add it here, so the guard that exists to catch an unscoped read cannot
+ * see the read. That is precisely what happened with cartridges — the column was
+ * there from the start and this file never knew.
+ *
+ * So the schema is asked instead, and any table it names that has no entry above
+ * fails this test. Adding a table with a `locationId` now forces a decision.
+ */
+function tablesWithALocation(): string[] {
+  const schema = readFileSync(resolve(here, "../schema.ts"), "utf8");
+  const names: string[] = [];
+  for (const match of schema.matchAll(/export const (\w+) = pgTable\(([\s\S]*?)\n\);/g)) {
+    if (/locationId: uuid\("location_id"\)/.test(match[2] ?? "")) names.push(match[1]!);
+  }
+  return names;
+}
 
 /**
  * Repos that reach location-bearing rows and take the **caller** rather than a
@@ -110,12 +136,58 @@ describe("location scoping is actually wired up", () => {
     ).toBe(true);
   });
 
+  it("knows about every table that carries a location", () => {
+    // The list above is hand-kept, and cartridges were missing from it for the
+    // life of the module — so the guard could not see that the register showed
+    // every plant's stock to everybody. Asking the schema means the next such
+    // table forces a decision rather than being quietly unguarded.
+    const covered = new Set([
+      // Named here when the table's rows are reached through another record's
+      // scope, or when the column is not a tenancy boundary at all.
+      "locations",
+      "userLocations",
+      "departmentLocations",
+      "shifts",
+      "schedules",
+      "scheduleEntries",
+      "assets",
+      "devices",
+      "journalEntries",
+      "downtimeEvents",
+      "pointAwards",
+      "parts",
+      // Join tables: the location on them *is* the scope somebody else is
+      // filtered by, and they are only ever read through the record they hang
+      // off — a membership, a schedule entry.
+      "departmentUserLocations",
+      "scheduleEntryLocations",
+      // A catalogue. "Laser printer" is the same kind of thing at every plant, and
+      // scoping the vocabulary would leave two sites unable to describe the same
+      // machine by the same name.
+      "assetTypes",
+    ]);
+    const unknown = tablesWithALocation().filter((table) => !covered.has(table));
+    expect(
+      unknown,
+      `These tables carry a location and nothing here decides whether their reads ` +
+        `are scoped: ${unknown.join(", ")}. Add each to the covered set — with a ` +
+        `reason if it does not need scoping — or scope its repo.`,
+    ).toEqual([]);
+  });
+
   it("nullable location columns use the NULL-aware helper, not the plain one", () => {
     // `assets`, `devices` and `reports` all have nullable location columns, where
     // NULL means "not placed" and must stay visible. Using the plain helper on one
     // of those hides every unplaced row from every scoped user — a failure that
     // looks like missing data, not like a permission bug, so it gets misdiagnosed.
-    for (const file of ["assets/service.ts", "devices/service.ts", "journal/service.ts"]) {
+    for (const file of [
+      "assets/service.ts",
+      "devices/service.ts",
+      "journal/service.ts",
+      // A cartridge registered before sites existed has no location, and an
+      // inArray-only condition would empty the whole register.
+      "parts/parts-service.ts",
+    ]) {
       const source = read(file);
       expect(
         source.includes("withLocationsNullable("),

@@ -56,6 +56,7 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
       parts.listParts(
         await requireModule(request.ctx!.companyId),
         await resolveListQuery(request.query, request.authUserId),
+        request.ctx!,
       ),
   );
 
@@ -71,7 +72,7 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request) =>
-      parts.getPart(request.params.id, await requireModule(request.ctx!.companyId)),
+      parts.getPart(request.params.id, await requireModule(request.ctx!.companyId), request.ctx!),
   );
 
   app.get(
@@ -89,7 +90,11 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request) =>
-      parts.partHistory(request.params.id, await requireModule(request.ctx!.companyId)),
+      parts.partHistory(
+        request.params.id,
+        await requireModule(request.ctx!.companyId),
+        request.ctx!,
+      ),
   );
 
   app.get(
@@ -109,7 +114,11 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request) =>
-      parts.partTimeline(request.params.id, await requireModule(request.ctx!.companyId)),
+      parts.partTimeline(
+        request.params.id,
+        await requireModule(request.ctx!.companyId),
+        request.ctx!,
+      ),
   );
 
   app.get(
@@ -133,7 +142,11 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
     async (request) =>
-      parts.fittingDevices(request.params.id, await requireModule(request.ctx!.companyId)),
+      parts.fittingDevices(
+        request.params.id,
+        await requireModule(request.ctx!.companyId),
+        request.ctx!,
+      ),
   );
 
   app.post(
@@ -150,7 +163,7 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const companyId = await requireModule(request.ctx!.companyId);
-      const part = await parts.createPart(companyId, request.body);
+      const part = await parts.createPart(companyId, request.body, request.ctx!);
       await recordAudit(request, request.ctx!, {
         action: "part.create",
         details: { id: part.id, identifier: part.identifier },
@@ -174,7 +187,7 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) => {
       const companyId = await requireModule(request.ctx!.companyId);
-      const part = await parts.updatePart(request.params.id, companyId, request.body);
+      const part = await parts.updatePart(request.params.id, companyId, request.body, request.ctx!);
       await recordAudit(request, request.ctx!, { action: "part.update", details: { id: part.id } });
       return part;
     },
@@ -205,6 +218,7 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
         companyId,
         request.ctx!.userId,
         request.body,
+        request.ctx!,
       );
       await recordAudit(request, request.ctx!, {
         action: "part.deploy",
@@ -240,6 +254,7 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
         companyId,
         request.ctx!.userId,
         request.body,
+        request.ctx!,
       );
       await recordAudit(request, request.ctx!, {
         action: "part.return",
@@ -266,7 +281,12 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) => {
       const companyId = await requireModule(request.ctx!.companyId);
-      const part = await parts.restockPart(request.params.id, companyId, request.body.locationId);
+      const part = await parts.restockPart(
+        request.params.id,
+        companyId,
+        request.ctx!,
+        request.body.locationId,
+      );
       await recordAudit(request, request.ctx!, {
         action: "part.restock",
         details: { id: part.id },
@@ -291,7 +311,7 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) => {
       const companyId = await requireModule(request.ctx!.companyId);
-      const part = await parts.scrapPart(request.params.id, companyId);
+      const part = await parts.scrapPart(request.params.id, companyId, request.ctx!);
       await recordAudit(request, request.ctx!, { action: "part.scrap", details: { id: part.id } });
       return part;
     },

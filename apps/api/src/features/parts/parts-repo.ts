@@ -3,7 +3,7 @@
 //
 // Company-scoped on every read and write. A part belongs to one tenant and its
 // history belongs with it; a query that forgets which company it is in is SF-006.
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 
 import type { ResolvedListQuery } from "@reportly/shared";
 
@@ -89,9 +89,10 @@ const listConfig: ListConfig = {
 export async function listParts(
   companyId: string,
   query: ResolvedListQuery,
+  locationScope: SQL | undefined = undefined,
 ): Promise<{ rows: PartRow[]; total: number }> {
   const listParts_ = buildListParts(listConfig, query);
-  const where = and(eq(parts.companyId, companyId), listParts_.where);
+  const where = and(eq(parts.companyId, companyId), locationScope, listParts_.where);
 
   const rows = await partsQuery()
     .where(where)
@@ -107,8 +108,21 @@ export async function listParts(
   return { rows, total: counted?.count ?? 0 };
 }
 
-export async function getPart(id: string, companyId: string): Promise<PartRow | null> {
-  const [row] = await partsQuery().where(and(eq(parts.id, id), eq(parts.companyId, companyId)));
+/**
+ * One cartridge, if the caller's sites reach it.
+ *
+ * The scope is applied here rather than checked afterwards, so a cartridge at
+ * another plant comes back as "not found" instead of "forbidden" — the same answer
+ * the register gives, and it does not confirm the thing exists.
+ */
+export async function getPart(
+  id: string,
+  companyId: string,
+  locationScope: SQL | undefined = undefined,
+): Promise<PartRow | null> {
+  const [row] = await partsQuery().where(
+    and(eq(parts.id, id), eq(parts.companyId, companyId), locationScope),
+  );
   return row ?? null;
 }
 
@@ -291,9 +305,17 @@ export async function closePlacement(
  * copy of that rule in the browser is one that can disagree with it. Offering a
  * machine the API will certainly refuse is worse than a short list.
  */
+/**
+ * The printers a cartridge model fits — at the caller's own sites.
+ *
+ * This feeds the install picker, so an unscoped list offers machines somewhere the
+ * person has never been: they pick one, and the cartridge disappears from their
+ * register into a plant they cannot see.
+ */
 export async function devicesFittingModel(
   partModelId: string,
   companyId: string,
+  locationScope: SQL | undefined = undefined,
 ): Promise<{ id: string; name: string; typeName: string | null }[]> {
   return db
     .select({ id: devices.id, name: devices.name, typeName: deviceTypes.name })
@@ -301,19 +323,31 @@ export async function devicesFittingModel(
     .innerJoin(partModelCompatibility, eq(partModelCompatibility.deviceTypeId, devices.typeId))
     .leftJoin(deviceTypes, eq(deviceTypes.id, devices.typeId))
     .where(
-      and(eq(devices.companyId, companyId), eq(partModelCompatibility.partModelId, partModelId)),
+      and(
+        eq(devices.companyId, companyId),
+        eq(partModelCompatibility.partModelId, partModelId),
+        locationScope,
+      ),
     )
     .orderBy(asc(devices.name));
 }
 
 /** A device's type, so a deploy can check the part actually fits it. */
+/**
+ * The device a cartridge is about to go into — if the caller's sites reach it.
+ *
+ * Scoped in the lookup, so installing into a printer at another plant answers
+ * "device not found" rather than succeeding quietly. A cartridge in a machine you
+ * cannot see is a cartridge nobody will book back in.
+ */
 export async function deviceTypeOf(
   deviceId: string,
   companyId: string,
+  locationScope: SQL | undefined = undefined,
 ): Promise<{ id: string; name: string; typeId: string | null } | null> {
   const [row] = await db
     .select({ id: devices.id, name: devices.name, typeId: devices.typeId })
     .from(devices)
-    .where(and(eq(devices.id, deviceId), eq(devices.companyId, companyId)));
+    .where(and(eq(devices.id, deviceId), eq(devices.companyId, companyId), locationScope));
   return row ?? null;
 }

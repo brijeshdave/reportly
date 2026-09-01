@@ -9,8 +9,11 @@
 // two printers at once, or installed straight out of the workshop without being
 // serviced, are states nothing downstream could make sense of — the placement
 // history would stop being a history.
+import type { SQL } from "drizzle-orm";
+
 import {
   ERROR_CODES,
+  type AuthContext,
   toPaginatedResult,
   type CreatePart,
   type DeployPart,
@@ -26,6 +29,8 @@ import {
 } from "@reportly/shared";
 
 import { AppError } from "@/core/errors.js";
+import { devices as devicesTable, parts as partsTable } from "@/core/db/schema.js";
+import { mayUseLocation, withLocationsNullable } from "@/core/db/scoped.js";
 import { serviceHistory } from "@/features/parts/service-service.js";
 import { compatibilityFor } from "@/features/parts/catalogue-repo.js";
 import * as repo from "@/features/parts/parts-repo.js";
@@ -74,10 +79,36 @@ function toPlacement(row: repo.PlacementRow): Placement {
   };
 }
 
-async function requirePart(id: string, companyId: string): Promise<repo.PartRow> {
-  const row = await repo.getPart(id, companyId);
+/**
+ * The caller's sites, as a condition on the cartridge's own location.
+ *
+ * **Nullable**, and that matters: every cartridge registered before this existed
+ * has no location, and an `inArray`-only condition would empty the register for
+ * everybody at a stroke. An unplaced cartridge is visible to all, exactly as an
+ * unplaced asset or device is.
+ */
+function partScope(ctx: AuthContext): SQL | undefined {
+  return withLocationsNullable(ctx, partsTable.locationId);
+}
+
+async function requirePart(id: string, companyId: string, ctx: AuthContext): Promise<repo.PartRow> {
+  // Scoped in the lookup rather than checked after: a cartridge at another plant
+  // answers "not found", which is what the register says about it too.
+  const row = await repo.getPart(id, companyId, partScope(ctx));
   if (!row) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Part not found");
   return row;
+}
+
+/**
+ * Refuse a write that would place a cartridge at a site the caller cannot reach.
+ *
+ * Reading out of scope is a filtered list; *writing* into one is putting a record
+ * where you cannot look, so it is refused rather than quietly dropped.
+ */
+function assertMayPlace(ctx: AuthContext, locationId: string | null | undefined): void {
+  if (locationId === undefined) return;
+  if (mayUseLocation(ctx, locationId)) return;
+  throw new AppError(403, ERROR_CODES.FORBIDDEN, "That site is not one of yours");
 }
 
 /** A part with where it is now — the open placement, when it is installed. */
@@ -89,17 +120,25 @@ async function withDevice(row: repo.PartRow, companyId: string): Promise<Part> {
 export async function listParts(
   companyId: string,
   query: ResolvedListQuery,
+  ctx: AuthContext,
 ): Promise<PaginatedResult<Part>> {
-  const { rows, total } = await repo.listParts(companyId, query);
+  const { rows, total } = await repo.listParts(companyId, query, partScope(ctx));
   const withDevices = await Promise.all(rows.map((row) => withDevice(row, companyId)));
   return toPaginatedResult(withDevices, total, query);
 }
 
-export async function getPart(id: string, companyId: string): Promise<Part> {
-  return withDevice(await requirePart(id, companyId), companyId);
+export async function getPart(id: string, companyId: string, ctx: AuthContext): Promise<Part> {
+  return withDevice(await requirePart(id, companyId, ctx), companyId);
 }
 
-export async function createPart(companyId: string, input: CreatePart): Promise<Part> {
+export async function createPart(
+  companyId: string,
+  input: CreatePart,
+  ctx: AuthContext,
+): Promise<Part> {
+  // Registering a cartridge into a plant you cannot reach would make it invisible
+  // to you the moment it was saved.
+  assertMayPlace(ctx, input.locationId ?? null);
   const id = await repo.insertPart(companyId, {
     identifier: input.identifier,
     partModelId: input.partModelId,
@@ -109,11 +148,17 @@ export async function createPart(companyId: string, input: CreatePart): Promise<
     locationId: input.locationId ?? null,
     notes: input.notes ?? null,
   });
-  return getPart(id, companyId);
+  return getPart(id, companyId, ctx);
 }
 
-export async function updatePart(id: string, companyId: string, input: UpdatePart): Promise<Part> {
-  const row = await requirePart(id, companyId);
+export async function updatePart(
+  id: string,
+  companyId: string,
+  input: UpdatePart,
+  ctx: AuthContext,
+): Promise<Part> {
+  const row = await requirePart(id, companyId, ctx);
+  assertMayPlace(ctx, input.locationId);
   if (row.status === "scrapped") {
     throw new AppError(409, ERROR_CODES.CONFLICT, "This part is scrapped and cannot be edited");
   }
@@ -127,7 +172,7 @@ export async function updatePart(id: string, companyId: string, input: UpdatePar
       ? { locationId: input.locationId ?? null }
       : {}),
   });
-  return getPart(id, companyId);
+  return getPart(id, companyId, ctx);
 }
 
 /* -------------------------------- lifecycle -------------------------------- */
@@ -144,8 +189,9 @@ export async function deployPart(
   companyId: string,
   userId: string,
   input: DeployPart,
+  ctx: AuthContext,
 ): Promise<Part> {
-  const part = await requirePart(id, companyId);
+  const part = await requirePart(id, companyId, ctx);
   if (part.status !== "ready") {
     throw new AppError(
       409,
@@ -158,7 +204,13 @@ export async function deployPart(
     );
   }
 
-  const device = await repo.deviceTypeOf(input.deviceId, companyId);
+  // Scoped: installing into a printer at a plant the caller cannot reach would put
+  // the cartridge somewhere they can no longer see, and nobody would book it back.
+  const device = await repo.deviceTypeOf(
+    input.deviceId,
+    companyId,
+    withLocationsNullable(ctx, devicesTable.locationId),
+  );
   if (!device) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Device not found");
 
   const fits = await compatibilityFor(part.partModelId);
@@ -184,7 +236,7 @@ export async function deployPart(
   // The placement now says where it is, so the stock location is cleared rather
   // than left behind to contradict it.
   await repo.updatePart(id, companyId, { status: "installed", locationId: null });
-  return getPart(id, companyId);
+  return getPart(id, companyId, ctx);
 }
 
 /**
@@ -202,8 +254,9 @@ export async function returnPart(
   companyId: string,
   userId: string,
   input: ReturnPart,
+  ctx: AuthContext,
 ): Promise<{ part: Part; reversal: { reversed: boolean; serviceEventId?: string } }> {
-  const part = await requirePart(id, companyId);
+  const part = await requirePart(id, companyId, ctx);
   if (part.status !== "installed") {
     throw new AppError(409, ERROR_CODES.CONFLICT, "That part is not installed anywhere");
   }
@@ -242,7 +295,7 @@ export async function returnPart(
     { installedAt: open.installedAt, removedAt: new Date(), outcome: input.outcome },
   );
 
-  return { part: await getPart(id, companyId), reversal };
+  return { part: await getPart(id, companyId, ctx), reversal };
 }
 
 /**
@@ -255,9 +308,13 @@ export async function returnPart(
 export async function restockPart(
   id: string,
   companyId: string,
+  ctx: AuthContext,
   locationId?: string | null,
 ): Promise<Part> {
-  const part = await requirePart(id, companyId);
+  // Booking a cartridge back onto a shelf is placing it: the same rule as
+  // registering one there.
+  assertMayPlace(ctx, locationId ?? null);
+  const part = await requirePart(id, companyId, ctx);
   if (part.status !== "needs_service") {
     throw new AppError(
       409,
@@ -271,7 +328,7 @@ export async function restockPart(
     status: "ready",
     ...(locationId !== undefined ? { locationId: locationId ?? null } : {}),
   });
-  return getPart(id, companyId);
+  return getPart(id, companyId, ctx);
 }
 
 /**
@@ -281,8 +338,8 @@ export async function restockPart(
  * it scrapped would leave an open placement pointing at a device that thinks it
  * has a working part. Book it back in first.
  */
-export async function scrapPart(id: string, companyId: string): Promise<Part> {
-  const part = await requirePart(id, companyId);
+export async function scrapPart(id: string, companyId: string, ctx: AuthContext): Promise<Part> {
+  const part = await requirePart(id, companyId, ctx);
   if (part.status === "installed") {
     throw new AppError(
       409,
@@ -290,10 +347,10 @@ export async function scrapPart(id: string, companyId: string): Promise<Part> {
       "Book the part back in before scrapping it — it is still in a machine.",
     );
   }
-  if (part.status === "scrapped") return getPart(id, companyId);
+  if (part.status === "scrapped") return getPart(id, companyId, ctx);
 
   await repo.updatePart(id, companyId, { status: "scrapped", locationId: null });
-  return getPart(id, companyId);
+  return getPart(id, companyId, ctx);
 }
 
 /**
@@ -305,9 +362,14 @@ export async function scrapPart(id: string, companyId: string): Promise<Part> {
 export async function fittingDevices(
   id: string,
   companyId: string,
+  ctx: AuthContext,
 ): Promise<{ id: string; name: string; typeName: string | null }[]> {
-  const part = await requirePart(id, companyId);
-  return repo.devicesFittingModel(part.partModelId, companyId);
+  const part = await requirePart(id, companyId, ctx);
+  return repo.devicesFittingModel(
+    part.partModelId,
+    companyId,
+    withLocationsNullable(ctx, devicesTable.locationId),
+  );
 }
 
 /**
@@ -321,8 +383,12 @@ export async function fittingDevices(
  * those happened weeks apart and reading them as one row is what made the
  * separate lists hard to follow.
  */
-export async function partTimeline(id: string, companyId: string): Promise<PartEvent[]> {
-  const part = await requirePart(id, companyId);
+export async function partTimeline(
+  id: string,
+  companyId: string,
+  ctx: AuthContext,
+): Promise<PartEvent[]> {
+  const part = await requirePart(id, companyId, ctx);
   const [tours, services] = await Promise.all([
     repo.placementsFor(id, companyId),
     serviceHistory(id, companyId),
@@ -410,7 +476,11 @@ export async function partTimeline(id: string, companyId: string): Promise<PartE
 }
 
 /** Where this part has been. The history the current status cannot tell you. */
-export async function partHistory(id: string, companyId: string): Promise<Placement[]> {
-  await requirePart(id, companyId);
+export async function partHistory(
+  id: string,
+  companyId: string,
+  ctx: AuthContext,
+): Promise<Placement[]> {
+  await requirePart(id, companyId, ctx);
   return (await repo.placementsFor(id, companyId)).map(toPlacement);
 }

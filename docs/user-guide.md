@@ -642,6 +642,26 @@ Do this after changing any mail setting. A relay can accept a connection and the
 refuse every message: that looks perfectly healthy from the outside and is
 invisible until somebody says they never got their invitation.
 
+### Cartridges belong to a site
+
+A cartridge carries the site it is stored at, and that now decides who sees it:
+
+- The **register** shows the cartridges at your sites. A cartridge with no site set
+  is visible to everyone — that is what "not placed anywhere" means, and every
+  cartridge registered before this existed is in that state.
+- Another site's cartridge answers **not found**, the same as the register says
+  about it. A "forbidden" would confirm it exists.
+- **Registering or restocking** into a site you do not hold is refused rather than
+  filtered: it would put a record where you cannot look.
+- **Installing** offers only the printers at your own sites, and sending another
+  site's device id is refused too — a picker that merely hides an option is not a
+  rule.
+
+Who may do what is separate from where: `parts:read` to look, `parts:manage` to
+register, correct and scrap, `parts:deploy` to install and book back in,
+`parts:service` to record a refill or repair (this one pays points), and
+`parts:configure` for the catalogues.
+
 ### Rotas: which site, and removing one
 
 A rota belongs to **a department at a site**. The empty site selection is the
