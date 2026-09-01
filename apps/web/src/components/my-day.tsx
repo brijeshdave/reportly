@@ -7,7 +7,7 @@
 // an absent key means the caller lacks the permission behind it, an empty array
 // means they are clear. Telling someone "nothing to close" when they may not close
 // anything would be a lie, so the tile simply is not there.
-import { formatDate } from "@reportly/shared";
+import { formatDate, isMineToScore } from "@reportly/shared";
 import type { MyDay as MyDayData } from "@reportly/shared";
 import { PERMISSIONS } from "@reportly/shared";
 import { useQuery } from "@tanstack/react-query";
@@ -80,7 +80,12 @@ export function MyDay() {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <PointsTile day={d} />
       <TodayTile day={d} />
-      {d.pendingAppraisals ? <AppraisalsTile items={d.pendingAppraisals} /> : null}
+      {/* The same rule the Reviews page uses. This tile showed every depth while
+          Reviews showed only direct reports, so one page said "nothing to review"
+          and the other listed the whole organisation. */}
+      {d.pendingAppraisals ? (
+        <AppraisalsTile items={d.pendingAppraisals.filter(isMineToScore)} />
+      ) : null}
       {d.openDowntimes ? <DowntimeTile items={d.openDowntimes} /> : null}
       {d.openTasks ? <TasksTile items={d.openTasks} /> : null}
       {/* Gated at the call site rather than inside: fetching data the caller may

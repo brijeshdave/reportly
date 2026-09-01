@@ -114,7 +114,9 @@ const columns: TableColumn<JournalEntryRow>[] = [
 // stays readable while every field is still one click away.
 const initialColumnVisibility = {
   assigneeName: false,
-  severityName: false,
+  // Shown by default: how bad it was is part of reading the row, and hiding it
+  // behind the Columns menu meant people reported the journal had no severity at
+  // all.
   categoryName: false,
   departmentName: false,
   locationName: false,

@@ -11,6 +11,7 @@
 // ones who could not reach the page at all.
 import {
   PERMISSIONS,
+  isMineToScore,
   type AwaitingReview,
   type PendingAppraisal,
   type TaskRow,
@@ -58,8 +59,8 @@ export function ReviewPage() {
    * deeper is somebody else's to score and theirs to chase, which is a different
    * action and belongs under a different heading.
    */
-  const direct = (pending.data ?? []).filter((entry: PendingAppraisal) => entry.depth <= 1);
-  const deeper = (pending.data ?? []).filter((entry: PendingAppraisal) => entry.depth > 1);
+  const direct = (pending.data ?? []).filter(isMineToScore);
+  const deeper = (pending.data ?? []).filter((entry: PendingAppraisal) => !isMineToScore(entry));
   const tasks = useQuery({
     queryKey: ["tasks", "assigned-open"],
     queryFn: fetchAssignedOpenTasks,
@@ -81,6 +82,8 @@ export function ReviewPage() {
         {/* Your own, first for somebody who cannot appraise: it is the only card
             they have, and it answers the question they came with — has my work
             been looked at yet, and by whom. */}
+        {/* Each section scrolls inside itself: four queues share this page, and a
+            long one in any of them used to push the other three off the screen. */}
         <Card className="flex flex-col gap-3 p-6">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Hourglass className="h-4 w-4" />
@@ -100,7 +103,7 @@ export function ReviewPage() {
             />
           ) : null}
 
-          <ul className="flex flex-col gap-1">
+          <ul className="flex max-h-96 flex-col gap-1 overflow-y-auto">
             {(mine.data ?? []).map((entry: AwaitingReview) => (
               <li key={entry.reportId}>
                 <Link
@@ -155,7 +158,7 @@ export function ReviewPage() {
               />
             ) : null}
 
-            <ul className="flex flex-col gap-1">
+            <ul className="flex max-h-96 flex-col gap-1 overflow-y-auto">
               {direct.map((entry: PendingAppraisal) => (
                 <li key={entry.reportId}>
                   <Link
@@ -198,7 +201,7 @@ export function ReviewPage() {
               once a manager reviews, so these are earning nothing in the meantime.
             </p>
 
-            <ul className="flex flex-col gap-1">
+            <ul className="flex max-h-96 flex-col gap-1 overflow-y-auto">
               {deeper.map((entry: PendingAppraisal) => (
                 <li key={entry.reportId}>
                   <Link
@@ -245,7 +248,7 @@ export function ReviewPage() {
               />
             ) : null}
 
-            <ul className="flex flex-col gap-1">
+            <ul className="flex max-h-96 flex-col gap-1 overflow-y-auto">
               {(tasks.data ?? []).map((task: TaskRow) => {
                 const overdue = task.dueAt !== null && new Date(task.dueAt).getTime() < Date.now();
                 return (

@@ -136,7 +136,10 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
     ["Department", r.departmentName],
     ["Location", r.locationName],
     ["Category", r.categoryName],
-    ["Severity", r.severityName],
+    // Always shown, even unset. The list filters empty values out, which quietly
+    // hid the one field somebody most wants to check — and "no severity" is not a
+    // blank, it is an entry that was filed without saying how bad it was.
+    ["Severity", r.severityName ?? "Not set"],
     ["Occurred", r.occurredAt ? formatDateTime(r.occurredAt) : null],
     [
       "Work time",

@@ -66,6 +66,21 @@ export type SetScores = z.infer<typeof setScoresSchema>;
  * what you are owed. Before it existed, the person who filed the work had no way
  * to see it sitting there, short of asking.
  */
+/**
+ * Whether a pending entry is *yours* to score.
+ *
+ * Depth 1 is somebody who reports to you directly. Anything deeper belongs to the
+ * manager between you and them — yours to chase, not to score.
+ *
+ * A function rather than the number 1 written in two screens: Reviews filtered to
+ * depth 1 and My day filtered to nothing, so the same person saw an empty review
+ * queue on one page and their whole organisation on the other, and could not tell
+ * which was lying.
+ */
+export function isMineToScore(entry: { depth: number }): boolean {
+  return entry.depth <= 1;
+}
+
 export const awaitingReviewSchema = z.object({
   reportId: uuidSchema,
   title: z.string(),
