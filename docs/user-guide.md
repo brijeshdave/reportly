@@ -644,6 +644,12 @@ invisible until somebody says they never got their invitation.
 
 ### Cartridges belong to a site
 
+Set the site when you **register** a cartridge — the field is on the form, and it
+fills itself in for anybody who works at exactly one site. On an existing cartridge,
+**Mark ready** asks which shelf it is going back on. The register has a **Site**
+column of its own and a Site filter; "Where" still answers device-then-site, which
+hid the plant whenever a cartridge was installed.
+
 A cartridge carries the site it is stored at, and that now decides who sees it:
 
 - The **register** shows the cartridges at your sites. A cartridge with no site set

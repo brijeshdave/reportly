@@ -29,6 +29,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { sessionQuery } from "@/lib/queries.js";
+import { fetchLocations } from "@/services/locations.js";
 import { createPart, fetchPartModels } from "@/services/parts.js";
 
 const STATUS_TONE: Record<PartStatus, "success" | "info" | "warning" | "neutral"> = {
@@ -82,6 +83,17 @@ const columns: TableColumn<Part>[] = [
       row.original.locationName ?? <span className="text-muted-foreground">—</span>,
   },
   {
+    // Its own column. "Where" answers device-then-site, so an installed cartridge
+    // stopped saying which plant it was at — and the site is what decides who sees
+    // it at all.
+    id: "locationName",
+    accessorKey: "locationName",
+    header: "Site",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.locationName ?? <span className="text-muted-foreground">Not placed</span>,
+  },
+  {
     id: "cycleCount",
     accessorKey: "cycleCount",
     header: "Cycles",
@@ -105,12 +117,29 @@ function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () =>
   const [status, setStatus] = useState<"needs_service" | "ready">("needs_service");
   const [notes, setNotes] = useState("");
 
+  /**
+   * Where the cartridge lives.
+   *
+   * The register is scoped by this, and until now the form did not ask for it — so
+   * every cartridge was registered unplaced and visible to everybody, and the
+   * scoping did nothing. Somebody who works at one site gets it filled in, because
+   * asking a question with one possible answer is a waste of their time.
+   */
+  const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
+  const activeSites = (sites.data ?? []).filter((site) => site.status === "active");
+  const [locationId, setLocationId] = useState("");
+  const [siteTouched, setSiteTouched] = useState(false);
+  const effectiveSite = siteTouched
+    ? locationId
+    : (locationId ?? "") || (activeSites.length === 1 ? (activeSites[0]?.id ?? "") : "");
+
   const create = useMutation({
     mutationFn: () =>
       createPart({
         identifier,
         partModelId,
         status,
+        ...(effectiveSite ? { locationId: effectiveSite } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
       }),
     onSuccess: async () => {
@@ -142,6 +171,23 @@ function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () =>
               onChange={setPartModelId}
               options={models.map((model) => ({ value: model.id, label: model.name }))}
               placeholder="Choose a model…"
+            />
+          )}
+        </Field>
+        <Field
+          label="Site"
+          hint="Where it is kept. Cartridges are shown to the people who work at their site; one left unplaced is visible to everybody."
+        >
+          {(props) => (
+            <SearchableSelect
+              {...props}
+              value={effectiveSite}
+              onChange={(value) => {
+                setSiteTouched(true);
+                setLocationId(value);
+              }}
+              options={activeSites.map((site) => ({ value: site.id, label: site.name }))}
+              placeholder="Not placed anywhere"
             />
           )}
         </Field>
@@ -186,6 +232,7 @@ export function CartridgesListPage() {
   const { data: session } = useSuspenseQuery(sessionQuery);
   const [registering, setRegistering] = useState(false);
 
+  const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
   const models = useQuery({
     queryKey: ["part-models", "active"],
     queryFn: () => fetchPartModels(true),
@@ -214,6 +261,16 @@ export function CartridgesListPage() {
       label: "Model",
       kind: "select",
       options: (models.data ?? []).map((model) => ({ value: model.id, label: model.name })),
+    },
+    {
+      // `locationId` is filterable server-side and always was; the register simply
+      // never offered it.
+      field: "locationId",
+      label: "Site",
+      kind: "combobox",
+      options: (sites.data ?? [])
+        .filter((site) => site.status === "active")
+        .map((site) => ({ value: site.id, label: site.name })),
     },
   ];
 

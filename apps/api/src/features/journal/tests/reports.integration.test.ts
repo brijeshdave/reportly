@@ -159,7 +159,21 @@ async function fileIssue(authorCookie: string, severityId: string): Promise<stri
  * progress has not finished being done. Every test that scores a report goes
  * through here rather than repeating the lookup.
  */
-async function finish(cookie: string, reportId: string): Promise<void> {
+async function finish(cookie: string, reportId: string, workCookie = cookie): Promise<void> {
+  // Resolving now requires some work written down — an entry closed with nothing
+  // recorded cannot honestly be scored. Logged here so every test that finishes an
+  // entry keeps working without repeating it.
+  const logs = (await inject("GET", `/journal/${reportId}/work`, cookie)).json();
+  if (Array.isArray(logs) && logs.length === 0) {
+    // Logged as somebody who worked it: only a participant may, which means a
+    // manager cannot satisfy the rule on their team's behalf. That is the rule
+    // working — the person who did the job writes down what they did.
+    const logged = await inject("POST", `/journal/${reportId}/work`, workCookie, {
+      summary: "Did the work",
+    });
+    expect(logged.statusCode, `work log: ${logged.body}`).toBe(201);
+  }
+
   const statuses = (await inject("GET", "/journal-statuses", cookie)).json();
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
   const res = await inject("PATCH", `/journal/${reportId}/status`, cookie, {
@@ -195,7 +209,7 @@ const pointsOf = async (cookie: string) =>
 describe("reports and scoring", () => {
   it("keeps a draft private, then shares a submitted report up the line", async () => {
     const admin = await superadmin();
-    const { manager, author } = await buildChain(admin);
+    const { manager, author, critical } = await buildChain(admin);
 
     // A draft issue: the author sees it; their manager does not. An issue (not a
     // work log) so it starts open — the point below is that it is not in the review
@@ -216,14 +230,17 @@ describe("reports and scoring", () => {
 
     // Submit it: now the manager sees it — but the review queue is only for resolved
     // reports, so it is not there yet.
-    await inject("PATCH", `/journal/${draftId}`, author.cookie, { state: "submitted" });
+    await inject("PATCH", `/journal/${draftId}`, author.cookie, {
+      state: "submitted",
+      severityId: critical.id,
+    });
     expect((await inject("GET", `/journal/${draftId}`, manager.cookie)).statusCode).toBe(200);
     const beforeResolve = (await inject("GET", "/journal/pending", manager.cookie)).json();
     expect(beforeResolve.some((p: { reportId: string }) => p.reportId === draftId)).toBe(false);
 
     // Resolve it — still not the manager's, because the self split comes first: a
     // review confirms a number the worker has put forward.
-    await finish(manager.cookie, draftId);
+    await finish(manager.cookie, draftId, author.cookie);
     const beforeSelf = (await inject("GET", "/journal/pending", manager.cookie)).json();
     expect(beforeSelf.some((p: { reportId: string }) => p.reportId === draftId)).toBe(false);
 
@@ -246,7 +263,7 @@ describe("reports and scoring", () => {
     // Still open: the queue is for finished work, and so is this.
     expect((await inject("GET", "/journal/awaiting-review", author.cookie)).json()).toEqual([]);
 
-    await finish(manager.cookie, entry);
+    await finish(manager.cookie, entry, author.cookie);
     const waiting = (await inject("GET", "/journal/awaiting-review", author.cookie)).json();
     expect(waiting).toHaveLength(1);
     // Named, so it is a person to go and ask rather than "somebody".
@@ -265,7 +282,7 @@ describe("reports and scoring", () => {
     const { manager, author, critical } = await buildChain(admin);
 
     const theirs = await fileIssue(author.cookie, critical.id);
-    await finish(manager.cookie, theirs);
+    await finish(manager.cookie, theirs, author.cookie);
 
     const managerWaiting = (await inject("GET", "/journal/awaiting-review", manager.cookie)).json();
     expect(managerWaiting.some((r: { reportId: string }) => r.reportId === theirs)).toBe(false);
@@ -289,7 +306,7 @@ describe("reports and scoring", () => {
 
   it("starts a work log finished and an issue open", async () => {
     const admin = await superadmin();
-    const { author } = await buildChain(admin);
+    const { author, critical } = await buildChain(admin);
 
     // A work log is a record of work already done — it has no triage workflow, so it
     // opens at the resolved end and can be scored straight away.
@@ -297,6 +314,7 @@ describe("reports and scoring", () => {
       kind: "work",
       title: "Cleaned station 2",
       state: "submitted",
+      severityId: critical.id,
       workSummary: "Wiped down",
     });
     expect(work.json().statusGroup).toBe("resolved");
@@ -306,6 +324,7 @@ describe("reports and scoring", () => {
       kind: "issue",
       title: "Belt worn",
       state: "submitted",
+      severityId: critical.id,
       issueSummary: "Fraying",
     });
     expect(issue.json().statusGroup).toBe("open");
@@ -596,7 +615,7 @@ describe("reports and scoring", () => {
 
   it("bounds an issue by its occurred date and a work log by its report date", async () => {
     const admin = await superadmin();
-    const { author } = await buildChain(admin);
+    const { author, critical } = await buildChain(admin);
     await inject("PUT", "/settings/reports/entry", admin, { value: { graceDays: 2 } });
 
     const daysAgo = (n: number) => {
@@ -609,6 +628,7 @@ describe("reports and scoring", () => {
         kind: "issue",
         title: "Belt seized",
         state: "submitted",
+        severityId: critical.id,
         issueSummary: "x",
         ...(occurredAt ? { occurredAt } : {}),
       });
@@ -617,6 +637,8 @@ describe("reports and scoring", () => {
         kind: "work",
         title: "Greased the line",
         state: "submitted",
+        // Submitted entries carry a severity now, whatever their kind.
+        severityId: critical.id,
         workSummary: "x",
         reportDate,
       });

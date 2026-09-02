@@ -782,6 +782,21 @@ export async function changeStatus(
   // work, so its scores and ledger rows are cleared and its content unlocked. This is
   // how a manager lets a report be worked and scored again after they have reviewed
   // it: change the status, and the split is honestly open once more.
+  // Resolving says the work is done, so there has to be some work written down.
+  // Reported from use: entries were being resolved with no work detail at all, and
+  // then scored — a number with nothing behind it. Moving to a *rejected* status is
+  // exempt: refusing an entry is precisely the case where no work was done.
+  if (next?.isTerminal && next.group !== "rejected" && !current?.isTerminal) {
+    const logged = await workLogsFor(id);
+    if (logged.length === 0) {
+      throw new AppError(
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        "Log what was done before resolving this — an entry closed with no work recorded cannot be scored.",
+      );
+    }
+  }
+
   const reopening = Boolean(current?.isTerminal && next && !next.isTerminal);
 
   // If the points period is closed, a status change re-opens the points for
@@ -1069,6 +1084,13 @@ export async function createReport(
   );
   if (grace) await assertWithinGrace(grace.date, ctx, grace.subject);
 
+  // Submitting says "this is finished being written", and an entry with no
+  // severity cannot be scored: the ceiling comes from the severity, so one filed
+  // without it is worth whatever the fallback happens to be. Reported from use —
+  // entries were arriving with no severity at all. A draft may still be incomplete,
+  // which is what a draft is for.
+  assertSeverityOnSubmit(input.state, input.severityId ?? null);
+
   const defaultStatus =
     input.statusId ?? (await firstStatusInGroup(isWorkLog ? "resolved" : "open"))?.id ?? null;
   await assertTargets(companyId, targets);
@@ -1261,6 +1283,13 @@ export async function updateReport(
 
   // Submitting a draft stamps submittedAt once.
   if (input.state === "submitted" && row.state !== "submitted") {
+    // The same rule as filing one submitted outright. Checked against the patch
+    // first and the stored row second, because the severity may be arriving in
+    // this very edit.
+    assertSeverityOnSubmit(
+      "submitted",
+      (input.severityId as string | null | undefined) ?? row.severityId,
+    );
     patch.state = "submitted";
     patch.submittedAt = new Date();
   } else if (input.state === "draft") {
@@ -1371,6 +1400,25 @@ async function severityCeiling(severityId: string | null): Promise<number> {
   if (!severity) return MAX_ENTRY_POINTS;
   const ceiling = Number(severity.maxPoints);
   return Number.isFinite(ceiling) ? ceiling : MAX_ENTRY_POINTS;
+}
+
+/**
+ * A submitted entry says how bad it was.
+ *
+ * Not a draft: a draft is work in progress, and nagging somebody halfway through
+ * writing is how people learn to file everything in one go at the end. But the
+ * moment it is submitted it is somebody else's to read and to score, and the
+ * severity is what sets the points ceiling — so an entry without one is scored
+ * against a fallback nobody chose.
+ */
+function assertSeverityOnSubmit(state: string | undefined, severityId: string | null): void {
+  if (state !== "submitted") return;
+  if (severityId) return;
+  throw new AppError(
+    400,
+    ERROR_CODES.VALIDATION_ERROR,
+    "Choose a severity before submitting — it decides what the entry is worth.",
+  );
 }
 
 /** Whether the caller may reject a report — a superior of its author holding the grant. */

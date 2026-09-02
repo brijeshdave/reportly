@@ -35,6 +35,7 @@ import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 
+import { fetchLocations } from "@/services/locations.js";
 import {
   deployPart,
   fetchConsumables,
@@ -651,7 +652,28 @@ export function PartDetailPage({ partId }: { partId: string }) {
     await queryClient.invalidateQueries({ queryKey: ["parts"] });
   };
 
-  const restock = useMutation({ mutationFn: () => restockPart(partId), onSuccess: invalidate });
+  /**
+   * Put it back on a shelf — and say which shelf.
+   *
+   * The site decides who can see the cartridge at all, and this was the only place
+   * that could set one without installing it: the call took a location and the
+   * button never passed one, so every cartridge stayed unplaced and visible to
+   * everybody. Defaults to where it already is, then to the person's own site when
+   * they have exactly one.
+   */
+  const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
+  const activeSites = (sites.data ?? []).filter((site) => site.status === "active");
+  const [restockSite, setRestockSite] = useState<string | null>(null);
+  const restock = useMutation({
+    mutationFn: () => {
+      const site =
+        restockSite ??
+        p?.locationId ??
+        (activeSites.length === 1 ? (activeSites[0]?.id ?? null) : null);
+      return restockPart(partId, site);
+    },
+    onSuccess: invalidate,
+  });
   const scrap = useMutation({
     mutationFn: () => scrapPart(partId),
     onSuccess: async () => {
@@ -737,14 +759,32 @@ export function PartDetailPage({ partId }: { partId: string }) {
                     service event to move it would put points in the ledger for
                     work nobody did. */}
                 <Can permission={PERMISSIONS.PARTS_DEPLOY}>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={restock.isPending}
-                    onClick={() => restock.mutate()}
-                  >
-                    Mark ready
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {/* Only worth asking when there is a choice to make. */}
+                    {activeSites.length > 1 ? (
+                      <Select
+                        aria-label="Shelf it at"
+                        className="h-8 w-40"
+                        value={restockSite ?? p.locationId ?? ""}
+                        onChange={(event) => setRestockSite(event.target.value || null)}
+                      >
+                        <option value="">Not placed</option>
+                        {activeSites.map((site) => (
+                          <option key={site.id} value={site.id}>
+                            {site.name}
+                          </option>
+                        ))}
+                      </Select>
+                    ) : null}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={restock.isPending}
+                      onClick={() => restock.mutate()}
+                    >
+                      Mark ready
+                    </Button>
+                  </div>
                 </Can>
               </>
             ) : null}

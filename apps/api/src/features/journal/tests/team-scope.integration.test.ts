@@ -305,3 +305,80 @@ describe("filtering by a joined column", () => {
     }
   });
 });
+
+describe("what an entry must have", () => {
+  it("refuses to submit without a severity, but lets a draft be incomplete", async () => {
+    // Reported from use: entries were arriving with no severity, and severity is
+    // what sets the points ceiling — so they were scored against a fallback nobody
+    // chose. A draft is work in progress and stays exempt.
+    const admin = await superadmin();
+    const { hod } = await buildChain(admin);
+
+    const draft = await inject("POST", "/journal", hod.cookie, {
+      kind: "issue",
+      title: "Still writing this",
+      state: "draft",
+    });
+    expect(draft.statusCode).toBe(201);
+
+    const submitted = await inject("POST", "/journal", hod.cookie, {
+      kind: "issue",
+      title: "No severity",
+      state: "submitted",
+    });
+    expect(submitted.statusCode).toBe(400);
+    expect(submitted.json().error.message).toMatch(/severity/i);
+
+    // And the same when a draft is submitted later.
+    const promoted = await inject("PATCH", `/journal/${draft.json().id}`, hod.cookie, {
+      state: "submitted",
+    });
+    expect(promoted.statusCode).toBe(400);
+  });
+
+  it("refuses to resolve with no work logged, and still allows a rejection", async () => {
+    const admin = await superadmin();
+    const { hod, critical } = await buildChain(admin);
+    const id = await file(hod.cookie, "Nothing done yet", critical.id);
+
+    const statuses = (await inject("GET", "/journal-statuses", hod.cookie)).json() as {
+      id: string;
+      name: string;
+      group: string;
+    }[];
+    const resolved = statuses.find((s) => s.group === "resolved")!;
+
+    const tooSoon = await inject("PATCH", `/journal/${id}/status`, hod.cookie, {
+      statusId: resolved.id,
+    });
+    expect(tooSoon.statusCode).toBe(400);
+    expect(tooSoon.json().error.message).toMatch(/log what was done/i);
+
+    // Refusing an entry is exactly the case where no work was done.
+    const rejected = statuses.find((s) => s.group === "rejected")!;
+    expect(
+      (await inject("PATCH", `/journal/${id}/status`, hod.cookie, { statusId: rejected.id }))
+        .statusCode,
+    ).toBe(200);
+  });
+
+  it("resolves once the work is written down", async () => {
+    const admin = await superadmin();
+    const { hod, critical } = await buildChain(admin);
+    const id = await file(hod.cookie, "Fixed it", critical.id);
+
+    await inject("POST", `/journal/${id}/work`, hod.cookie, {
+      summary: "Replaced the belt",
+    });
+
+    const statuses = (await inject("GET", "/journal-statuses", hod.cookie)).json() as {
+      id: string;
+      group: string;
+    }[];
+    const resolved = statuses.find((s) => s.group === "resolved")!;
+    expect(
+      (await inject("PATCH", `/journal/${id}/status`, hod.cookie, { statusId: resolved.id }))
+        .statusCode,
+    ).toBe(200);
+  });
+});
