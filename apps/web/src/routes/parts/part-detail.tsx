@@ -46,6 +46,7 @@ import {
   fetchServiceKinds,
   recordService,
   restockPart,
+  updatePart,
   returnPart,
   scrapPart,
 } from "@/services/parts.js";
@@ -663,14 +664,21 @@ export function PartDetailPage({ partId }: { partId: string }) {
    */
   const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
   const activeSites = (sites.data ?? []).filter((site) => site.status === "active");
-  const [restockSite, setRestockSite] = useState<string | null>(null);
+  /**
+   * Move it to another shelf, or off one.
+   *
+   * Saved the moment it is chosen: this is one field with no other state around
+   * it, so a Save button would only be a second click to forget.
+   */
+  const move = useMutation({
+    mutationFn: (locationId: string | null) => updatePart(partId, { locationId }),
+    onSuccess: invalidate,
+  });
+
   const restock = useMutation({
+    // Keeps the shelf it is already on; the Site control changes that.
     mutationFn: () => {
-      const site =
-        restockSite ??
-        p?.locationId ??
-        (activeSites.length === 1 ? (activeSites[0]?.id ?? null) : null);
-      return restockPart(partId, site);
+      return restockPart(partId, p?.locationId ?? null);
     },
     onSuccess: invalidate,
   });
@@ -759,32 +767,17 @@ export function PartDetailPage({ partId }: { partId: string }) {
                     service event to move it would put points in the ledger for
                     work nobody did. */}
                 <Can permission={PERMISSIONS.PARTS_DEPLOY}>
-                  <div className="flex items-center gap-2">
-                    {/* Only worth asking when there is a choice to make. */}
-                    {activeSites.length > 1 ? (
-                      <Select
-                        aria-label="Shelf it at"
-                        className="h-8 w-40"
-                        value={restockSite ?? p.locationId ?? ""}
-                        onChange={(event) => setRestockSite(event.target.value || null)}
-                      >
-                        <option value="">Not placed</option>
-                        {activeSites.map((site) => (
-                          <option key={site.id} value={site.id}>
-                            {site.name}
-                          </option>
-                        ))}
-                      </Select>
-                    ) : null}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      disabled={restock.isPending}
-                      onClick={() => restock.mutate()}
-                    >
-                      Mark ready
-                    </Button>
-                  </div>
+                  {/* No site picker here: the Site control below sets it, for any
+                      cartridge that is not in a machine. Two of them on one screen
+                      asked the same question twice. */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={restock.isPending}
+                    onClick={() => restock.mutate()}
+                  >
+                    Mark ready
+                  </Button>
                 </Can>
               </>
             ) : null}
@@ -808,7 +801,35 @@ export function PartDetailPage({ partId }: { partId: string }) {
         <span className="text-muted-foreground">
           {p.deviceName ? `In ${p.deviceName}` : p.locationName ? `At ${p.locationName}` : "—"}
         </span>
+
+        {/* Change where it is kept.
+            The site decides who can see the cartridge, and until now the only ways
+            to set one were registering a new cartridge or booking one back in from
+            service — so a register full of ready cartridges had no path at all, and
+            every one of them read "Not placed" for ever. Hidden while installed:
+            the placement already says where it is, and a second answer beside it
+            would contradict the first. */}
+        {p.status !== "installed" && p.status !== "scrapped" ? (
+          <Can permission={PERMISSIONS.PARTS_MANAGE}>
+            <Select
+              aria-label="Site"
+              className="h-8 w-44"
+              value={p.locationId ?? ""}
+              disabled={move.isPending}
+              onChange={(event) => move.mutate(event.target.value || null)}
+            >
+              <option value="">Not placed</option>
+              {activeSites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </Select>
+          </Can>
+        ) : null}
       </div>
+
+      {move.error ? <ErrorAlert error={move.error} /> : null}
 
       {p.notes ? <Card className="p-3 text-sm">{p.notes}</Card> : null}
 

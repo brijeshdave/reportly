@@ -67,8 +67,10 @@ export const fetchFittingDevices = (id: string) =>
   http.get<{ id: string; name: string; typeName: string | null }[]>(`/parts/${id}/fitting-devices`);
 export const fetchPart = (id: string) => http.get<Part>(`/parts/${id}`);
 export const createPart = (input: CreatePart) => http.post<Part>("/parts", input);
-export const updatePart = (id: string, input: { identifier?: string; notes?: string | null }) =>
-  http.patch<Part>(`/parts/${id}`, input);
+export const updatePart = (
+  id: string,
+  input: { identifier?: string; notes?: string | null; locationId?: string | null },
+) => http.patch<Part>(`/parts/${id}`, input);
 
 export const fetchPartHistory = (id: string) => http.get<Placement[]>(`/parts/${id}/history`);
 /** Installs, returns and services in one sequence — what the detail page reads. */
