@@ -25,10 +25,14 @@ and a report still in progress has not finished being done — so move it to
 
 - **Issue / breakdown** — something went wrong. You give it a severity, describe what
   happened, the root cause, and what will stop it happening again, and set a status.
+  **A breakdown cannot be submitted without a severity** — the severity is what sets
+  the points ceiling, so one filed without it would be scored against a fallback
+  nobody chose. A draft may still be incomplete; that is what a draft is for.
   **The work fields start closed**: raising a breakdown and fixing it are two moments,
   and the fix usually happens afterwards — sometimes by whoever reads it on the next
   shift. Tick **"I already did the work"** when it is genuinely one job, and they open.
-- **Work log** — routine daily work. Just what you did. No severity, no status.
+- **Work log** — routine daily work. Just what you did. No severity, no status — so
+  there is no severity to require, either.
 
 Fill in what fits, then either:
 
@@ -120,7 +124,9 @@ is the _request_ for work to be done.
   date. It appears under **Tasks**, which opens on open work, soonest deadline first.
 - **You can assign one too** — to yourself, or to anyone below you in the reporting
   line. The picker only offers those people, because those are the only ones the
-  server will accept.
+  server will accept. Pick **several** if the job needs more than one person, or
+  **none at all** to plan the work now and hand it out later — an unassigned task
+  stays on your own list and notifies nobody until somebody is put on it.
 - **Start work** marks it in progress, so your manager can see it has been picked up.
 - **Complete & log work** is the important one. It marks the task done _and_ opens a
   work report already filled in from it — the title and the brief are carried across.
@@ -131,10 +137,19 @@ the work reaches the appraisal loop instead of ending at a tick-box. The report 
 task stay linked — the task shows the report filed against it, and the report says which
 task it came from.
 
+**Handing a task over.** Long jobs outlast shifts. When that happens the person
+holding it tells their manager, and the manager uses **Hand over** on the task page,
+naming who picks it up and why. The outgoing person is not removed: the task page
+shows them struck through, they keep access to it, and the entry that finally
+records the work arrives with everybody who worked on it already on it — so the
+author divides the points across all of them. Re-assigning through **Edit** is a
+different act: it says the job was always somebody else's and leaves nobody behind.
+
 Tasks carry files too, exactly like reports.
 
-> Only the person a task was **given to** can complete it or log work against it. Only
-> the person who **handed it out** (or someone above them) can re-assign or rewrite it.
+> Only the people a task was **given to** can complete it or log work against it —
+> including anybody who handed it over part-way through. Only the person who **handed
+> it out** (or someone above them) can re-assign it, rewrite it, or hand it over.
 > To call work off, **cancel** the task rather than delete it — cancelling is a record
 > that it was called off; deleting is an administrator's action and pretends it never
 > existed. Deleting a task never removes the reports filed against it.

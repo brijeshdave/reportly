@@ -15,6 +15,7 @@
 import {
   APPRAISAL_SETTINGS,
   MAX_ENTRY_POINTS,
+  TASK_POINTS,
   POINTS_LOCK_SETTINGS,
   REPORT_ENTRY_SETTINGS,
   SCORE_EVENT_REASONS,
@@ -48,11 +49,15 @@ import { journalEntries as reportsTable } from "@/core/db/schema.js";
 import { AppError } from "@/core/errors.js";
 import { timezoneFor } from "@/core/timezone.js";
 import { notify } from "@/core/queue/notifications.js";
-import { getSystemSetting } from "@/core/settings/service.js";
+import { getEffectiveSetting, getSystemSetting } from "@/core/settings/service.js";
 import { removeAttachmentsFor } from "@/features/attachments/cleanup.js";
 import { recordChanges } from "@/core/history.js";
 import { logger } from "@/core/logger.js";
-import { getTask as getTaskRow, updateTaskRow } from "@/features/tasks/repo.js";
+import {
+  assigneesFor as taskAssigneesFor,
+  getTask as getTaskRow,
+  updateTaskRow,
+} from "@/features/tasks/repo.js";
 import {
   clearAwards,
   clearScores,
@@ -91,6 +96,7 @@ import {
 } from "@/features/journal/hierarchy.js";
 import {
   addAuthorAsParticipant,
+  addParticipants,
   handoversFor,
   insertHandover,
   participantsFor,
@@ -470,7 +476,10 @@ async function assertTaskIsMine(
   if (!task || task.companyId !== companyId) {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "Task not found in this company");
   }
-  if (task.assigneeId !== ctx.userId && !ctx.isSuperadmin) {
+  // Anyone who has been on it, released or not: a task handed over mid-shift is
+  // written up by one of the people who did it, and the other is a participant.
+  const people = await taskAssigneesFor(taskId);
+  if (!people.some((person) => person.userId === ctx.userId) && !ctx.isSuperadmin) {
     throw new AppError(
       403,
       ERROR_CODES.FORBIDDEN,
@@ -648,7 +657,7 @@ export async function getReport(
     reviewer,
     // What this entry's severity allows, so the form warns against the real
     // number rather than a flat ten it may be nowhere near.
-    pointsCeiling: await severityCeiling(row.severityId),
+    pointsCeiling: await entryCeiling(row),
   };
 }
 
@@ -1090,7 +1099,7 @@ export async function createReport(
   // without it is worth whatever the fallback happens to be. Reported from use —
   // entries were arriving with no severity at all. A draft may still be incomplete,
   // which is what a draft is for.
-  assertSeverityOnSubmit(input.state, input.severityId ?? null);
+  assertSeverityOnSubmit(input.state, input.severityId ?? null, input.kind);
 
   const defaultStatus =
     input.statusId ?? (await firstStatusInGroup(isWorkLog ? "resolved" : "open"))?.id ?? null;
@@ -1143,6 +1152,17 @@ export async function createReport(
   // them — they are simply a participant with an equal share until somebody says
   // otherwise.
   await addAuthorAsParticipant(id, ctx.userId);
+  // Everybody who worked the task starts on the entry — including anybody who handed
+  // it over part-way through. Asked for as "author devides it": the entry arrives
+  // with the right people on it and the author sets each share, rather than the
+  // person writing it up having to remember who else was on the job.
+  if (fields.taskId) {
+    await addParticipants(
+      id,
+      (await taskAssigneesFor(fields.taskId)).map((person) => person.userId),
+      ctx.userId,
+    );
+  }
   // Filing the entry is what completes the task — not the button that opened this
   // form. The two used to be separate steps, and anybody who walked away from the
   // half-filled form left a task marked done with no record of the work and no way
@@ -1290,6 +1310,7 @@ export async function updateReport(
     assertSeverityOnSubmit(
       "submitted",
       (input.severityId as string | null | undefined) ?? row.severityId,
+      row.kind,
     );
     patch.state = "submitted";
     patch.submittedAt = new Date();
@@ -1404,6 +1425,26 @@ async function severityCeiling(severityId: string | null): Promise<number> {
 }
 
 /**
+ * What this entry may pay: its severity's ceiling, and — if it was filed against a
+ * task — the task ceiling as well, whichever is lower.
+ *
+ * Lower rather than either-or on purpose. Work somebody was already assigned is
+ * planned work, and should not earn what an unplanned three-in-the-morning
+ * breakdown earns; but a task marked Minor must not be lifted to the task ceiling
+ * either. A cap only ever caps.
+ */
+async function entryCeiling(row: {
+  severityId: string | null;
+  taskId: string | null;
+  companyId: string;
+}): Promise<number> {
+  const ceiling = await severityCeiling(row.severityId);
+  if (!row.taskId) return ceiling;
+  const cap = await getEffectiveSetting(TASK_POINTS, { companyId: row.companyId });
+  return cap.enabled ? Math.min(ceiling, cap.maxPoints) : ceiling;
+}
+
+/**
  * A submitted entry says how bad it was.
  *
  * Not a draft: a draft is work in progress, and nagging somebody halfway through
@@ -1412,8 +1453,16 @@ async function severityCeiling(severityId: string | null): Promise<number> {
  * severity is what sets the points ceiling — so an entry without one is scored
  * against a fallback nobody chose.
  */
-function assertSeverityOnSubmit(state: string | undefined, severityId: string | null): void {
+function assertSeverityOnSubmit(
+  state: string | undefined,
+  severityId: string | null,
+  kind: string,
+): void {
   if (state !== "submitted") return;
+  // Only a breakdown has a severity. A work log is "nothing broke here", the editor
+  // does not draw the field for one, and demanding it produced a 400 that no screen
+  // could clear — including for every entry filed by completing a task.
+  if (kind !== "issue") return;
   if (severityId) return;
   throw new AppError(
     400,
@@ -1674,13 +1723,20 @@ export async function setScores(
   // An entry with no severity falls back to the flat maximum: that is what it was
   // worth before, and refusing to score it would punish somebody for a field the
   // form did not always ask for.
-  const ceiling = await severityCeiling(row.severityId);
+  const ceiling = await entryCeiling(row);
   const total = input.scores.reduce((sum, s) => sum + s.points, 0);
   if (total > ceiling) {
+    // Which of the two ceilings bit, so the message names the setting to change
+    // rather than sending somebody to the severities screen that is not the cause.
+    const bySeverity = await severityCeiling(row.severityId);
+    const reason =
+      row.taskId && ceiling < bySeverity
+        ? "This entry was filed against a task, which"
+        : "This entry's severity";
     throw new AppError(
       400,
       ERROR_CODES.VALIDATION_ERROR,
-      `This entry's severity allows at most ${ceiling} points across everyone who worked it. This adds up to ${total}.`,
+      `${reason} allows at most ${ceiling} points across everyone who worked it. This adds up to ${total}.`,
     );
   }
 

@@ -201,6 +201,15 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     defaultChannels: INAPP_AND_EMAIL,
   },
   {
+    type: "task.handover",
+    category: "tasks",
+    label: "A task changed hands",
+    description:
+      "A task was handed to you part-way through, or one you were holding was handed on.",
+    audience: "assignee",
+    defaultChannels: INAPP_AND_EMAIL,
+  },
+  {
     type: "task.due-soon",
     category: "tasks",
     label: "A task of yours is due soon",

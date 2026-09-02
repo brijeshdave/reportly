@@ -8,6 +8,7 @@ import {
   ERROR_CODES,
   PERMISSIONS,
   createTaskSchema,
+  handoverTaskSchema,
   listQuerySchema,
   paginatedResult,
   taskPrefillSchema,
@@ -152,6 +153,34 @@ export async function tasksRoutes(fastify: FastifyInstance): Promise<void> {
       const after = await tasks.updateTask(request.params.id, request.body, request.ctx!);
       await recordAudit(request, request.ctx!, { action: "task.update", before, after });
       await trackChanges(request, request.ctx!, "tasks", after.id, before, after);
+      return after;
+    },
+  );
+
+  /**
+   * Handing a task on part-way through, when a shift ends before the work does.
+   *
+   * A route of its own rather than a re-assignment through PATCH, because the two
+   * mean different things: re-assigning says the job was always theirs, a handover
+   * says it changed hands and both people worked on it. Only the second keeps the
+   * outgoing person on the task so the points can be divided.
+   */
+  app.post(
+    "/tasks/:id/handover",
+    {
+      preHandler: guard(PERMISSIONS.TASKS_UPDATE),
+      schema: {
+        tags: ["Tasks"],
+        summary: "Hand a task from one person to another, keeping both on the record",
+        params: idParams,
+        body: handoverTaskSchema,
+        response: { 200: taskSchema },
+      },
+    },
+    async (request) => {
+      const before = await tasks.getTask(request.params.id, request.ctx!);
+      const after = await tasks.handoverTask(request.params.id, request.body, request.ctx!);
+      await recordAudit(request, request.ctx!, { action: "task.handover", before, after });
       return after;
     },
   );

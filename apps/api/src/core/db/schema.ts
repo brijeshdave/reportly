@@ -989,9 +989,6 @@ export const tasks = pgTable(
       .references(() => companies.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     detail: text("detail"),
-    assigneeId: text("assignee_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
     assignerId: text("assigner_id").references(() => users.id, { onDelete: "set null" }),
     departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
     dueAt: timestamp("due_at", { withTimezone: true }),
@@ -1000,11 +997,53 @@ export const tasks = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     ...timestamps,
   },
+  (t) => [index("tasks_state_idx").on(t.state), index("tasks_company_idx").on(t.companyId)],
+);
+
+// Who is on a task. A task may have several people or nobody at all: work is
+// planned before it is handed out, split across a team, and handed over when a
+// shift ends. One row per person is the only shape that says all three.
+export const taskAssignees = pgTable(
+  "task_assignees",
+  {
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Set when the person hands the task on. They stay a row rather than being
+    // deleted, because the points for a task handed over mid-shift are split
+    // between both people, and a deleted row cannot be paid.
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+  },
   (t) => [
-    // The "my tasks" read: what is on one person's plate, open first.
-    index("tasks_assignee_state_idx").on(t.assigneeId, t.state),
-    index("tasks_company_idx").on(t.companyId),
+    primaryKey({ columns: [t.taskId, t.userId] }),
+    // The "my tasks" read: what is on one person's plate.
+    index("task_assignees_user_idx").on(t.userId),
   ],
+);
+
+// Why a task changed hands, in the shape journal handovers already use. A task
+// moved at the end of a shift is a fact about the work, not a silent edit to a
+// row, and the person who asked for the move belongs in the record.
+export const taskHandovers = pgTable(
+  "task_handovers",
+  {
+    id: idPk(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    fromUserId: text("from_user_id").references(() => users.id, { onDelete: "set null" }),
+    toUserId: text("to_user_id").references(() => users.id, { onDelete: "set null" }),
+    byUserId: text("by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reason: text("reason"),
+    handedAt: timestamp("handed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("task_handovers_task_idx").on(t.taskId, t.handedAt)],
 );
 
 // --- attachments (Phase 5, Step 4) ---

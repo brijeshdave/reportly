@@ -46,8 +46,12 @@ async function ownerOf(
   if (ownerType === "task") {
     const task = await getTask(ownerId, ctx);
     // The assignee, not the assigner: a remark on a task is aimed at whoever is
-    // holding it.
-    return { companyId: task.companyId, ownerUserId: task.assigneeId, title: task.title };
+    // holding it — or at whoever planned it, while nobody is.
+    return {
+      companyId: task.companyId,
+      ownerUserId: task.assignees.find((person) => !person.released)?.id ?? task.assignerId,
+      title: task.title,
+    };
   }
   // Note what is deliberately NOT checked: `lockedAt`. A report's content freezes
   // once appraised so a mark is never given for work that changed afterwards — but

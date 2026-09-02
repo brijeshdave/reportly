@@ -3,10 +3,16 @@
 //
 // Two jobs: find the work that is about to come due or has slipped, and remember
 // what has already been said about it.
-import { and, eq, gt, inArray, isNotNull, lt, lte, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, lte, ne } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
-import { notificationReminders, routineAssignees, routines, tasks } from "@/core/db/schema.js";
+import {
+  notificationReminders,
+  routineAssignees,
+  routines,
+  taskAssignees,
+  tasks,
+} from "@/core/db/schema.js";
 
 export interface DueTask {
   id: string;
@@ -24,15 +30,22 @@ export interface DueTask {
  * if this named the states it wanted.
  */
 export async function tasksDueBetween(from: Date, to: Date): Promise<DueTask[]> {
+  // One row per person on the task, so a job split across two people reminds both
+  // of them. A task nobody has picked up yet produces no rows: there is nobody to
+  // remind, and the inner join says so rather than a filter somewhere downstream.
   const rows = await db
     .select({
       id: tasks.id,
       companyId: tasks.companyId,
-      assigneeId: tasks.assigneeId,
+      assigneeId: taskAssignees.userId,
       title: tasks.title,
       dueAt: tasks.dueAt,
     })
     .from(tasks)
+    .innerJoin(
+      taskAssignees,
+      and(eq(taskAssignees.taskId, tasks.id), isNull(taskAssignees.releasedAt)),
+    )
     .where(
       and(
         ne(tasks.state, "done"),

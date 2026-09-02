@@ -89,6 +89,9 @@ export async function createSeverity(input: Required<CreateSeverity>): Promise<S
         name: input.name,
         orderIndex: input.orderIndex,
         status: input.status,
+        // `numeric` goes in as a string; handing it a number is the same trap the
+        // read side already documents.
+        maxPoints: String(input.maxPoints),
       }),
     );
   } catch (err) {
@@ -100,7 +103,13 @@ export async function createSeverity(input: Required<CreateSeverity>): Promise<S
 export async function updateSeverity(id: string, input: UpdateSeverity): Promise<Severity> {
   await requireSeverity(id);
   try {
-    const row = await updateSeverityRow(id, input);
+    const { maxPoints, ...rest } = input;
+    const row = await updateSeverityRow(id, {
+      ...rest,
+      // `numeric` goes in as a string; handing it a number is the same trap the
+      // read side already documents.
+      ...(maxPoints === undefined ? {} : { maxPoints: String(maxPoints) }),
+    });
     return serializeSeverity(row!);
   } catch (err) {
     if (isUniqueViolation(err)) throw DUP_SEVERITY();

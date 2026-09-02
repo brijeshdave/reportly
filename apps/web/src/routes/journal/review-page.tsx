@@ -261,7 +261,11 @@ export function ReviewPage() {
                       <span className="min-w-0">
                         <span className="block truncate font-medium">{task.title}</span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {task.assigneeName} · {TASK_STATE_LABEL[task.state] ?? task.state}
+                          {task.assignees
+                            .filter((person) => !person.released)
+                            .map((person) => person.name)
+                            .join(", ") || "Not assigned yet"}{" "}
+                          · {TASK_STATE_LABEL[task.state] ?? task.state}
                         </span>
                       </span>
                       {overdue ? (

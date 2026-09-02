@@ -4,6 +4,11 @@
 // The assignee list is your downline plus yourself — read from the same reporting
 // line the server checks against, so the picker cannot offer somebody the API will
 // refuse. It is a list of who works for you, not a list of everyone.
+//
+// Several people may be on one task, and none is allowed too: "allow to create the
+// task without any assign to so that i can create task in advance for my team and
+// only assign when i need to based on priority". A task with nobody on it stays on
+// its creator's list and notifies no one until it is handed out.
 import { PERMISSIONS, type TaskPriority, type CreateTask } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -11,7 +16,7 @@ import { useEffect, useState } from "react";
 
 import { usePermission } from "@/components/can.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { SearchableSelect } from "@/components/searchable-select.js";
+import { MultiSelect } from "@/components/multi-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { sessionQuery } from "@/lib/queries.js";
@@ -39,7 +44,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
 
   const [title, setTitle] = useState("");
   const [detail, setDetail] = useState("");
-  const [assigneeId, setAssigneeId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [dueAt, setDueAt] = useState("");
 
@@ -60,21 +65,30 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
     if (!existing.data) return;
     setTitle(existing.data.title);
     setDetail(existing.data.detail ?? "");
-    setAssigneeId(existing.data.assigneeId);
+    // Only the people still on it: somebody who handed the task over stays on the
+    // record for the points, but re-saving the form must not silently put them
+    // back to work.
+    setAssigneeIds(existing.data.assignees.filter((a) => !a.released).map((a) => a.id));
     setPriority(existing.data.priority);
     setDueAt(toLocalInput(existing.data.dueAt));
   }, [existing.data]);
 
-  // Default to assigning it to yourself: the commonest case is noting your own job.
+  // Somebody who may only create their own work starts with themselves on it, since
+  // that is the only answer available. Anybody assigning starts empty: they are
+  // often planning ahead, and defaulting a manager onto their own team's task put
+  // their name on work they were not going to do.
+  const [seeded, setSeeded] = useState(false);
   useEffect(() => {
-    if (mode === "create" && !assigneeId && me?.id) setAssigneeId(me.id);
-  }, [mode, assigneeId, me?.id]);
+    if (mode !== "create" || seeded || !me?.id) return;
+    setSeeded(true);
+    if (!mayAssign) setAssigneeIds([me.id]);
+  }, [mode, seeded, me?.id, mayAssign]);
 
   const save = useMutation({
     mutationFn: async () => {
       const body: CreateTask = {
         title: title.trim(),
-        assigneeId,
+        assigneeIds,
         priority,
         ...(detail.trim() ? { detail: detail.trim() } : {}),
         ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
@@ -115,7 +129,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
         title={mode === "create" ? (mayAssign ? "Assign a task" : "New task") : "Edit task"}
         description={
           mayAssign
-            ? "Hand a job to yourself or to someone below you in the reporting line. When they complete it, a report opens pre-filled so the work gets logged."
+            ? "Hand a job to yourself, or to one or more people below you in the reporting line — or to nobody yet, and give it out later. When it is completed, a report opens pre-filled so the work gets logged."
             : "Work you are giving yourself. When you complete it, an entry opens pre-filled, so it is logged and scored like any other."
         }
         actions={
@@ -161,7 +175,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
                 ? "Work you are giving yourself. Your manager assigns work to anybody else."
                 : people.length <= 1
                   ? "Nobody reports to you yet, so this is yours to do."
-                  : undefined
+                  : "Leave it empty to plan the work now and hand it out later."
             }
           >
             {(props) =>
@@ -169,12 +183,12 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
               // A picker that lists names and then answers 403 is worse than no
               // picker: it offers a choice that was never on the table.
               mayAssign ? (
-                <SearchableSelect
-                  {...props}
-                  value={assigneeId}
-                  onChange={setAssigneeId}
+                <MultiSelect
+                  ariaLabel="Assign to"
                   options={people}
-                  placeholder="Choose who does it"
+                  values={assigneeIds}
+                  onChange={setAssigneeIds}
+                  placeholder="Nobody yet"
                 />
               ) : (
                 <Input {...props} value={me ? `${me.name} (you)` : "You"} readOnly />
@@ -211,12 +225,9 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button
-            onClick={() => save.mutate()}
-            disabled={!title.trim() || !assigneeId || save.isPending}
-          >
+          <Button onClick={() => save.mutate()} disabled={!title.trim() || save.isPending}>
             {save.isPending ? <Spinner /> : null}
-            {mode === "create" ? "Assign" : "Save"}
+            {mode === "create" ? (assigneeIds.length > 0 ? "Assign" : "Save for later") : "Save"}
           </Button>
         </div>
       </Card>

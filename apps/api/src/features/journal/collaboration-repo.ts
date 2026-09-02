@@ -124,3 +124,19 @@ export async function addAuthorAsParticipant(reportId: string, authorId: string)
     .values({ reportId, userId: authorId, addedBy: authorId })
     .onConflictDoNothing();
 }
+
+/** Put several people on the record at once, added by the author. Used when an entry
+ *  is filed against a task: everybody who worked the task starts on the entry, so the
+ *  author divides the points across them rather than retyping the list. */
+export async function addParticipants(
+  reportId: string,
+  userIds: string[],
+  addedBy: string,
+): Promise<void> {
+  const ids = [...new Set(userIds)];
+  if (ids.length === 0) return;
+  await db
+    .insert(journalParticipants)
+    .values(ids.map((userId) => ({ reportId, userId, addedBy })))
+    .onConflictDoNothing();
+}

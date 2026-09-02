@@ -10,9 +10,12 @@ import {
   type AuthContext,
   type CreateTask,
   ERROR_CODES,
+  type HandoverTask,
   PERMISSIONS,
   can,
   type Task,
+  type TaskAssignee,
+  type TaskHandover,
   type TaskPrefill,
   type TaskPriority,
   type TaskRow,
@@ -32,14 +35,20 @@ import { applyTags } from "@/features/vocabulary/service.js";
 import { removeAttachmentsFor } from "@/features/attachments/cleanup.js";
 import { downlineUserIds } from "@/features/journal/hierarchy.js";
 import {
+  assigneesFor,
+  assigneesForMany,
   deleteTaskRow,
   getTask as getRow,
+  handOver,
+  handoversFor,
   insertTask,
   listTasks as listRows,
   type NewTask,
   openTasksAssignedBy,
   reportsForTask,
+  setAssignees,
   type TaskPatch,
+  type TaskPerson,
   type TaskRowRaw,
   updateTaskRow,
 } from "@/features/tasks/repo.js";
@@ -49,17 +58,23 @@ const asState = (s: string): TaskState =>
 const asPriority = (p: string): TaskPriority =>
   p === "low" || p === "high" || p === "urgent" ? p : "normal";
 
+const asAssignee = (p: TaskPerson): TaskAssignee => ({
+  id: p.userId,
+  name: p.name,
+  released: p.released,
+});
+
 function serializeRow(
   row: TaskRowRaw,
   tags: { id: string; name: string; color: string }[] = [],
+  people: TaskPerson[] = [],
 ): TaskRow {
   return {
     tags,
     id: row.id,
     companyId: row.companyId,
     title: row.title,
-    assigneeId: row.assigneeId,
-    assigneeName: row.assigneeName,
+    assignees: people.map(asAssignee),
     // The assigner is nullable in the database (their account may be gone) but the
     // contract promises a name, so say what happened rather than show an empty cell.
     assignerId: row.assignerId ?? "",
@@ -113,9 +128,14 @@ async function assertVisible(row: TaskRowRaw, ctx: AuthContext): Promise<void> {
     throw new AppError(404, ERROR_CODES.NOT_FOUND, "Task not found");
   }
   if (ctx.isSuperadmin) return;
-  if (row.assigneeId === ctx.userId || row.assignerId === ctx.userId) return;
+  if (row.assignerId === ctx.userId) return;
+  // Everybody who has been on it, released or not: somebody who handed a task over
+  // must still be able to open it, or they cannot see the work they are owed points
+  // for.
+  const people = (await assigneesFor(row.id)).map((p) => p.userId);
+  if (people.includes(ctx.userId)) return;
   const below = await downlineUserIds(ctx.userId);
-  if (!below.has(row.assigneeId)) {
+  if (!people.some((id) => below.has(id))) {
     throw new AppError(404, ERROR_CODES.NOT_FOUND, "Task not found");
   }
 }
@@ -131,13 +151,15 @@ export async function listTasks(
     visible = [...below];
   }
   const { rows, total } = await listRows(query, ctx.userId, visible, ctx.companyId);
-  // One query for every row's tags rather than one per row.
-  const tagsByTask = await tagsForMany(
-    "task",
-    rows.map((r) => r.id),
-  );
+  // One query for every row's tags, and one for every row's people, rather than one
+  // of each per row.
+  const ids = rows.map((r) => r.id);
+  const tagsByTask = await tagsForMany("task", ids);
+  const peopleByTask = await assigneesForMany(ids);
   return toPaginatedResult(
-    rows.map((row) => serializeRow(row, tagsByTask.get(row.id) ?? [])),
+    rows.map((row) =>
+      serializeRow(row, tagsByTask.get(row.id) ?? [], peopleByTask.get(row.id) ?? []),
+    ),
     total,
     query,
   );
@@ -150,20 +172,25 @@ export async function listTasks(
  */
 export async function assignedOpenTasks(ctx: AuthContext, companyId: string): Promise<TaskRow[]> {
   const rows = await openTasksAssignedBy(ctx.userId, companyId);
-  const tagsByTask = await tagsForMany(
-    "task",
-    rows.map((r) => r.id),
+  const ids = rows.map((r) => r.id);
+  const tagsByTask = await tagsForMany("task", ids);
+  const peopleByTask = await assigneesForMany(ids);
+  return rows.map((row) =>
+    serializeRow(row, tagsByTask.get(row.id) ?? [], peopleByTask.get(row.id) ?? []),
   );
-  return rows.map((row) => serializeRow(row, tagsByTask.get(row.id) ?? []));
 }
 
 export async function getTask(id: string, ctx: AuthContext): Promise<Task> {
   const row = await requireTask(id, ctx);
   await assertVisible(row, ctx);
   return {
-    ...serializeRow(row, await tagsFor("task", id)),
+    ...serializeRow(row, await tagsFor("task", id), await assigneesFor(id)),
     detail: row.detail,
     reports: await reportsForTask(id),
+    handovers: (await handoversFor(id)).map((h): TaskHandover => ({
+      ...h,
+      handedAt: h.handedAt.toISOString(),
+    })),
   };
 }
 
@@ -181,46 +208,70 @@ export async function createTask(input: CreateTask, ctx: AuthContext): Promise<T
   //
   // Checked here rather than at the route, because the route guard only decides
   // whether the door opens — it cannot see *which* grant let the caller through.
+  const people = [...new Set(input.assigneeIds)];
   if (!ctx.isSuperadmin && !can(ctx, PERMISSIONS.TASKS_CREATE)) {
-    if (input.assigneeId !== ctx.userId) {
+    // The narrow grant covers a task with nobody on it too: planning your own next
+    // job and not naming yourself yet is still only your own work.
+    if (people.some((id) => id !== ctx.userId)) {
       throw new AppError(
         403,
         ERROR_CODES.FORBIDDEN,
         "You can only create work for yourself. Ask your manager to assign it to somebody else.",
       );
     }
-  } else if (!ctx.isSuperadmin && !(await assignableTo(ctx)).has(input.assigneeId)) {
-    throw new AppError(
-      403,
-      ERROR_CODES.FORBIDDEN,
-      "You can only assign work to yourself or someone below you in the reporting line",
-    );
+  } else if (!ctx.isSuperadmin) {
+    const allowed = await assignableTo(ctx);
+    if (people.some((id) => !allowed.has(id))) {
+      throw new AppError(
+        403,
+        ERROR_CODES.FORBIDDEN,
+        "You can only assign work to yourself or someone below you in the reporting line",
+      );
+    }
   }
 
   const values: NewTask = {
     companyId: ctx.companyId,
     title: input.title,
     detail: input.detail ?? null,
-    assigneeId: input.assigneeId,
     assignerId: ctx.userId,
     departmentId: input.departmentId ?? null,
     dueAt: input.dueAt ? new Date(input.dueAt) : null,
     priority: input.priority,
   };
   const id = await insertTask(values);
+  if (people.length > 0) await setAssignees(id, people);
   if (input.tagIds?.length) await applyTags("task", id, values.departmentId, input.tagIds);
-  await notify({
-    type: "task.assigned",
-    companyId: ctx.companyId,
-    actorUserId: ctx.userId,
-    subjectUserId: input.assigneeId,
-    title: `A task was assigned to you: ${input.title}`,
-    body: input.detail ?? "",
-    link: `/tasks`,
-    entityKind: "task",
-    entityId: id,
-  });
+  // Nobody is told about a task with nobody on it — there is nothing to tell them
+  // yet, and a notification saying work is yours when it is not is worse than
+  // silence. The telling happens when it is handed out.
+  await notifyAssigned(id, people, input.title, input.detail ?? "", ctx);
   return getTask(id, ctx);
+}
+
+/** Tell each person named that work is now theirs. Never the person doing the
+ *  assigning: being told about your own decision is noise. */
+async function notifyAssigned(
+  taskId: string,
+  userIds: string[],
+  title: string,
+  body: string,
+  ctx: AuthContext,
+): Promise<void> {
+  for (const userId of userIds) {
+    if (userId === ctx.userId) continue;
+    await notify({
+      type: "task.assigned",
+      companyId: ctx.companyId!,
+      actorUserId: ctx.userId,
+      subjectUserId: userId,
+      title: `A task was assigned to you: ${title}`,
+      body,
+      link: `/tasks`,
+      entityKind: "task",
+      entityId: taskId,
+    });
+  }
 }
 
 /**
@@ -233,16 +284,19 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
   const row = await requireTask(id, ctx);
   await assertVisible(row, ctx);
 
-  const isAssignee = row.assigneeId === ctx.userId;
+  const people = await assigneesFor(id);
+  const onIt = people.filter((p) => !p.released).map((p) => p.userId);
+  const isAssignee = onIt.includes(ctx.userId);
+  // Somebody above anyone currently on it manages it. An unassigned task has only
+  // its creator, which is why planning work in advance does not lose control of it.
+  const below = ctx.isSuperadmin ? null : await downlineUserIds(ctx.userId);
   const manages =
-    ctx.isSuperadmin ||
-    row.assignerId === ctx.userId ||
-    (await downlineUserIds(ctx.userId)).has(row.assigneeId);
+    ctx.isSuperadmin || row.assignerId === ctx.userId || onIt.some((uid) => below!.has(uid));
 
   const editsBeyondState =
     input.title !== undefined ||
     input.detail !== undefined ||
-    input.assigneeId !== undefined ||
+    input.assigneeIds !== undefined ||
     input.departmentId !== undefined ||
     input.dueAt !== undefined ||
     input.priority !== undefined;
@@ -258,8 +312,9 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
     throw new AppError(403, ERROR_CODES.FORBIDDEN, "You cannot change this task");
   }
 
-  if (input.assigneeId !== undefined && !ctx.isSuperadmin) {
-    if (!(await assignableTo(ctx)).has(input.assigneeId)) {
+  if (input.assigneeIds !== undefined && !ctx.isSuperadmin) {
+    const allowed = await assignableTo(ctx);
+    if (input.assigneeIds.some((uid) => !allowed.has(uid))) {
       throw new AppError(
         403,
         ERROR_CODES.FORBIDDEN,
@@ -271,7 +326,6 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
   const fields: TaskPatch = {};
   if (input.title !== undefined) fields.title = input.title;
   if (input.detail !== undefined) fields.detail = input.detail;
-  if (input.assigneeId !== undefined) fields.assigneeId = input.assigneeId;
   if (input.departmentId !== undefined) fields.departmentId = input.departmentId;
   if (input.dueAt !== undefined) fields.dueAt = input.dueAt ? new Date(input.dueAt) : null;
   if (input.priority !== undefined) fields.priority = input.priority;
@@ -289,6 +343,103 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
   }
 
   await updateTaskRow(id, fields);
+
+  if (input.assigneeIds !== undefined) {
+    const wanted = [...new Set(input.assigneeIds)];
+    await setAssignees(id, wanted);
+    // Only the people who were not already on it hear about it.
+    await notifyAssigned(
+      id,
+      wanted.filter((uid) => !onIt.includes(uid)),
+      fields.title ?? row.title,
+      fields.detail ?? row.detail ?? "",
+      ctx,
+    );
+  }
+  return getTask(id, ctx);
+}
+
+/**
+ * Handing a task on part-way through — "a task was long and the user's shift was
+ * finished and he handed it over to someone else. In that case he need to tell his
+ * manager to handover the task and points needs to be splited acordingly."
+ *
+ * So the manager acts, not the worker: `manages` is required, the same authority
+ * that assigns the task in the first place. The outgoing person is released rather
+ * than removed, which is the whole point — they stay on the task's people, so when
+ * the work is finally written up they are on the entry and the author can divide
+ * the points between both of them.
+ */
+export async function handoverTask(
+  id: string,
+  input: HandoverTask,
+  ctx: AuthContext,
+): Promise<Task> {
+  const row = await requireTask(id, ctx);
+  await assertVisible(row, ctx);
+
+  const people = await assigneesFor(id);
+  const onIt = people.filter((p) => !p.released).map((p) => p.userId);
+  const below = ctx.isSuperadmin ? null : await downlineUserIds(ctx.userId);
+  const manages =
+    ctx.isSuperadmin || row.assignerId === ctx.userId || onIt.some((uid) => below!.has(uid));
+  if (!manages) {
+    throw new AppError(
+      403,
+      ERROR_CODES.FORBIDDEN,
+      "Ask the person who assigned this task to hand it over",
+    );
+  }
+
+  if (!onIt.includes(input.fromUserId)) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      "That person is not on this task, so there is nothing to hand over",
+    );
+  }
+  if (input.fromUserId === input.toUserId) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      "Choose somebody else to hand the task to",
+    );
+  }
+  if (!ctx.isSuperadmin && !(await assignableTo(ctx)).has(input.toUserId)) {
+    throw new AppError(
+      403,
+      ERROR_CODES.FORBIDDEN,
+      "You can only assign work to yourself or someone below you in the reporting line",
+    );
+  }
+
+  await handOver(id, input.fromUserId, input.toUserId, ctx.userId, input.reason ?? null);
+  await notify({
+    type: "task.handover",
+    companyId: row.companyId,
+    actorUserId: ctx.userId,
+    subjectUserId: input.toUserId,
+    title: `A task was handed over to you: ${row.title}`,
+    body: input.reason ?? row.detail ?? "",
+    link: `/tasks/${id}`,
+    entityKind: "task",
+    entityId: id,
+  });
+  // And the person who asked for it, so they can see their manager acted — they
+  // are still on the task, and the points will be divided with them.
+  if (input.fromUserId !== ctx.userId) {
+    await notify({
+      type: "task.handover",
+      companyId: row.companyId,
+      actorUserId: ctx.userId,
+      subjectUserId: input.fromUserId,
+      title: `Your task was handed on: ${row.title}`,
+      body: "Somebody else is carrying it now. You stay on the task, so the work you did still counts.",
+      link: `/tasks/${id}`,
+      entityKind: "task",
+      entityId: id,
+    });
+  }
   return getTask(id, ctx);
 }
 
@@ -322,11 +473,14 @@ export async function deleteTask(id: string, ctx: AuthContext): Promise<void> {
 export async function prefillFor(id: string, ctx: AuthContext): Promise<TaskPrefill> {
   const row = await requireTask(id, ctx);
   await assertVisible(row, ctx);
-  if (row.assigneeId !== ctx.userId && !ctx.isSuperadmin) {
+  const people = await assigneesFor(id);
+  // Somebody who handed the task on may still write it up: they did part of the
+  // work, and the entry has to name them for the points to reach them.
+  if (!people.some((person) => person.userId === ctx.userId) && !ctx.isSuperadmin) {
     throw new AppError(
       403,
       ERROR_CODES.FORBIDDEN,
-      "Only the person the task was given to can log the work for it",
+      "Only the people the task was given to can log the work for it",
     );
   }
   return {
@@ -335,5 +489,9 @@ export async function prefillFor(id: string, ctx: AuthContext): Promise<TaskPref
     title: row.title,
     workSummary: row.detail,
     departmentId: row.departmentId,
+    // Everybody who worked on it, including whoever handed it over, so the author
+    // divides the points across the people who actually did the job rather than
+    // retyping the list from memory.
+    participantIds: people.map((person) => person.userId),
   };
 }

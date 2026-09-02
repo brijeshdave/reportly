@@ -110,6 +110,31 @@ describe("report config", () => {
     expect(updated.json().name).toBe("Show-stopper");
   });
 
+  it("stores the ceiling the create form sent, and the one an edit sends", async () => {
+    // It stored neither. `createSeverity` picked three fields by hand and dropped
+    // `maxPoints`, so a severity created with a ceiling of 4 was worth 10 — the API
+    // accepted the number, the spec documented it, and nothing wrote it. The edit
+    // path only worked because the extra property happened to reach the driver.
+    const cookie = await superadmin();
+    const created = await inject("POST", "/severities", cookie, {
+      name: "Nuisance",
+      maxPoints: 4,
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().maxPoints).toBe(4);
+
+    const id = created.json().id;
+    const raised = await inject("PATCH", `/severities/${id}`, cookie, { maxPoints: 12.5 });
+    expect(raised.json().maxPoints).toBe(12.5);
+
+    // And it survives the read, rather than only the write's own echo.
+    const listed = (await inject("GET", "/severities", cookie)).json() as {
+      id: string;
+      maxPoints: number;
+    }[];
+    expect(listed.find((row) => row.id === id)?.maxPoints).toBe(12.5);
+  });
+
   it("keeps categories unique per department, not across the company", async () => {
     const cookie = await superadmin();
 

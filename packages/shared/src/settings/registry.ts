@@ -806,6 +806,42 @@ export const PLANNED_WORK: SettingDef<typeof plannedWorkSchema> = {
   description: "Offer 'Planned work' as a second kind of entry beside a breakdown",
 };
 
+/**
+ * The most an entry filed against a task may pay.
+ *
+ * Asked for alongside multi-person tasks: a task is work somebody was already
+ * told to do, so it should not be able to earn what an unplanned breakdown at
+ * three in the morning earns. Left at the flat maximum it changes nothing.
+ *
+ * It does not replace the severity ceiling, it caps it — the lower of the two
+ * wins. Two ceilings where the larger could raise the smaller would let a task
+ * pay more than its severity allows, which is the opposite of what this is for.
+ */
+export const taskPointsSchema = z.object({
+  /**
+   * Off by default, so installing this changes nothing until somebody asks for it.
+   *
+   * A switch rather than "a large number means no limit": a ceiling of 10 left as a
+   * default would quietly halve every task entry in a company whose Critical
+   * severity is worth 50, and a number that sometimes means "no ceiling" is the
+   * kind of value people misread.
+   */
+  enabled: z.boolean().default(false),
+  // No upper bound, for the same reason a severity has none — "there should not be
+  // any cap on that" — and in half points like every other number in the model.
+  maxPoints: z.number().min(0).multipleOf(0.5).default(5),
+});
+export type TaskPointsSettings = z.infer<typeof taskPointsSchema>;
+
+export const TASK_POINTS: SettingDef<typeof taskPointsSchema> = {
+  namespace: "journal",
+  key: "taskPoints",
+  schema: taskPointsSchema,
+  userOverridable: false,
+  companyOverridable: true,
+  description: "Cap what an entry filed against a task may be worth, whatever its severity",
+};
+
 export const CHANNEL_PROVIDERS: SettingDef<typeof channelProvidersSchema> = {
   namespace: "channels",
   key: "providers",
@@ -916,6 +952,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   AUTH_RATE_LIMIT,
   PASSWORD_RESET,
   PLANNED_WORK,
+  TASK_POINTS,
   TIMEZONE,
   TRANSACTIONAL_MESSAGES,
   INVITE_SETTINGS,

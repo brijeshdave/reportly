@@ -1,22 +1,28 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Task repository — the only code touching the tasks table. Reads resolve the
-// assignee, assigner and department names in one join, so a list never needs a
-// second round trip.
-import { type SQL, and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
+// assigner and department names in one join, so a list never needs a second round
+// trip; the people on a task come from `task_assignees` in one further query for
+// the whole page rather than one per row.
+import { type SQL, and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
-import { departments, journalEntries, tasks, users } from "@/core/db/schema.js";
+import {
+  departments,
+  journalEntries,
+  taskAssignees,
+  taskHandovers,
+  tasks,
+  users,
+} from "@/core/db/schema.js";
 import { buildListParts, type ListConfig } from "@/lib/list-query.js";
-import { TASK_CLOSED_STATES, type ResolvedListQuery } from "@reportly/shared";
+import { TASK_CLOSED_STATES, UNASSIGNED, type ResolvedListQuery } from "@reportly/shared";
 
 export interface TaskRowRaw {
   id: string;
   companyId: string;
   title: string;
   detail: string | null;
-  assigneeId: string;
-  assigneeName: string;
   assignerId: string | null;
   assignerName: string | null;
   departmentId: string | null;
@@ -29,7 +35,6 @@ export interface TaskRowRaw {
   updatedAt: Date;
 }
 
-const assignee = alias(users, "assignee");
 const assigner = alias(users, "assigner");
 
 const cols = {
@@ -37,8 +42,6 @@ const cols = {
   companyId: tasks.companyId,
   title: tasks.title,
   detail: tasks.detail,
-  assigneeId: tasks.assigneeId,
-  assigneeName: assignee.name,
   assignerId: tasks.assignerId,
   assignerName: assigner.name,
   departmentId: tasks.departmentId,
@@ -55,7 +58,6 @@ function selectTasks() {
   return db
     .select(cols)
     .from(tasks)
-    .innerJoin(assignee, eq(assignee.id, tasks.assigneeId))
     .leftJoin(assigner, eq(assigner.id, tasks.assignerId))
     .leftJoin(departments, eq(departments.id, tasks.departmentId));
 }
@@ -67,7 +69,6 @@ const listConfig: ListConfig = {
     priority: tasks.priority,
     dueAt: tasks.dueAt,
     createdAt: tasks.createdAt,
-    assigneeId: tasks.assigneeId,
   },
   defaultSort: tasks.createdAt,
 };
@@ -77,10 +78,33 @@ export async function getTask(id: string): Promise<TaskRowRaw | null> {
   return row ?? null;
 }
 
+/** True where somebody in `ids` is still on the task. A correlated EXISTS rather
+ *  than a join: joining the assignee table multiplies a two-person task into two
+ *  rows, which silently doubles both the page and the count. */
+function heldByAny(ids: string[]): SQL {
+  return sql`EXISTS (
+    SELECT 1 FROM task_assignees ta
+    WHERE ta.task_id = ${tasks.id} AND ta.released_at IS NULL
+      AND ta.user_id IN (${sql.join(
+        ids.map((id) => sql`${id}`),
+        sql`, `,
+      )})
+  )`;
+}
+
+/** True where nobody is on the task — planned ahead, not yet handed out. */
+const unassigned = sql`NOT EXISTS (
+  SELECT 1 FROM task_assignees ta
+  WHERE ta.task_id = ${tasks.id} AND ta.released_at IS NULL
+)`;
+
 /**
  * A page of tasks the caller may see: the ones assigned to them, the ones they
  * handed out, and anything on their downline's plate. `visibleUserIds` is null for a
  * caller who may see everybody (superadmin).
+ *
+ * A task with nobody on it is visible to whoever created it — otherwise planning
+ * work in advance would make it disappear the moment it was saved.
  */
 export async function listTasks(
   query: ResolvedListQuery,
@@ -88,14 +112,34 @@ export async function listTasks(
   visibleUserIds: string[] | null,
   companyId: string | null,
 ): Promise<{ rows: TaskRowRaw[]; total: number }> {
-  const parts = buildListParts(listConfig, query);
+  // The assignee filter is membership of another table, not a column on this one,
+  // so it is lifted out before the generic list builder sees a field it cannot map.
+  const assigneeFilters = query.filters.filter((f) => f.field === "assigneeId");
+  const parts = buildListParts(listConfig, {
+    ...query,
+    filters: query.filters.filter((f) => f.field !== "assigneeId"),
+  });
+
+  const chosen = assigneeFilters.flatMap((f) =>
+    (Array.isArray(f.value) ? f.value : [f.value]).map(String).filter(Boolean),
+  );
+  const wantsUnassigned = chosen.includes(UNASSIGNED);
+  const wantedPeople = chosen.filter((id) => id !== UNASSIGNED);
+  const assigneeWhere: SQL | undefined =
+    chosen.length === 0
+      ? undefined
+      : wantsUnassigned && wantedPeople.length > 0
+        ? sql`(${unassigned} OR ${heldByAny(wantedPeople)})`
+        : wantsUnassigned
+          ? unassigned
+          : heldByAny(wantedPeople);
 
   const scope: SQL | undefined = visibleUserIds
-    ? sql`(${tasks.assignerId} = ${callerId} OR ${inArray(tasks.assigneeId, visibleUserIds)})`
+    ? sql`(${tasks.assignerId} = ${callerId} OR ${heldByAny(visibleUserIds)})`
     : undefined;
 
   const companyScope = companyId ? eq(tasks.companyId, companyId) : undefined;
-  const where = and(scope, companyScope, parts.where);
+  const where = and(scope, companyScope, assigneeWhere, parts.where);
 
   const rows = await selectTasks()
     .where(where)
@@ -130,7 +174,7 @@ export async function openTasksFor(
     .where(
       and(
         eq(tasks.companyId, companyId),
-        eq(tasks.assigneeId, userId),
+        heldByAny([userId]),
         notInArray(tasks.state, [...TASK_CLOSED_STATES]),
       ),
     )
@@ -159,7 +203,6 @@ export interface NewTask {
   companyId: string;
   title: string;
   detail: string | null;
-  assigneeId: string;
   assignerId: string;
   departmentId: string | null;
   dueAt: Date | null;
@@ -174,7 +217,6 @@ export async function insertTask(values: NewTask): Promise<string> {
 export type TaskPatch = Partial<{
   title: string;
   detail: string | null;
-  assigneeId: string;
   departmentId: string | null;
   dueAt: Date | null;
   priority: string;
@@ -202,4 +244,129 @@ export async function reportsForTask(
     .from(journalEntries)
     .where(eq(journalEntries.taskId, taskId))
     .orderBy(asc(journalEntries.createdAt));
+}
+
+// --- who is on a task ---
+
+export interface TaskPerson {
+  taskId: string;
+  userId: string;
+  name: string;
+  released: boolean;
+}
+
+/** Everybody who has been on these tasks, released or not, in one query for the
+ *  whole page. Ordered so the people still holding it read first. */
+export async function assigneesForMany(taskIds: string[]): Promise<Map<string, TaskPerson[]>> {
+  const byTask = new Map<string, TaskPerson[]>();
+  if (taskIds.length === 0) return byTask;
+  const rows = await db
+    .select({
+      taskId: taskAssignees.taskId,
+      userId: taskAssignees.userId,
+      name: users.name,
+      releasedAt: taskAssignees.releasedAt,
+    })
+    .from(taskAssignees)
+    .innerJoin(users, eq(users.id, taskAssignees.userId))
+    .where(inArray(taskAssignees.taskId, taskIds))
+    .orderBy(sql`${taskAssignees.releasedAt} asc nulls first`, asc(taskAssignees.createdAt));
+  for (const row of rows) {
+    const list = byTask.get(row.taskId) ?? [];
+    list.push({
+      taskId: row.taskId,
+      userId: row.userId,
+      name: row.name,
+      released: row.releasedAt !== null,
+    });
+    byTask.set(row.taskId, list);
+  }
+  return byTask;
+}
+
+export async function assigneesFor(taskId: string): Promise<TaskPerson[]> {
+  return (await assigneesForMany([taskId])).get(taskId) ?? [];
+}
+
+/** Put exactly these people on the task and nobody else.
+ *
+ *  Somebody already released is *not* revived by being listed again — they worked
+ *  on it, handed it over, and their claim on the points is a past fact. Re-adding
+ *  them is a handover back, which goes through `handOver`. */
+export async function setAssignees(taskId: string, userIds: string[]): Promise<void> {
+  await db
+    .delete(taskAssignees)
+    .where(
+      and(
+        eq(taskAssignees.taskId, taskId),
+        isNull(taskAssignees.releasedAt),
+        userIds.length > 0 ? notInArray(taskAssignees.userId, userIds) : undefined,
+      ),
+    );
+  if (userIds.length === 0) return;
+  await db
+    .insert(taskAssignees)
+    .values(userIds.map((userId) => ({ taskId, userId })))
+    .onConflictDoNothing();
+}
+
+/** Hand the task from one person to another, keeping the first on the record. */
+export async function handOver(
+  taskId: string,
+  fromUserId: string,
+  toUserId: string,
+  byUserId: string,
+  reason: string | null,
+): Promise<void> {
+  await db
+    .update(taskAssignees)
+    .set({ releasedAt: new Date() })
+    .where(and(eq(taskAssignees.taskId, taskId), eq(taskAssignees.userId, fromUserId)));
+  await db
+    .insert(taskAssignees)
+    .values({ taskId, userId: toUserId })
+    .onConflictDoUpdate({
+      target: [taskAssignees.taskId, taskAssignees.userId],
+      // Somebody handed a task back picks it up again rather than staying released.
+      set: { releasedAt: null },
+    });
+  await db.insert(taskHandovers).values({ taskId, fromUserId, toUserId, byUserId, reason });
+}
+
+export interface TaskHandoverRow {
+  id: string;
+  fromUserId: string | null;
+  fromUserName: string | null;
+  toUserId: string | null;
+  toUserName: string | null;
+  byUserId: string | null;
+  byUserName: string | null;
+  reason: string | null;
+  handedAt: Date;
+}
+
+const handedFrom = alias(users, "handed_from");
+const handedTo = alias(users, "handed_to");
+const handedBy = alias(users, "handed_by");
+
+/** Every time a task changed hands, oldest first. */
+export async function handoversFor(taskId: string): Promise<TaskHandoverRow[]> {
+  return db
+    .select({
+      id: taskHandovers.id,
+      fromUserId: taskHandovers.fromUserId,
+      fromUserName: handedFrom.name,
+      toUserId: taskHandovers.toUserId,
+      toUserName: handedTo.name,
+      byUserId: taskHandovers.byUserId,
+      byUserName: handedBy.name,
+      reason: taskHandovers.reason,
+      handedAt: taskHandovers.handedAt,
+    })
+    .from(taskHandovers)
+    .leftJoin(handedFrom, eq(handedFrom.id, taskHandovers.fromUserId))
+    .leftJoin(handedTo, eq(handedTo.id, taskHandovers.toUserId))
+    .leftJoin(handedBy, eq(handedBy.id, taskHandovers.byUserId))
+    .where(eq(taskHandovers.taskId, taskId))
+    .orderBy(asc(taskHandovers.handedAt));
 }

@@ -87,6 +87,18 @@ been scored, **re-open** it to add or remove a file. See
 **Tasks** shows what you have been asked to do, and what you have asked of others. You
 may assign work to yourself or to anyone below you in the reporting line.
 
+**A task can be given to several people at once**, and to nobody at all. Leave
+**Assign to** empty and the task is saved as planned work: it stays on your list,
+nobody is notified, and you hand it out when you are ready. Filter the list by
+**Assignee → Not assigned yet** to see everything still waiting to be given out.
+
+**Handing work over.** When a job outlasts a shift, the person holding it asks their
+manager, and the manager uses **Hand over** on the task page. The outgoing person is
+not removed — the task page shows them struck through, they can still open it, and
+when the work is finally written up they are on the entry so the points can be
+divided between everybody who did it. Re-assigning through **Edit** is the other
+thing: that says the job was always somebody else's, and it leaves nobody behind.
+
 **Complete & log work** opens an entry pre-filled from the task — and **filing that
 entry is what completes the task**, so finishing the job and recording it really are
 one action. Close the form without saving and the task is simply still open, waiting
@@ -696,6 +708,13 @@ follows your own clock.
 JournalEntry setup → Severities** — not under Settings. A tier may share its ceiling
 among several people; it can never exceed it.
 
+**An entry filed against a task can be given a second ceiling.** Settings → Journal
+→ Task points is a switch, **off by default**. Turn it on and set a number, and any
+entry filed against a task is capped at it whatever its severity — so planned work
+cannot earn what an unplanned three-in-the-morning breakdown earns. The two ceilings
+do not add up or override each other: **the lower one wins**, so a task marked Minor
+is still worth only Minor. While the switch is off nothing changes.
+
 ### Giving yourself work
 
 **Tasks → New task** lets anybody plan their own day: a task assigned to themselves,
@@ -703,6 +722,10 @@ which they complete like any other. Completing it opens an entry pre-filled from
 task, so the work still reaches the journal and is still scored there — a self-made
 task is worth exactly what the same work would be worth if a manager had asked for
 it.
+
+An entry filed from a task **arrives with everybody who worked the task already on
+it** — including anybody who handed it over part-way through — and the author
+divides the points between them. Nobody has to remember who else was on the job.
 
 **It can only ever be for yourself.** Handing work to somebody else needs
 `tasks:create`, which managers hold; an ordinary person holds `tasks:create-own` and

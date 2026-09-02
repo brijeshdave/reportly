@@ -32,6 +32,7 @@ import {
   routineCompletions,
   scheduleEntries,
   schedules,
+  taskAssignees,
   tasks,
 } from "@/core/db/schema.js";
 import {
@@ -277,18 +278,31 @@ async function generateDepartment(
     const assigner = rng.pick(leads.length > 0 ? leads : memberIds)!;
     const assignee = rng.pick(memberIds.filter((m) => m !== assigner)) ?? assigner;
     const done = rng.chance(0.7);
-    await db.insert(tasks).values({
-      companyId: company.id,
-      title: `${rng.pick(TITLES_WORK)} ${MARK}`,
-      detail: "Raised from the morning walk-round.",
-      assigneeId: assignee,
-      assignerId: assigner,
-      departmentId: dept.id,
-      dueAt: atHour(date, 17, rng),
-      priority: rng.pick(["low", "normal", "high"]) ?? "normal",
-      state: done ? "done" : rng.chance(0.5) ? "in_progress" : "open",
-      completedAt: done ? atHour(date, rng.int(9, 18), rng) : null,
-    });
+    const [task] = await db
+      .insert(tasks)
+      .values({
+        companyId: company.id,
+        title: `${rng.pick(TITLES_WORK)} ${MARK}`,
+        detail: "Raised from the morning walk-round.",
+        assignerId: assigner,
+        departmentId: dept.id,
+        dueAt: atHour(date, 17, rng),
+        priority: rng.pick(["low", "normal", "high"]) ?? "normal",
+        state: done ? "done" : rng.chance(0.5) ? "in_progress" : "open",
+        completedAt: done ? atHour(date, rng.int(9, 18), rng) : null,
+      })
+      .returning({ id: tasks.id });
+    // Most jobs go to one person; a few are shared, and one in ten is planned
+    // ahead with nobody on it yet — the three shapes the screens have to draw.
+    const second = rng.pick(memberIds.filter((m) => m !== assignee && m !== assigner));
+    const people = rng.chance(0.1)
+      ? []
+      : rng.chance(0.2) && second
+        ? [assignee, second]
+        : [assignee];
+    if (people.length > 0) {
+      await db.insert(taskAssignees).values(people.map((userId) => ({ taskId: task!.id, userId })));
+    }
     counts.tasks += 1;
   }
 

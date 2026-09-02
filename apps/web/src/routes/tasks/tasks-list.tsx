@@ -3,7 +3,7 @@
 //
 // The list is filtered to open work by default. A task list that opens on everything
 // ever finished buries the two jobs due today under a year of completed ones.
-import { PERMISSIONS, type TaskRow, formatDate } from "@reportly/shared";
+import { PERMISSIONS, UNASSIGNED, type TaskRow, formatDate } from "@reportly/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
@@ -63,7 +63,33 @@ const columns: TableColumn<TaskRow>[] = [
       </Link>
     ),
   },
-  { id: "assigneeName", accessorKey: "assigneeName", header: "Assigned to" },
+  {
+    id: "assigneeName",
+    header: "Assigned to",
+    // Not sortable: it is a list of people, not a value, and there is no column on
+    // the task to sort it by. Somebody released is greyed rather than dropped —
+    // they worked on it, and the points will be split with them.
+    enableSorting: false,
+    cell: ({ row }) => {
+      const people = row.original.assignees;
+      if (people.length === 0) {
+        return <span className="text-muted-foreground">Not assigned yet</span>;
+      }
+      return (
+        <span className="flex flex-wrap gap-x-1">
+          {people.map((person, i) => (
+            <span
+              key={person.id}
+              className={person.released ? "text-muted-foreground line-through" : undefined}
+            >
+              {person.name}
+              {i < people.length - 1 ? "," : ""}
+            </span>
+          ))}
+        </span>
+      );
+    },
+  },
   { id: "assignerName", accessorKey: "assignerName", header: "Assigned by" },
   {
     id: "priority",
@@ -125,11 +151,16 @@ export function TasksListPage() {
         field: "assigneeId",
         label: "Assignee",
         kind: "combobox",
-        options: (people.data ?? []).map((p) => ({
-          value: p.userId,
-          label: p.name,
-          hint: p.departmentNames.join(", ") || undefined,
-        })),
+        options: [
+          // Planned-ahead work is the reason people open this filter: it is how you
+          // find the tasks waiting to be handed out.
+          { value: UNASSIGNED, label: "Not assigned yet" },
+          ...(people.data ?? []).map((p) => ({
+            value: p.userId,
+            label: p.name,
+            hint: p.departmentNames.join(", ") || undefined,
+          })),
+        ],
       },
       { field: "dueAt", label: "Due", kind: "daterange" },
     ],

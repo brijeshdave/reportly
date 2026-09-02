@@ -23,6 +23,7 @@ import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { AttachmentsPanel } from "@/components/attachments-panel.js";
 import { CommentsPanel } from "@/components/comments-panel.js";
+import { HandoverPanel } from "@/routes/tasks/handover-panel.js";
 import { deleteTask, fetchTask, updateTask } from "@/services/tasks.js";
 
 const STATE_LABEL: Record<TaskState, string> = {
@@ -73,7 +74,9 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
 
   const t = task.data;
   const me = session?.user?.id;
-  const isAssignee = me === t.assigneeId;
+  const onIt = t.assignees.filter((person) => !person.released);
+  const released = t.assignees.filter((person) => person.released);
+  const isAssignee = onIt.some((person) => person.id === me);
   const isAssigner = me === t.assignerId;
   // The server is the authority on this; the flag only avoids rendering a button
   // that would 403. tasks:delete is admin-only, so it stands in for "or an admin".
@@ -91,7 +94,11 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
     <>
       <PageHeader
         title={t.title}
-        description={`Assigned to ${t.assigneeName} by ${t.assignerName}`}
+        description={
+          onIt.length === 0
+            ? `Planned by ${t.assignerName} — nobody on it yet`
+            : `Assigned to ${onIt.map((person) => person.name).join(", ")} by ${t.assignerName}`
+        }
         actions={
           <div className="flex items-center gap-2">
             <Badge tone={STATE_TONE[t.state]}>{STATE_LABEL[t.state]}</Badge>
@@ -202,10 +209,25 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Only {t.assigneeName} can move this task along.
+                {onIt.length === 0
+                  ? "Nobody is on this task yet."
+                  : `Only ${onIt.map((person) => person.name).join(" or ")} can move this task along.`}
               </p>
             )}
           </Card>
+
+          {manages && !closed ? (
+            <HandoverPanel task={t} onDone={invalidate} />
+          ) : released.length > 0 ? (
+            // Everybody else still sees who worked on it before, because that is
+            // who the points will be split with.
+            <Card className="flex flex-col gap-2 p-6">
+              <h2 className="text-sm font-semibold">Also worked on this</h2>
+              <p className="text-sm text-muted-foreground">
+                {released.map((person) => person.name).join(", ")}
+              </p>
+            </Card>
+          ) : null}
 
           <Card className="flex flex-col gap-3 p-6">
             <div className="flex items-center gap-2">

@@ -73,9 +73,10 @@ async function ownerOf(
     const task = await getTask(ownerId, ctx);
     return {
       companyId: task.companyId,
-      // The assignee is who the files belong to: they are doing the work, and the
-      // brief the assigner wrote is theirs to add the photo to.
-      authorId: task.assigneeId,
+      // Whoever is holding it is who the files belong to: they are doing the work,
+      // and the brief the assigner wrote is theirs to add the photo to. A task
+      // nobody has picked up yet belongs to whoever planned it.
+      authorId: task.assignees.find((person) => !person.released)?.id ?? task.assignerId,
       // A task carries no appraisal, so nothing freezes its files.
       locked: false,
     };

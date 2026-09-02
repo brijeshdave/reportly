@@ -27,6 +27,45 @@ export const taskPrioritySchema = z.enum(TASK_PRIORITIES);
 
 const detailText = z.string().trim().max(20000);
 
+/**
+ * One person on a task. A task carries a list of these rather than a single
+ * assignee, because work is planned before it is handed out, split across a team,
+ * and handed over when a shift ends — and one column could say none of that.
+ *
+ * `released` marks somebody who handed the task on. They stay on the list: the
+ * points for a task that changed hands mid-flight are divided between everybody
+ * who worked on it, and a name that has been removed cannot be paid.
+ */
+export const taskAssigneeSchema = z.object({
+  id: z.string(),
+  name: nameSchema,
+  released: z.boolean().default(false),
+});
+export type TaskAssignee = z.infer<typeof taskAssigneeSchema>;
+
+/**
+ * The assignee-filter value meaning "nobody on it" — how you find the work planned
+ * ahead and still waiting to be handed out.
+ *
+ * A word rather than an id, and shared rather than typed twice: the filter control
+ * offers it and the query understands it, and those are in different packages.
+ */
+export const UNASSIGNED = "none";
+
+/** A task changing hands, and who asked for it. */
+export const taskHandoverSchema = z.object({
+  id: uuidSchema,
+  fromUserId: z.string().nullable(),
+  fromUserName: z.string().nullable(),
+  toUserId: z.string().nullable(),
+  toUserName: z.string().nullable(),
+  byUserId: z.string().nullable(),
+  byUserName: z.string().nullable(),
+  reason: z.string().nullable(),
+  handedAt: z.string().datetime(),
+});
+export type TaskHandover = z.infer<typeof taskHandoverSchema>;
+
 /** A report this task produced — the record of the work, linked back to the intent. */
 export const taskReportLinkSchema = z.object({
   id: uuidSchema,
@@ -41,9 +80,8 @@ export const taskSchema = z
     title: nameSchema,
     detail: z.string().nullable(),
 
-    /** Who must do it, and who handed it to them. */
-    assigneeId: z.string(),
-    assigneeName: nameSchema,
+    /** Who must do it — none, one, or several — and who handed it to them. */
+    assignees: z.array(taskAssigneeSchema).default([]),
     assignerId: z.string(),
     assignerName: nameSchema,
 
@@ -61,19 +99,30 @@ export const taskSchema = z
 
     /** The work reports filed against it. Empty until one is. */
     reports: z.array(taskReportLinkSchema),
+
+    /** Every time it changed hands, oldest first. */
+    handovers: z.array(taskHandoverSchema).default([]),
   })
   .merge(timestampsSchema);
 export type Task = z.infer<typeof taskSchema>;
 
 /** A task as listed — the long detail and the linked reports dropped for the table. */
-export const taskRowSchema = taskSchema.omit({ detail: true, reports: true });
+export const taskRowSchema = taskSchema.omit({ detail: true, reports: true, handovers: true });
 export type TaskRow = z.infer<typeof taskRowSchema>;
 
 export const createTaskSchema = z.object({
   title: nameSchema,
   detail: detailText.optional(),
-  /** Yourself, or anyone below you in the reporting line. The server checks. */
-  assigneeId: z.string().min(1),
+  /**
+   * Yourself, or anyone below you in the reporting line. The server checks.
+   *
+   * Empty is allowed and means nobody yet — asked for directly: "allow to create
+   * the task without any assign to so that i can create task in advance for my
+   * team and only assign when i need to based on priority". An unassigned task
+   * sits on its creator's list until it is handed out, and nobody is notified,
+   * because nobody has been given anything.
+   */
+  assigneeIds: z.array(z.string().min(1)).default([]),
   departmentId: uuidSchema.optional(),
   dueAt: z.string().datetime().optional(),
   priority: taskPrioritySchema.default("normal"),
@@ -84,7 +133,8 @@ export type CreateTask = z.infer<typeof createTaskSchema>;
 export const updateTaskSchema = z.object({
   title: nameSchema.optional(),
   detail: detailText.nullable().optional(),
-  assigneeId: z.string().min(1).optional(),
+  /** Replaced wholesale when sent; send [] to leave the task unassigned. */
+  assigneeIds: z.array(z.string().min(1)).optional(),
   departmentId: uuidSchema.nullable().optional(),
   dueAt: z.string().datetime().nullable().optional(),
   priority: taskPrioritySchema.optional(),
@@ -105,5 +155,21 @@ export const taskPrefillSchema = z.object({
   title: z.string(),
   workSummary: z.string().nullable(),
   departmentId: uuidSchema.nullable(),
+  /** Everybody who worked on the task, including anyone who handed it over. The
+   *  entry starts with them on it and the author divides the points between them. */
+  participantIds: z.array(z.string()).default([]),
 });
 export type TaskPrefill = z.infer<typeof taskPrefillSchema>;
+
+/**
+ * Handing a task on mid-flight — "a task was long and the user's shift was
+ * finished and he handed it over to someone else". The outgoing person is released
+ * rather than removed, so both of them are on the entry when the work is finally
+ * written up and the points are divided.
+ */
+export const handoverTaskSchema = z.object({
+  fromUserId: z.string().min(1),
+  toUserId: z.string().min(1),
+  reason: z.string().trim().max(2000).optional(),
+});
+export type HandoverTask = z.infer<typeof handoverTaskSchema>;

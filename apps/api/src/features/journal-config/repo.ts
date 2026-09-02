@@ -30,16 +30,20 @@ export async function getSeverity(id: string): Promise<SeverityRow | null> {
   return row ?? null;
 }
 
-export async function insertSeverity(
-  fields: Pick<SeverityRow, "name" | "orderIndex" | "status">,
-): Promise<SeverityRow> {
+/** The columns a caller may set. `maxPoints` is a string because the column is
+ *  `numeric`, and naming it here is what makes writing it deliberate: it was left
+ *  out of both signatures, so the ceiling somebody typed on the create form was
+ *  accepted by the API, documented in the spec, and silently thrown away. */
+type SeverityFields = Pick<SeverityRow, "name" | "orderIndex" | "status" | "maxPoints">;
+
+export async function insertSeverity(fields: SeverityFields): Promise<SeverityRow> {
   const [row] = await db.insert(severities).values(fields).returning();
   return row!;
 }
 
 export async function updateSeverityRow(
   id: string,
-  fields: Partial<Pick<SeverityRow, "name" | "orderIndex" | "status">>,
+  fields: Partial<SeverityFields>,
 ): Promise<SeverityRow | null> {
   const [row] = await db
     .update(severities)

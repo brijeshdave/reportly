@@ -134,11 +134,11 @@ describe("tasks", () => {
     const created = await inject("POST", "/tasks", lead.cookie, {
       title: "Replace the drive belt on Line 3",
       detail: "Spare is in the east store.",
-      assigneeId: operator.id,
+      assigneeIds: [operator.id],
       priority: "high",
     });
     expect(created.statusCode).toBe(201);
-    expect(created.json().assigneeName).toBe("Sam Operator");
+    expect(created.json().assignees.map((a: { name: string }) => a.name)).toEqual(["Sam Operator"]);
     expect(created.json().assignerName).toBe("Ravi Lead");
     expect(created.json().state).toBe("open");
 
@@ -154,7 +154,7 @@ describe("tasks", () => {
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Inspect the guard on Line 3",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
 
@@ -177,7 +177,7 @@ describe("tasks", () => {
     // The outsider is nobody's manager here, so the operator is not theirs to task.
     const sideways = await inject("POST", "/tasks", outsider.cookie, {
       title: "Do my filing",
-      assigneeId: operator.id,
+      assigneeIds: [operator.id],
     });
     expect(sideways.statusCode).toBe(403);
 
@@ -185,7 +185,7 @@ describe("tasks", () => {
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Replace the drive belt",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
     expect((await inject("GET", `/tasks/${task.id}`, outsider.cookie)).statusCode).toBe(404);
@@ -199,7 +199,7 @@ describe("tasks", () => {
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Replace the drive belt",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
 
@@ -212,7 +212,7 @@ describe("tasks", () => {
 
     // Handing it to somebody else is not.
     const reassign = await inject("PATCH", `/tasks/${task.id}`, operator.cookie, {
-      assigneeId: outsider.id,
+      assigneeIds: [outsider.id],
     });
     expect(reassign.statusCode).toBe(403);
   });
@@ -225,7 +225,7 @@ describe("tasks", () => {
       await inject("POST", "/tasks", lead.cookie, {
         title: "Replace the drive belt on Line 3",
         detail: "Spare is in the east store.",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
 
@@ -266,7 +266,7 @@ describe("tasks", () => {
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Grease the conveyor bearings",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
 
@@ -305,7 +305,7 @@ describe("tasks", () => {
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Replace the drive belt",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
 
@@ -331,7 +331,7 @@ describe("tasks", () => {
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Replace the drive belt",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
 
@@ -352,7 +352,7 @@ describe("tasks", () => {
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Replace the drive belt",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
     const report = (
@@ -397,13 +397,13 @@ describe("tasks", () => {
     const mine = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Check the guard interlock",
-        assigneeId: worker.id,
+        assigneeIds: [worker.id],
       })
     ).json();
     const somebodyElses = (
       await inject("POST", "/tasks", lead.cookie, {
         title: "Grease the bearings",
-        assigneeId: operator.id,
+        assigneeIds: [operator.id],
       })
     ).json();
 
@@ -419,7 +419,7 @@ describe("tasks", () => {
         .statusCode,
     ).toBe(403);
     expect(
-      (await inject("PATCH", `/tasks/${mine.id}`, worker.cookie, { assigneeId: operator.id }))
+      (await inject("PATCH", `/tasks/${mine.id}`, worker.cookie, { assigneeIds: [operator.id] }))
         .statusCode,
     ).toBe(403);
     // 404, not 403: a task outside their line is not theirs to know about, so the
@@ -437,7 +437,7 @@ describe("tasks", () => {
       (
         await inject("POST", "/tasks", worker.cookie, {
           title: "Do this for me",
-          assigneeId: operator.id,
+          assigneeIds: [operator.id],
         })
       ).statusCode,
     ).toBe(403);
@@ -453,11 +453,11 @@ describe("giving yourself work", () => {
 
     const created = await inject("POST", "/tasks", operator.cookie, {
       title: "Tidy the spares shelf",
-      assigneeId: operator.id,
+      assigneeIds: [operator.id],
       priority: "normal",
     });
     expect(created.statusCode).toBe(201);
-    expect(created.json().assigneeId).toBe(operator.id);
+    expect(created.json().assignees.map((a: { id: string }) => a.id)).toEqual([operator.id]);
     expect(created.json().assignerId).toBe(operator.id);
   });
 
@@ -467,7 +467,7 @@ describe("giving yourself work", () => {
 
     const refused = await inject("POST", "/tasks", operator.cookie, {
       title: "You do it",
-      assigneeId: lead.id,
+      assigneeIds: [lead.id],
       priority: "normal",
     });
     expect(refused.statusCode).toBe(403);
@@ -495,7 +495,7 @@ describe("giving yourself work", () => {
 
     const refused = await inject("POST", "/tasks", operator.cookie, {
       title: "Down the line",
-      assigneeId: junior.id,
+      assigneeIds: [junior.id],
       priority: "normal",
     });
     expect(refused.statusCode).toBe(403);
@@ -507,9 +507,197 @@ describe("giving yourself work", () => {
 
     const created = await inject("POST", "/tasks", lead.cookie, {
       title: "Please check the pump",
-      assigneeId: operator.id,
+      assigneeIds: [operator.id],
       priority: "normal",
     });
     expect(created.statusCode).toBe(201);
+  });
+});
+
+/**
+ * The three things a single `assignee_id` column could not say, all reported from
+ * live use on the same day:
+ *
+ *   "tasks needs to be assigned to multiple users"
+ *   "allow to create the task without any assign to so that i can create task in
+ *    advance for my team and only assign when i need to based on priority"
+ *   "allow the tasks to be handover as there may be a case when task was long and
+ *    user's shoft was finished and he handedover it to someone else. In that case
+ *    he need to tell his manager to handover the task and points needs to be
+ *    splited acordingly"
+ */
+describe("who is on a task", () => {
+  it("puts two people on one task, and it lands on both plates", async () => {
+    const admin = await superadmin();
+    const { lead, operator, dept } = await buildChain(admin);
+    const memberGroup = await makeGroup(admin, "Reporters two", "Member");
+    const mate = await makeUser(admin, "Anil Mate", "anil", memberGroup);
+    // The second worker has to be under the same lead, or assigning to them is
+    // refused — which is the rule this test must not accidentally bypass.
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: lead.id, rank: "lead" },
+        { userId: operator.id, rank: "member", reportsToId: lead.id },
+        { userId: mate.id, rank: "member", reportsToId: lead.id },
+      ],
+    });
+
+    const created = await inject("POST", "/tasks", lead.cookie, {
+      title: "Strip and rebuild the gearbox",
+      assigneeIds: [operator.id, mate.id],
+    });
+    expect(created.statusCode).toBe(201);
+    expect(
+      created
+        .json()
+        .assignees.map((a: { name: string }) => a.name)
+        .sort(),
+    ).toEqual(["Anil Mate", "Sam Operator"]);
+
+    // Both see it, and neither sees it twice — the join must not multiply the row.
+    for (const who of [operator, mate]) {
+      const mine = await inject("GET", "/tasks", who.cookie);
+      expect(mine.json().data).toHaveLength(1);
+      expect(mine.json().total).toBe(1);
+    }
+  });
+
+  it("creates a task with nobody on it, tells nobody, and still shows it to its author", async () => {
+    const admin = await superadmin();
+    const { lead } = await buildChain(admin);
+
+    const created = await inject("POST", "/tasks", lead.cookie, {
+      title: "Order the replacement seals",
+      assigneeIds: [],
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().assignees).toEqual([]);
+
+    // Planned work that vanished on save would be worse than not having the feature.
+    const mine = await inject("GET", "/tasks", lead.cookie);
+    expect(mine.json().data.map((t: { id: string }) => t.id)).toContain(created.json().id);
+
+    // Nobody was given anything, so nobody was told anything.
+    const bell = await inject("GET", "/notifications", lead.cookie);
+    expect(
+      (bell.json().data ?? []).filter((n: { type: string }) => n.type === "task.assigned"),
+    ).toHaveLength(0);
+  });
+
+  it("finds the unassigned ones with the assignee filter", async () => {
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    await inject("POST", "/tasks", lead.cookie, {
+      title: "Planned, nobody on it",
+      assigneeIds: [],
+    });
+    await inject("POST", "/tasks", lead.cookie, {
+      title: "Handed out",
+      assigneeIds: [operator.id],
+    });
+
+    const filter = encodeURIComponent(
+      JSON.stringify([{ field: "assigneeId", op: "eq", value: "none" }]),
+    );
+    const res = await inject("GET", `/tasks?filters=${filter}`, lead.cookie);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.map((t: { title: string }) => t.title)).toEqual([
+      "Planned, nobody on it",
+    ]);
+  });
+
+  it("hands a task on, keeping the first person on it for the points", async () => {
+    const admin = await superadmin();
+    const { lead, operator, dept } = await buildChain(admin);
+    const memberGroup = await makeGroup(admin, "Night shift", "Member");
+    const relief = await makeUser(admin, "Kiran Relief", "kiran", memberGroup);
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: lead.id, rank: "lead" },
+        { userId: operator.id, rank: "member", reportsToId: lead.id },
+        { userId: relief.id, rank: "member", reportsToId: lead.id },
+      ],
+    });
+
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Rewire the panel",
+        assigneeIds: [operator.id],
+      })
+    ).json();
+
+    // The worker asks; the manager acts. The worker doing it themselves is refused.
+    const bySelf = await inject("POST", `/tasks/${task.id}/handover`, operator.cookie, {
+      fromUserId: operator.id,
+      toUserId: relief.id,
+    });
+    expect(bySelf.statusCode).toBe(403);
+
+    const done = await inject("POST", `/tasks/${task.id}/handover`, lead.cookie, {
+      fromUserId: operator.id,
+      toUserId: relief.id,
+      reason: "Shift ended with the panel still open",
+    });
+    expect(done.statusCode).toBe(200);
+
+    // The point of the whole thing: the first person is released, not removed.
+    const people = done.json().assignees as { id: string; released: boolean }[];
+    expect(people.find((p) => p.id === operator.id)?.released).toBe(true);
+    expect(people.find((p) => p.id === relief.id)?.released).toBe(false);
+    expect(done.json().handovers).toHaveLength(1);
+    expect(done.json().handovers[0].reason).toBe("Shift ended with the panel still open");
+
+    // It is off the first worker's plate but still theirs to read.
+    expect((await inject("GET", `/tasks/${task.id}`, operator.cookie)).statusCode).toBe(200);
+    const relieved = await inject("GET", "/tasks", relief.cookie);
+    expect(relieved.json().data.map((t: { id: string }) => t.id)).toContain(task.id);
+  });
+
+  it("puts everybody who worked the task on the entry that logs it", async () => {
+    // "author devides it" — the author sets each share, so the people have to be
+    // there to divide between. Retyping the list from memory is how somebody who
+    // handed over at the end of a shift silently gets nothing.
+    const admin = await superadmin();
+    const { lead, operator, dept } = await buildChain(admin);
+    const memberGroup = await makeGroup(admin, "Late shift", "Member");
+    const relief = await makeUser(admin, "Meera Relief", "meera", memberGroup);
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: lead.id, rank: "lead" },
+        { userId: operator.id, rank: "member", reportsToId: lead.id },
+        { userId: relief.id, rank: "member", reportsToId: lead.id },
+      ],
+    });
+
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Change the bearing",
+        assigneeIds: [operator.id],
+      })
+    ).json();
+    await inject("POST", `/tasks/${task.id}/handover`, lead.cookie, {
+      fromUserId: operator.id,
+      toUserId: relief.id,
+    });
+
+    // The person who finished it writes it up.
+    const prefill = await inject("GET", `/tasks/${task.id}/prefill`, relief.cookie);
+    expect(prefill.statusCode).toBe(200);
+    expect((prefill.json().participantIds as string[]).sort()).toEqual(
+      [operator.id, relief.id].sort(),
+    );
+
+    const entry = await inject("POST", "/journal", relief.cookie, {
+      kind: "issue",
+      state: "draft",
+      title: "Bearing changed",
+      taskId: task.id,
+    });
+    expect(entry.statusCode).toBe(201);
+
+    const people = (
+      await inject("GET", `/journal/${entry.json().id}/participants`, relief.cookie)
+    ).json() as { userId: string }[];
+    expect(people.map((p) => p.userId).sort()).toEqual([operator.id, relief.id].sort());
   });
 });
