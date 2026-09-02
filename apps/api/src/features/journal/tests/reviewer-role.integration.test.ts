@@ -128,6 +128,13 @@ async function chainWith(roleName: string, severityId?: string) {
   expect(filed.statusCode).toBe(201);
   const reportId = filed.json().id as string;
 
+  // Resolving needs the work written down, and only somebody who worked the entry
+  // may write it — so the author logs it, not the admin moving the status.
+  const logged = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+    summary: "Replaced the belt",
+  });
+  expect(logged.statusCode).toBe(201);
+
   // Points are for finished work, so move it to a terminal status.
   const statuses = (await inject("GET", "/journal-statuses", admin)).json();
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");

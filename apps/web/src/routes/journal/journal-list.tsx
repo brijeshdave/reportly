@@ -17,7 +17,7 @@ import { DataTable, type TableColumn } from "@/components/data-table/data-table.
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { KindBadge, StateBadge, StatusBadge } from "@/components/report-badges.js";
 import { TagList } from "@/components/tag-chip.js";
-import { Button, PageHeader } from "@/components/ui/primitives.js";
+import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { fetchCategories, fetchSeverities, fetchStatuses } from "@/services/journal-config.js";
@@ -60,6 +60,20 @@ const columns: TableColumn<JournalEntryRow>[] = [
     accessorKey: "assigneeName",
     header: "Assignee",
     cell: ({ row }) => row.original.assigneeName ?? "—",
+  },
+  {
+    // Whether a manager has scored it — not what they scored, which stays blind
+    // upward. Asked for because the only way to tell was to open each entry.
+    id: "reviewed",
+    accessorKey: "reviewed",
+    header: "Review",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.reviewed ? (
+        <Badge tone="success">Reviewed</Badge>
+      ) : (
+        <Badge tone="outline">Waiting</Badge>
+      ),
   },
   {
     id: "severityName",

@@ -168,6 +168,7 @@ function serialize(
     statusName: row.statusName,
     statusGroup: row.statusGroup,
     statusIsTerminal: row.statusIsTerminal ?? false,
+    reviewed: row.reviewed ?? false,
     reportDate: row.reportDate.toISOString(),
     occurredAt: iso(row.occurredAt),
     startedAt: iso(row.startedAt),

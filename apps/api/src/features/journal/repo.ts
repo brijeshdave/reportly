@@ -42,6 +42,8 @@ export interface JournalEntryRowRaw {
   statusName: string | null;
   statusGroup: string | null;
   statusIsTerminal: boolean | null;
+  /** Whether a manager has scored it. Not the score — only that it happened. */
+  reviewed: boolean;
   reportDate: Date;
   occurredAt: Date | null;
   startedAt: Date | null;
@@ -94,6 +96,21 @@ const cols = {
   statusName: journalStatuses.name,
   statusGroup: journalStatuses.group,
   statusIsTerminal: journalStatuses.isTerminal,
+  /**
+   * Whether a manager has scored this yet.
+   *
+   * Not the score — that stays blind upward — only whether the review has
+   * happened. Asked for from use: "need a column to directly see if the review is
+   * done or not", because the only way to tell was to open each entry.
+   *
+   * A correlated EXISTS rather than a join: a join to `journal_scores` multiplies
+   * the row by however many people were scored on it, which would quietly double
+   * entries in the list and in its count.
+   */
+  reviewed: sql<boolean>`EXISTS (
+    SELECT 1 FROM journal_scores s
+    WHERE s.report_id = ${journalEntries.id} AND s.tier = 'review'
+  )`,
   reportDate: journalEntries.reportDate,
   occurredAt: journalEntries.occurredAt,
   startedAt: journalEntries.startedAt,

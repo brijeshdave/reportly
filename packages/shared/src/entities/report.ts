@@ -88,6 +88,14 @@ export const journalEntrySchema = z
      * is the flag the workflow itself keeps rather than a name to match on.
      */
     statusIsTerminal: z.boolean(),
+    /**
+     * Whether a manager has reviewed it.
+     *
+     * Not the review's number — scoring stays blind upward — only whether it has
+     * happened, which is a fact the author is entitled to and previously had to
+     * open every entry to learn.
+     */
+    reviewed: z.boolean().default(false),
 
     reportDate: z.string(),
     /** When an issue actually happened (may predate the report). */

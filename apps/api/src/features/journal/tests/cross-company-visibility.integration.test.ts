@@ -159,6 +159,8 @@ describe("a reporting line that bridges two companies", () => {
     const filed = await inject("POST", "/journal", junior.cookie, companyB.id, {
       kind: "work",
       title: "Company B internal work",
+      // Submitted entries carry a severity now, whatever their kind.
+      severityId: (await inject("GET", "/severities", admin, companyB.id)).json()[0].id,
       summary: "Nothing to do with company A",
       reportDate: new Date().toISOString().slice(0, 10),
       state: "submitted",
@@ -307,6 +309,8 @@ describe("a reporting line that bridges two companies", () => {
     const filed = await inject("POST", "/journal", junior.cookie, companyB.id, {
       kind: "work",
       title: "Company B work worth points",
+      // Submitted entries carry a severity now, whatever their kind.
+      severityId: (await inject("GET", "/severities", admin, companyB.id)).json()[0].id,
       summary: "In company B",
       reportDate: new Date().toISOString().slice(0, 10),
       state: "submitted",

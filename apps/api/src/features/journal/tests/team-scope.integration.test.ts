@@ -382,3 +382,65 @@ describe("what an entry must have", () => {
     ).toBe(200);
   });
 });
+
+describe("whether the review is done", () => {
+  it("says so on the entry, without saying what it was", async () => {
+    // Asked for from use: "need a column to directly see if the review is done or
+    // not" — the only way to tell was to open every entry.
+    const admin = await superadmin();
+    const { hod, manager, author, critical } = await buildChain(admin);
+    const id = await file(author.cookie, "Scored later", critical.id);
+
+    await inject("POST", `/journal/${id}/work`, author.cookie, { summary: "Fixed it" });
+    const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
+      id: string;
+      group: string;
+    }[];
+    await inject("PATCH", `/journal/${id}/status`, admin, {
+      statusId: statuses.find((s) => s.group === "resolved")!.id,
+    });
+
+    const before = (await inject("GET", "/journal", author.cookie)).json().data as {
+      id: string;
+      reviewed: boolean;
+    }[];
+    expect(before.find((row) => row.id === id)?.reviewed).toBe(false);
+
+    // The author splits first, then the manager reviews.
+    await inject("PUT", `/journal/${id}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 2 }],
+    });
+    await inject("PUT", `/journal/${id}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
+
+    const after = (await inject("GET", "/journal", author.cookie)).json().data as {
+      id: string;
+      reviewed: boolean;
+    }[];
+    const row = after.find((entry) => entry.id === id);
+    expect(row?.reviewed).toBe(true);
+    // The flag says it happened; the number is still the manager's business.
+    expect(JSON.stringify(row)).not.toContain('"review"');
+
+    // And the HOD above sees the same fact.
+    const asHod = (await inject("GET", "/journal", hod.cookie)).json().data as {
+      id: string;
+      reviewed: boolean;
+    }[];
+    expect(asHod.find((entry) => entry.id === id)?.reviewed).toBe(true);
+  });
+
+  it("counts the page correctly with the flag in the select", async () => {
+    // The flag is a correlated EXISTS rather than a join, because joining
+    // journal_scores multiplies the row by everybody scored on it — which would
+    // double entries in the list and in its total.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    await file(author.cookie, "Only once", critical.id);
+
+    const res = (await inject("GET", "/journal", author.cookie)).json();
+    expect(res.total).toBe(res.data.length);
+    expect(res.data.filter((r: { title: string }) => r.title === "Only once")).toHaveLength(1);
+  });
+});
