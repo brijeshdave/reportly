@@ -4,7 +4,12 @@
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import multipart from "@fastify/multipart";
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import Fastify, {
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type RawServerDefault,
+} from "fastify";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { registerAuth } from "@/core/auth/plugin.js";
 import { registerDocs } from "@/core/docs.js";
@@ -68,7 +73,12 @@ export const API_PREFIX = "/api/v1";
 const BODY_LIMIT_BYTES = 1_048_576; // 1 MiB
 
 export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({
+  // The server generic is named rather than inferred. Fastify 5.12 reordered its
+  // overloads, and with a `loggerInstance` supplied TypeScript began resolving the
+  // HTTP/2 one — so every `app` passed to a route module stopped being assignable
+  // to a plain FastifyInstance. This is a plain HTTP server behind a proxy; saying
+  // so is both true and cheaper than casting at each call site.
+  const app = Fastify<RawServerDefault, IncomingMessage, ServerResponse>({
     // Cast keeps the app's FastifyInstance generic on FastifyBaseLogger so route
     // modules (which take a plain FastifyInstance) stay assignable.
     loggerInstance: logger as FastifyBaseLogger,
@@ -79,7 +89,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     // forwarded header. Every per-IP rate limit and every audit IP depends on this
     // being right. It defaults to trusting nobody, because trusting a spoofable
     // header on a direct listener is worse than seeing the proxy — see TRUST_PROXY.
-    trustProxy,
+    // A hop count is a legal value — proxy-addr takes a number and Fastify passes
+    // it straight through — but 5.12's type dropped `number` from the union. The
+    // cast keeps TRUST_PROXY=2 working, which is what the production box is set to.
+    trustProxy: trustProxy as Exclude<typeof trustProxy, number> | boolean,
   });
 
   await app.register(helmet);
