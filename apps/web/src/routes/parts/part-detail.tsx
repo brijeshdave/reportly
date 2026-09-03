@@ -25,7 +25,7 @@ import {
 } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, PackageCheck, PackageX, Undo2, Wrench } from "lucide-react";
+import { ArrowLeft, PackageCheck, PackageX, Pencil, Undo2, Wrench } from "lucide-react";
 import { useState } from "react";
 
 import { Can } from "@/components/can.js";
@@ -675,6 +675,25 @@ export function PartDetailPage({ partId }: { partId: string }) {
     onSuccess: invalidate,
   });
 
+  /**
+   * Correct the number written on the part.
+   *
+   * Asked for alongside the site: "cartridge location and number can be available
+   * to edit from HOD or the one with proper permissions". A mistyped identifier was
+   * permanent — the API has always accepted the change, and no screen ever offered
+   * it. Behind `parts:manage`, like the site, because the identifier is how the
+   * person at the printer and the record agree they mean the same object.
+   */
+  const [editingId, setEditingId] = useState(false);
+  const [draftId, setDraftId] = useState("");
+  const rename = useMutation({
+    mutationFn: (identifier: string) => updatePart(partId, { identifier }),
+    onSuccess: async () => {
+      await invalidate();
+      setEditingId(false);
+    },
+  });
+
   const restock = useMutation({
     // Keeps the shelf it is already on; the Site control changes that.
     mutationFn: () => {
@@ -782,6 +801,22 @@ export function PartDetailPage({ partId }: { partId: string }) {
               </>
             ) : null}
 
+            {p.status !== "scrapped" ? (
+              <Can permission={PERMISSIONS.PARTS_MANAGE}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setDraftId(p.identifier);
+                    setEditingId((open) => !open);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit number
+                </Button>
+              </Can>
+            ) : null}
+
             {p.status !== "scrapped" && p.status !== "installed" ? (
               <Can permission={PERMISSIONS.PARTS_MANAGE}>
                 <Button variant="destructive" size="sm" onClick={() => setConfirmScrap(true)}>
@@ -802,15 +837,18 @@ export function PartDetailPage({ partId }: { partId: string }) {
           {p.deviceName ? `In ${p.deviceName}` : p.locationName ? `At ${p.locationName}` : "—"}
         </span>
 
-        {/* Change where it is kept.
-            The site decides who can see the cartridge, and until now the only ways
-            to set one were registering a new cartridge or booking one back in from
-            service — so a register full of ready cartridges had no path at all, and
-            every one of them read "Not placed" for ever. Hidden while installed:
-            the placement already says where it is, and a second answer beside it
-            would contradict the first. */}
-        {p.status !== "installed" && p.status !== "scrapped" ? (
+        {/* Which plant's stock this is.
+            Not where the object is standing — the placement answers that, and the
+            two never contradict each other. They were one field once, so installing
+            a cartridge wiped its site and setting a site was refused on anything
+            installed; neither could be corrected after the other. It is shown while
+            installed for that reason, and hidden only once the cartridge is
+            scrapped and nothing about it can be edited. */}
+        {p.status !== "scrapped" ? (
           <Can permission={PERMISSIONS.PARTS_MANAGE}>
+            {/* Labelled, because beside "In HQ Printer 1" a bare dropdown reads as
+                the printer's location rather than the cartridge's own site. */}
+            <span className="text-muted-foreground">Site</span>
             <Select
               aria-label="Site"
               className="h-8 w-44"
@@ -830,6 +868,32 @@ export function PartDetailPage({ partId }: { partId: string }) {
       </div>
 
       {move.error ? <ErrorAlert error={move.error} /> : null}
+      {rename.error ? <ErrorAlert error={rename.error} /> : null}
+
+      {editingId ? (
+        <Card className="flex flex-wrap items-end gap-2 p-3">
+          <Field label="Identifier" hint="The number written on the part itself.">
+            {(props) => (
+              <Input
+                {...props}
+                className="w-56"
+                value={draftId}
+                onChange={(event) => setDraftId(event.target.value)}
+              />
+            )}
+          </Field>
+          <Button
+            size="sm"
+            disabled={!draftId.trim() || draftId.trim() === p.identifier || rename.isPending}
+            onClick={() => rename.mutate(draftId.trim())}
+          >
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditingId(false)}>
+            Cancel
+          </Button>
+        </Card>
+      ) : null}
 
       {p.notes ? <Card className="p-3 text-sm">{p.notes}</Card> : null}
 

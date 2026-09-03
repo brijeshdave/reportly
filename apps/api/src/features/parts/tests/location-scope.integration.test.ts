@@ -223,3 +223,92 @@ describe("the cartridge register, by site", () => {
     expect(rows.map((row) => row.identifier)).toContain("CART-NOWHERE");
   });
 });
+
+/**
+ * The site is which plant's stock a cartridge is — not where the object happens to
+ * be standing this week. The placement answers that, and the two never contradict
+ * each other.
+ *
+ * Reported from production, after the first version shipped them as one field:
+ *
+ *   "currently cartridge location only allows to change once. When i set it to
+ *    Kosamba it clears existing install device location and when again install it
+ *    on device it clears site location. This should be two different things."
+ *   "also it should be installed on devices at that locations only."
+ */
+describe("a cartridge's site and the machine it is in", () => {
+  it("keeps the site when the cartridge is installed", async () => {
+    const { plantA, printerA, partA } = await twoPlants();
+
+    const installed = await inject("POST", `/parts/${partA.id}/deploy`, admin, {
+      deviceId: printerA.id,
+    });
+    expect(installed.statusCode).toBe(200);
+
+    // It was Plant A's stock before it went into the printer, and it still is.
+    const after = (await inject("GET", `/parts/${partA.id}`, admin)).json();
+    expect(after.status).toBe("installed");
+    expect(after.locationId).toBe(plantA.id);
+  });
+
+  it("still shows an installed cartridge only to its own site", async () => {
+    // The sharp end of the old behaviour: installing cleared the site, an unplaced
+    // cartridge is deliberately visible to everybody, so scoping stopped applying
+    // the moment a cartridge went into a machine.
+    const { plantA, printerB, partB } = await twoPlants();
+    await inject("POST", `/parts/${partB.id}/deploy`, admin, { deviceId: printerB.id });
+
+    const tech = await technicianAt(plantA.id, "gtech");
+    const rows = (await inject("GET", "/parts", tech.cookie)).json().data as {
+      identifier: string;
+    }[];
+    expect(rows.map((row) => row.identifier)).not.toContain("CART-B");
+  });
+
+  it("lets the site be corrected while the cartridge is installed", async () => {
+    // It could not be, so a cartridge installed at the wrong site was stuck there:
+    // the edit refused while installed, and booking it back in was the only way.
+    const { plantB, printerA, partA } = await twoPlants();
+    await inject("POST", `/parts/${partA.id}/deploy`, admin, { deviceId: printerA.id });
+
+    const moved = await inject("PATCH", `/parts/${partA.id}`, admin, { locationId: plantB.id });
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json().locationId).toBe(plantB.id);
+    // And it is still in the machine — the two answers do not overwrite each other.
+    expect(moved.json().status).toBe("installed");
+  });
+
+  it("offers only the machines at the cartridge's own site", async () => {
+    const { partA } = await twoPlants();
+    const devices = (await inject("GET", `/parts/${partA.id}/fitting-devices`, admin)).json();
+    // The superadmin reaches both plants, so this is the cartridge's site narrowing
+    // the list, not the caller's.
+    expect(devices.map((d: { name: string }) => d.name)).toEqual(["Printer A"]);
+  });
+
+  it("refuses to install a cartridge into another site's machine", async () => {
+    const { printerB, partA } = await twoPlants();
+    const res = await inject("POST", `/parts/${partA.id}/deploy`, admin, { deviceId: printerB.id });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/belongs to another site/);
+  });
+
+  it("gives unplaced stock the site of the machine it goes into", async () => {
+    // How the cartridges registered before sites existed get placed by being used.
+    const { plantA, printerA, model } = await twoPlants();
+    const loose = (
+      await inject("POST", "/parts", admin, {
+        identifier: "CART-LOOSE",
+        partModelId: model.id,
+        status: "ready",
+      })
+    ).json();
+    expect(loose.locationId).toBeNull();
+
+    const installed = await inject("POST", `/parts/${loose.id}/deploy`, admin, {
+      deviceId: printerA.id,
+    });
+    expect(installed.statusCode).toBe(200);
+    expect(installed.json().locationId).toBe(plantA.id);
+  });
+});

@@ -165,12 +165,13 @@ export async function updatePart(
   await repo.updatePart(id, companyId, {
     ...(input.identifier !== undefined ? { identifier: input.identifier } : {}),
     ...(input.notes !== undefined ? { notes: input.notes ?? null } : {}),
-    // Where it is stored only means anything while it is on a shelf. Setting it
-    // on an installed part would put a second, contradictory answer next to the
-    // placement that already says where it is.
-    ...(input.locationId !== undefined && row.status !== "installed"
-      ? { locationId: input.locationId ?? null }
-      : {}),
+    // The site is which plant's stock this cartridge is, not where the object is
+    // standing this week — the placement answers that, and the two never
+    // contradict each other. So it stays editable while the cartridge is installed:
+    // treating them as one field meant setting a site cleared the placement, and
+    // installing cleared the site, so neither could be corrected once the other
+    // was set.
+    ...(input.locationId !== undefined ? { locationId: input.locationId ?? null } : {}),
   });
   return getPart(id, companyId, ctx);
 }
@@ -213,6 +214,18 @@ export async function deployPart(
   );
   if (!device) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Device not found");
 
+  // The picker not offering it is not enough — the id can still be sent. A 400
+  // rather than a 404 because the caller may see both the cartridge and the
+  // machine perfectly well; what they may not do is put one in the other.
+  if (part.locationId && device.locationId !== part.locationId) {
+    throw new AppError(
+      400,
+      ERROR_CODES.VALIDATION_ERROR,
+      `${part.identifier} belongs to another site, so it cannot go into ${device.name}. Move it to this site first.`,
+      { partId: part.id, deviceId: device.id },
+    );
+  }
+
   const fits = await compatibilityFor(part.partModelId);
   if (!device.typeId || !fits.includes(device.typeId)) {
     throw new AppError(
@@ -233,9 +246,18 @@ export async function deployPart(
     // is standing in front of the machine with the part in their hand.
     meterStart: input.meterStart ?? null,
   });
-  // The placement now says where it is, so the stock location is cleared rather
-  // than left behind to contradict it.
-  await repo.updatePart(id, companyId, { status: "installed", locationId: null });
+  // The site is left exactly as it was. It says which plant's stock this is, which
+  // fitting it into one of that plant's printers does not change — and clearing it
+  // made every installed cartridge unplaced, which is to say visible to every site
+  // in the company.
+  //
+  // The one exception fills a blank rather than overwriting an answer: stock that
+  // never had a site takes the site of the machine it goes into, since that is
+  // demonstrably whose it is now.
+  await repo.updatePart(id, companyId, {
+    status: "installed",
+    ...(part.locationId ? {} : { locationId: device.locationId }),
+  });
   return getPart(id, companyId, ctx);
 }
 
@@ -349,7 +371,10 @@ export async function scrapPart(id: string, companyId: string, ctx: AuthContext)
   }
   if (part.status === "scrapped") return getPart(id, companyId, ctx);
 
-  await repo.updatePart(id, companyId, { status: "scrapped", locationId: null });
+  // Scrapped stock still belonged to a plant, and that is who should still be able
+  // to find it in the register. Clearing the site would make it unplaced, which
+  // means visible to everybody.
+  await repo.updatePart(id, companyId, { status: "scrapped" });
   return getPart(id, companyId, ctx);
 }
 
@@ -369,6 +394,10 @@ export async function fittingDevices(
     part.partModelId,
     companyId,
     withLocationsNullable(ctx, devicesTable.locationId),
+    // Its own plant's machines only — "it should be installed on devices at that
+    // locations only". Stock that has no site yet may still go anywhere the caller
+    // reaches, and takes the site of the machine it goes into.
+    part.locationId,
   );
 }
 

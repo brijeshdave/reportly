@@ -169,6 +169,13 @@
       "when": 1786791600014,
       "tag": "0023_org_admin_reads_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786791600015,
+      "tag": "0024_parts_keep_their_site",
+      "breakpoints": true
     }
   ]
 }

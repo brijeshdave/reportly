@@ -316,6 +316,10 @@ export async function devicesFittingModel(
   partModelId: string,
   companyId: string,
   locationScope: SQL | undefined = undefined,
+  // The cartridge's own site, when it has one: stock belonging to a plant goes into
+  // that plant's machines and no others. Null means unplaced stock, which may still
+  // go anywhere the caller can reach — and adopts the site of whatever it goes into.
+  atLocationId: string | null = null,
 ): Promise<{ id: string; name: string; typeName: string | null }[]> {
   return db
     .select({ id: devices.id, name: devices.name, typeName: deviceTypes.name })
@@ -326,6 +330,7 @@ export async function devicesFittingModel(
       and(
         eq(devices.companyId, companyId),
         eq(partModelCompatibility.partModelId, partModelId),
+        atLocationId ? eq(devices.locationId, atLocationId) : undefined,
         locationScope,
       ),
     )
@@ -344,9 +349,15 @@ export async function deviceTypeOf(
   deviceId: string,
   companyId: string,
   locationScope: SQL | undefined = undefined,
-): Promise<{ id: string; name: string; typeId: string | null } | null> {
+): Promise<{ id: string; name: string; typeId: string | null; locationId: string | null } | null> {
   const [row] = await db
-    .select({ id: devices.id, name: devices.name, typeId: devices.typeId })
+    .select({
+      id: devices.id,
+      name: devices.name,
+      typeId: devices.typeId,
+      // The site, because a cartridge may only go into a machine at its own plant.
+      locationId: devices.locationId,
+    })
     .from(devices)
     .where(and(eq(devices.id, deviceId), eq(devices.companyId, companyId), locationScope));
   return row ?? null;

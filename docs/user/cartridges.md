@@ -126,15 +126,38 @@ filled in for you. You can only register stock into your own sites — sending
 another site's id is refused rather than quietly filtered, because it would put a
 record where the person who made it cannot look.
 
-### Setting the site on a cartridge you already have
+### The site is not the machine
 
-Open the cartridge and use the **Site** control on its page. It is there for
-anything not currently installed or scrapped, and needs `parts:manage`.
+They are two different things, and one never overwrites the other:
+
+- **The site** is whose stock the cartridge is — which plant owns it. It decides
+  who can see it, and it does not change when the cartridge goes into a printer.
+- **The placement** is which machine it is in right now, and the history of every
+  machine it has been in.
+
+**A cartridge can only go into a machine at its own site.** The install picker
+offers that plant's printers and no others, and sending another site's machine id
+by hand is refused. Move the cartridge to the other site first if that is really
+what you want.
+
+### Setting or correcting the site
+
+Open the cartridge and use the **Site** control on its page. It needs
+`parts:manage`, and it works **whether or not the cartridge is installed** — a
+cartridge booked in at the wrong plant can simply be corrected.
 
 This is how the cartridges you registered before sites existed get placed: they
 read **Not placed** until you set one, and until then they are visible to everyone.
-Installing a cartridge does not change its site — the site is where the stock
-belongs, not where it happens to be fitted this week.
+Stock with no site yet may go into any machine you can reach, and **takes that
+machine's site when you install it** — so unplaced cartridges place themselves as
+they are used.
+
+### Correcting the number
+
+**Edit number** on the cartridge page changes the identifier, behind the same
+`parts:manage`. The number is how the person standing at the printer and the record
+in Reportly agree they mean the same object, so a typo in it is worth fixing rather
+than living with.
 
 ---
 
