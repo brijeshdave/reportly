@@ -93,8 +93,20 @@ oversights:
 
 A table like every other register in Reportly — the server pages, sorts and
 filters it. Filter by **status** for the workshop queue, by **model** for one
-kind of cartridge, or search the identifier. A part past its rated cycles is
-flagged in the Cycles column.
+kind of cartridge, by **Site**, or search the identifier. A part past its rated
+cycles is flagged in the Cycles column.
+
+### Cartridges belong to a site
+
+**You see the stock at your own sites, and nobody else's.** The register, the
+detail page and the install picker are all scoped the same way, so a technician at
+one plant is never offered a printer or a cartridge at another. Asking for one
+outside your sites answers _not found_ rather than _forbidden_ — the register
+already declines to admit it exists, so the detail page says the same.
+
+**A cartridge with no site set stays visible to everybody.** Every cartridge
+registered before sites existed has none, and hiding those would empty the register
+at a stroke. They show as **Not placed** until somebody sets one.
 
 ---
 
@@ -108,6 +120,21 @@ Reportly agree they are talking about the same object.
 
 Every part points at a **model**, which is what carries the compatibility list and
 the rated cycle count. Add models first, under **Cartridge setup**.
+
+The **Site** is where the cartridge lives. If you work at exactly one site it is
+filled in for you. You can only register stock into your own sites — sending
+another site's id is refused rather than quietly filtered, because it would put a
+record where the person who made it cannot look.
+
+### Setting the site on a cartridge you already have
+
+Open the cartridge and use the **Site** control on its page. It is there for
+anything not currently installed or scrapped, and needs `parts:manage`.
+
+This is how the cartridges you registered before sites existed get placed: they
+read **Not placed** until you set one, and until then they are visible to everyone.
+Installing a cartridge does not change its site — the site is where the stock
+belongs, not where it happens to be fitted this week.
 
 ---
 

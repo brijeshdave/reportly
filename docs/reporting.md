@@ -179,6 +179,14 @@ just shows a **Done** badge. The states below are for issues.
 | ------------ | ----------------- |
 | **Resolved** | The work is done. |
 
+> **Nothing is resolved with an empty work log.** Moving an entry to a finished
+> state needs at least one entry in its work timeline, so an issue cannot be closed
+> without a record of what was actually done — that record is what the points are
+> scored against, and an entry closed with none cannot be scored at all. Log the
+> work first, then resolve it. The states that end a report **without** it being
+> fixed — Duplicate, Not an issue, Rejected — do not ask for one, because no work
+> was done.
+
 **Three ways a report ends without being fixed:**
 
 | Status           | Use it when                                                                                                                                                                                                                  |

@@ -750,6 +750,11 @@ Every one of those is an ordinary filter, so widen or clear them freely:
   does not show the score (scoring stays blind upward), only whether anybody has
   looked yet.
 
+The table has a **Reviewed** column saying the same thing per row, so a list of
+thirty entries shows at a glance which ones are still waiting rather than making you
+filter twice to find out. Like the filter, it says only _whether_ a manager has
+scored it — never what they gave.
+
 **My day** is its own page under Work now, rather than the journal's first tab, so
 opening the journal takes you to the entries.
 
