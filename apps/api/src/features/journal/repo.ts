@@ -2,7 +2,7 @@
 // JournalEntry repository — the only code touching the reports table. Reads resolve the
 // author, category, department, severity and status names in one join so a list or
 // a detail never needs a second round trip.
-import { type SQL, and, desc, eq, gte, ilike, inArray, lt, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gte, ilike, inArray, lt, notInArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
@@ -44,6 +44,7 @@ export interface JournalEntryRowRaw {
   statusIsTerminal: boolean | null;
   /** Whether a manager has scored it. Not the score — only that it happened. */
   reviewed: boolean;
+  reviewState: string;
   reportDate: Date;
   occurredAt: Date | null;
   startedAt: Date | null;
@@ -73,6 +74,24 @@ export interface JournalEntryRowRaw {
 const author = alias(users, "author");
 const assignee = alias(users, "assignee");
 const rejecter = alias(users, "rejecter");
+
+/**
+ * What a reviewer can actually act on.
+ *
+ * The same three conditions `setScores` refuses without — submitted, not rejected,
+ * and resolved rather than merely finished. Written once and used by both the
+ * `reviewState` column and the "not yet reviewed" filter, because the version that
+ * only checked `state = 'submitted'` put open and rejected entries in managers'
+ * queues and marked them "Waiting" in the table.
+ */
+const READY_FOR_REVIEW = sql`(
+  ${journalEntries.state} = 'submitted'
+  AND ${journalEntries.rejectedAt} IS NULL
+  AND EXISTS (
+    SELECT 1 FROM journal_statuses st
+    WHERE st.id = ${journalEntries.statusId} AND st."group" = 'resolved'
+  )
+)`;
 
 const cols = {
   id: journalEntries.id,
@@ -111,6 +130,19 @@ const cols = {
     SELECT 1 FROM journal_scores s
     WHERE s.report_id = ${journalEntries.id} AND s.tier = 'review'
   )`,
+  /**
+   * Three states, not two: reviewed, waiting for a reviewer, or not theirs to act
+   * on yet. `waiting` is the same three conditions `setScores` refuses without, so
+   * the badge and the server cannot disagree about what is reviewable.
+   */
+  reviewState: sql<string>`CASE
+    WHEN EXISTS (
+      SELECT 1 FROM journal_scores s
+      WHERE s.report_id = ${journalEntries.id} AND s.tier = 'review'
+    ) THEN 'reviewed'
+    WHEN ${READY_FOR_REVIEW} THEN 'waiting'
+    ELSE 'not_ready'
+  END`,
   reportDate: journalEntries.reportDate,
   occurredAt: journalEntries.occurredAt,
   startedAt: journalEntries.startedAt,
@@ -255,17 +287,29 @@ function tagScopeFor(query: ResolvedListQuery): SQL | undefined {
  * and is exactly what people were asking each other in person.
  */
 function awaitingReviewScope(query: ResolvedListQuery): SQL | undefined {
+  const reviewed = sql`EXISTS (
+    SELECT 1 FROM journal_scores s
+    WHERE s.report_id = ${journalEntries.id} AND s.tier = 'review'
+  )`;
+
+  // The three-state filter, matching the badge in the table exactly.
+  const state = query.filters.find((f) => f.field === "reviewState");
+  if (state) {
+    const value = String(state.value);
+    if (value === "reviewed") return sql`${reviewed}`;
+    if (value === "waiting") return sql`(${READY_FOR_REVIEW} AND NOT ${reviewed})`;
+    if (value === "not_ready") return sql`(NOT ${READY_FOR_REVIEW} AND NOT ${reviewed})`;
+    return undefined;
+  }
+
+  // The older boolean filter, kept working: it is in saved views and in links
+  // people have already sent each other, and a saved report that silently stops
+  // narrowing is worse than one that errors.
   const filter = query.filters.find((f) => f.field === "awaitingReview");
   if (!filter) return undefined;
   if (filter.value !== true && filter.value !== "true") return undefined;
 
-  return sql`(
-    ${journalEntries.state} = 'submitted'
-    AND NOT EXISTS (
-      SELECT 1 FROM journal_scores s
-      WHERE s.report_id = ${journalEntries.id} AND s.tier = 'review'
-    )
-  )`;
+  return sql`(${READY_FOR_REVIEW} AND NOT ${reviewed})`;
 }
 
 /**
@@ -311,6 +355,12 @@ export async function listReports(
   companyId: string | null,
   restrictToIds: string[] | null = null,
   locationScope: SQL | undefined = undefined,
+  // Authors to leave out — the "everyone except my direct team" scope.
+  //
+  // An exclusion rather than a narrowed keep-list, because a superadmin has no
+  // finite list of visible authors to subtract from: their visibility is "no
+  // narrowing at all", and the complement of that can only be written as a NOT IN.
+  excludeAuthorIds: string[] | null = null,
 ): Promise<{ rows: JournalEntryRowRaw[]; total: number }> {
   const parts = buildListParts(listConfig, query);
 
@@ -323,6 +373,10 @@ export async function listReports(
   // Reports belong to a company; when one is active, keep the list within it.
   const companyScope = companyId ? eq(journalEntries.companyId, companyId) : undefined;
   const restrict = restrictToIds ? inArray(journalEntries.id, restrictToIds) : undefined;
+  const excluded =
+    excludeAuthorIds && excludeAuthorIds.length > 0
+      ? notInArray(journalEntries.authorId, excludeAuthorIds)
+      : undefined;
   // Location narrows on top of authorship/downline visibility; it never widens it.
   // Both must hold, so a report by someone you manage at a site you cannot reach
   // stays hidden.
@@ -330,6 +384,7 @@ export async function listReports(
     scope,
     companyScope,
     restrict,
+    excluded,
     locationScope,
     tagScopeFor(query),
     awaitingReviewScope(query),

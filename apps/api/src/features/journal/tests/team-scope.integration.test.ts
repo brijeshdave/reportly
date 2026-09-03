@@ -167,6 +167,40 @@ describe("the team scope filter", () => {
     expect(whole).toContain("Two levels down");
   });
 
+  it("gives everything except the direct team when asked for the others", async () => {
+    // Asked for from use: "in journal filter i need one more filter option under
+    // whose, for seeing all other except my direct team" — the complement of
+    // `direct`, for a head of department reading everything that is not their own
+    // immediate crew. It subtracts rather than keeping, which is why it cannot be
+    // written as a depth.
+    const admin = await superadmin();
+    const { hod, manager, author, critical } = await buildChain(admin);
+
+    await file(hod.cookie, "HOD's own", critical.id);
+    await file(manager.cookie, "One level down", critical.id);
+    await file(author.cookie, "Two levels down", critical.id);
+
+    const others = titles(await inject("GET", `/journal${scoped("others")}`, hod.cookie));
+    // Themselves and the people who report straight to them are what is removed.
+    expect(others).not.toContain("HOD's own");
+    expect(others).not.toContain("One level down");
+    // Everything deeper stays.
+    expect(others).toContain("Two levels down");
+  });
+
+  it("still cannot show somebody work they were not already allowed to see", async () => {
+    // Every scope narrows and none widens. The exclusion is the one that could get
+    // this wrong — subtracting from "everyone" rather than from "everyone I may
+    // see" would turn a filter into a way out of the reporting line. Asked as the
+    // manager, whose own manager's entries were never theirs to read.
+    const admin = await superadmin();
+    const { hod, manager, critical } = await buildChain(admin);
+    await file(hod.cookie, "The HOD's own entry", critical.id);
+
+    const others = titles(await inject("GET", `/journal${scoped("others")}`, manager.cookie));
+    expect(others).not.toContain("The HOD's own entry");
+  });
+
   it("narrows to just me when asked", async () => {
     const admin = await superadmin();
     const { hod, manager, critical } = await buildChain(admin);
@@ -214,11 +248,24 @@ describe("the team scope filter", () => {
 });
 
 describe("the awaiting-review filter", () => {
-  it("shows a submitted entry nobody has scored, and hides a draft", async () => {
+  it("shows a resolved entry nobody has scored, and hides a draft", async () => {
     const admin = await superadmin();
     const { author, critical } = await buildChain(admin);
-    await file(author.cookie, "Waiting on my manager", critical.id);
+    const ready = await file(author.cookie, "Waiting on my manager", critical.id);
     await file(author.cookie, "Still a draft", critical.id, "draft");
+
+    // Resolving is part of being reviewable, not scenery: this filter used to ask
+    // only whether an entry was submitted, so it listed work still in progress as
+    // though a manager could score it. It cannot — `setScores` refuses anything
+    // outside the resolved group.
+    await inject("POST", `/journal/${ready}/work`, author.cookie, { summary: "Fixed it" });
+    const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
+      id: string;
+      group: string;
+    }[];
+    await inject("PATCH", `/journal/${ready}/status`, admin, {
+      statusId: statuses.find((s) => s.group === "resolved")!.id,
+    });
 
     const waiting = titles(
       await inject(
@@ -230,6 +277,23 @@ describe("the awaiting-review filter", () => {
     expect(waiting).toContain("Waiting on my manager");
     // A draft is waiting on its author and nobody else.
     expect(waiting).not.toContain("Still a draft");
+  });
+
+  it("no longer lists work that is still in progress", async () => {
+    // The bug this filter shared with the table badge, kept as its own case: an
+    // open entry is not waiting on anybody's review.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    await file(author.cookie, "Still being worked", critical.id);
+
+    const waiting = titles(
+      await inject(
+        "GET",
+        '/journal?filters=[{"field":"awaitingReview","op":"eq","value":true}]',
+        author.cookie,
+      ),
+    );
+    expect(waiting).not.toContain("Still being worked");
   });
 });
 
@@ -442,5 +506,109 @@ describe("whether the review is done", () => {
     const res = (await inject("GET", "/journal", author.cookie)).json();
     expect(res.total).toBe(res.data.length);
     expect(res.data.filter((r: { title: string }) => r.title === "Only once")).toHaveLength(1);
+  });
+});
+
+/**
+ * "Waiting" means a reviewer can act on it today.
+ *
+ * Reported from production: "in journal table it shows Waiting for all entries
+ * which are not reviewd but it should only show waiting for those are ready for it.
+ * Currently any open or rejected are also showing waiting and it is mis leading for
+ * managers."
+ *
+ * The badge was a boolean — reviewed or not — so everything unscored read as
+ * waiting, including entries still being worked and entries the server would have
+ * refused to score at all. The state now uses the same three conditions `setScores`
+ * refuses without, so the table and the server cannot disagree.
+ */
+describe("what counts as waiting for review", () => {
+  async function resolve(admin: string, id: string, authorCookie: string) {
+    await inject("POST", `/journal/${id}/work`, authorCookie, { summary: "Fixed it" });
+    const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
+      id: string;
+      name: string;
+      group: string;
+    }[];
+    await inject("PATCH", `/journal/${id}/status`, admin, {
+      statusId: statuses.find((s) => s.group === "resolved")!.id,
+    });
+  }
+
+  const stateOf = async (cookie: string, id: string) => {
+    const rows = (await inject("GET", "/journal", cookie)).json().data as {
+      id: string;
+      reviewState: string;
+    }[];
+    return rows.find((row) => row.id === id)?.reviewState;
+  };
+
+  it("does not call an entry still being worked 'waiting'", async () => {
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const id = await file(author.cookie, "Still open", critical.id);
+
+    // Submitted, unscored, and nowhere near a reviewer: it has not been resolved.
+    expect(await stateOf(author.cookie, id)).toBe("not_ready");
+  });
+
+  it("calls a resolved, unscored entry 'waiting'", async () => {
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const id = await file(author.cookie, "Ready for review", critical.id);
+    await resolve(admin, id, author.cookie);
+
+    expect(await stateOf(author.cookie, id)).toBe("waiting");
+  });
+
+  it("does not call a rejected entry 'waiting'", async () => {
+    // The server refuses to score a rejected entry, so a queue that lists one is
+    // asking a manager to do something that will be turned down.
+    const admin = await superadmin();
+    const { hod, author, critical } = await buildChain(admin);
+    const id = await file(author.cookie, "Struck out", critical.id);
+    await resolve(admin, id, author.cookie);
+    expect(await stateOf(author.cookie, id)).toBe("waiting");
+
+    const rejected = await inject("POST", `/journal/${id}/reject`, hod.cookie, {
+      reason: "Not our department",
+    });
+    expect(rejected.statusCode).toBe(200);
+    expect(await stateOf(author.cookie, id)).toBe("not_ready");
+  });
+
+  it("says 'reviewed' once a manager has scored it", async () => {
+    const admin = await superadmin();
+    const { manager, author, critical } = await buildChain(admin);
+    const id = await file(author.cookie, "Scored", critical.id);
+    await resolve(admin, id, author.cookie);
+
+    await inject("PUT", `/journal/${id}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 2 }],
+    });
+    await inject("PUT", `/journal/${id}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
+    expect(await stateOf(author.cookie, id)).toBe("reviewed");
+  });
+
+  it("filters by the same three states", async () => {
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const open = await file(author.cookie, "Open one", critical.id);
+    const ready = await file(author.cookie, "Resolved one", critical.id);
+    await resolve(admin, ready, author.cookie);
+
+    const filtered = async (value: string) => {
+      const q = encodeURIComponent(JSON.stringify([{ field: "reviewState", op: "eq", value }]));
+      const res = await inject("GET", `/journal?filters=${q}`, author.cookie);
+      expect(res.statusCode).toBe(200);
+      return (res.json().data as { id: string }[]).map((row) => row.id);
+    };
+
+    expect(await filtered("waiting")).toEqual([ready]);
+    expect(await filtered("not_ready")).toContain(open);
+    expect(await filtered("not_ready")).not.toContain(ready);
+    expect(await filtered("reviewed")).toEqual([]);
   });
 });

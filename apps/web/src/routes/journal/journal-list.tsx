@@ -69,10 +69,15 @@ const columns: TableColumn<JournalEntryRow>[] = [
     header: "Review",
     enableSorting: false,
     cell: ({ row }) =>
-      row.original.reviewed ? (
+      row.original.reviewState === "reviewed" ? (
         <Badge tone="success">Reviewed</Badge>
-      ) : (
+      ) : row.original.reviewState === "waiting" ? (
         <Badge tone="outline">Waiting</Badge>
+      ) : (
+        // Not a reviewer's problem yet: still being worked, finished in a way that
+        // earns nothing, or struck out. Calling these "Waiting" put entries in
+        // managers' queues that the server would have refused to score.
+        <span className="text-muted-foreground">—</span>
       ),
   },
   {
@@ -281,16 +286,23 @@ export function JournalListPage({ authorId }: { authorId?: string } = {}) {
           { value: "direct", label: "My direct team" },
           { value: "two-levels", label: "Two levels down" },
           { value: "downline", label: "My whole team" },
+          // The complement of "My direct team", for a head of department reading
+          // everything that is not their own immediate crew. Asked for from use.
+          { value: "others", label: "Everyone except my direct team" },
           { value: "all", label: "Everyone I can see" },
         ],
       },
       {
         // "Has anybody looked at this yet." Not the score — scoring is blind
         // upward — but whether it is still sitting with a manager.
-        field: "awaitingReview",
+        field: "reviewState",
         label: "Review",
         kind: "select",
-        options: [{ value: "true", label: "Not yet reviewed" }],
+        options: [
+          { value: "waiting", label: "Waiting for review" },
+          { value: "reviewed", label: "Reviewed" },
+          { value: "not_ready", label: "Not ready to review" },
+        ],
       },
       { field: "title", label: "Title", kind: "text" },
       // Only where a second kind still exists. With it retired every entry is an

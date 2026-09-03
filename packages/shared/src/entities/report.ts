@@ -31,16 +31,43 @@ export const REPORT_STATES = ["draft", "submitted"] as const;
  * `all` is not "everybody in the company": it is the caller's existing visibility,
  * unnarrowed. Nothing here can widen what somebody may see.
  */
-export const JOURNAL_TEAM_SCOPES = ["me", "direct", "two-levels", "downline", "all"] as const;
+export const JOURNAL_TEAM_SCOPES = [
+  "me",
+  "direct",
+  "two-levels",
+  "downline",
+  "others",
+  "all",
+] as const;
 export type JournalTeamScope = (typeof JOURNAL_TEAM_SCOPES)[number];
 
-/** How deep each scope reaches, or null for "no narrowing". */
+/**
+ * How deep each scope reaches, or null for "no narrowing".
+ *
+ * `others` is absent on purpose: it is everyone the reader may see **except**
+ * themselves and their direct team, which is a complement rather than a depth.
+ * Giving it a number here would be a lie the resolver then has to work around, so
+ * it has a branch of its own instead — see `EXCLUDING_SCOPES`.
+ */
 export const TEAM_SCOPE_DEPTH: Record<JournalTeamScope, number | null> = {
   me: 0,
   direct: 1,
   "two-levels": 2,
   downline: Number.POSITIVE_INFINITY,
+  others: null,
   all: null,
+};
+
+/**
+ * Scopes that subtract a depth instead of keeping one.
+ *
+ * Asked for from use: "in journal filter i need one more filter option under
+ * whose, for seeing all other except my direct team" — a head of department
+ * reading everything that is *not* their own immediate team. Like every other
+ * scope it can only ever narrow: it starts from what the reader may already see.
+ */
+export const EXCLUDING_SCOPES: Partial<Record<JournalTeamScope, number>> = {
+  others: 1,
 };
 export type ReportState = (typeof REPORT_STATES)[number];
 export const reportStateSchema = z.enum(REPORT_STATES);
@@ -96,6 +123,23 @@ export const journalEntrySchema = z
      * open every entry to learn.
      */
     reviewed: z.boolean().default(false),
+
+    /**
+     * Where the entry stands with its reviewer, in three states rather than two.
+     *
+     * Reported from use: "in journal table it shows Waiting for all entries which
+     * are not reviewd but it should only show waiting for those are ready for it.
+     * Currently any open or rejected are also showing waiting and it is misleading
+     * for managers."
+     *
+     * `waiting` is exactly what a reviewer can act on today — the same three
+     * conditions `setScores` refuses without: submitted, not rejected, and in the
+     * resolved group. Everything else is `not_ready`: still being worked, or
+     * finished in a way that earns nothing (cancelled, duplicate, not an issue), or
+     * struck out. Calling those "waiting" put work in a manager's queue that the
+     * server would have refused to score.
+     */
+    reviewState: z.enum(["reviewed", "waiting", "not_ready"]).default("not_ready"),
 
     reportDate: z.string(),
     /** When an issue actually happened (may predate the report). */

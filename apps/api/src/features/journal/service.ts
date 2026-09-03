@@ -19,6 +19,7 @@ import {
   POINTS_LOCK_SETTINGS,
   REPORT_ENTRY_SETTINGS,
   SCORE_EVENT_REASONS,
+  EXCLUDING_SCOPES,
   TEAM_SCOPE_DEPTH,
   civilDay,
   type JournalTeamScope,
@@ -175,6 +176,10 @@ function serialize(
     statusGroup: row.statusGroup,
     statusIsTerminal: row.statusIsTerminal ?? false,
     reviewed: row.reviewed ?? false,
+    reviewState:
+      row.reviewState === "reviewed" || row.reviewState === "waiting"
+        ? row.reviewState
+        : "not_ready",
     reportDate: row.reportDate.toISOString(),
     occurredAt: iso(row.occurredAt),
     startedAt: iso(row.startedAt),
@@ -499,17 +504,28 @@ async function assertTaskIsMine(
 async function teamScopeAuthors(
   query: ResolvedListQuery,
   callerId: string,
-): Promise<string[] | null> {
+): Promise<{ keep: string[] | null; exclude: string[] | null }> {
   const filter = query.filters.find((f) => f.field === "team");
-  if (!filter) return null;
+  if (!filter) return { keep: null, exclude: null };
 
   const scope = String(filter.value) as JournalTeamScope;
+
+  // "Everyone except my direct team" subtracts instead of keeping, so it cannot be
+  // expressed as a depth — see EXCLUDING_SCOPES. Same people, opposite sign.
+  const excludeDepth = EXCLUDING_SCOPES[scope];
+  if (excludeDepth !== undefined) {
+    return {
+      keep: null,
+      exclude: [callerId, ...(await downlineUserIdsToDepth(callerId, excludeDepth))],
+    };
+  }
+
   const depth = TEAM_SCOPE_DEPTH[scope];
-  if (depth === undefined || depth === null) return null;
+  if (depth === undefined || depth === null) return { keep: null, exclude: null };
 
   // The caller is always in their own team view. A manager looking at "my team"
   // and not finding their own entries reads as a bug, not as a definition.
-  return [callerId, ...(await downlineUserIdsToDepth(callerId, depth))];
+  return { keep: [callerId, ...(await downlineUserIdsToDepth(callerId, depth))], exclude: null };
 }
 
 export async function listReports(
@@ -525,11 +541,11 @@ export async function listReports(
   // filter can never widen what somebody may see.
   const team = await teamScopeAuthors(query, ctx.userId);
   const authors =
-    team === null
+    team.keep === null
       ? visibleAuthorIds
       : visibleAuthorIds === null
-        ? team
-        : team.filter((id) => visibleAuthorIds.includes(id));
+        ? team.keep
+        : team.keep.filter((id) => visibleAuthorIds.includes(id));
 
   const { rows, total } = await listReportRows(
     query,
@@ -538,6 +554,7 @@ export async function listReports(
     ctx.companyId,
     null,
     withLocationsNullable(ctx, reportsTable.locationId),
+    team.exclude,
   );
   // One query for every row's tags, rather than one per row.
   const tagsByReport = await tagsForMany(
