@@ -701,3 +701,162 @@ describe("who is on a task", () => {
     expect(people.map((p) => p.userId).sort()).toEqual([operator.id, relief.id].sort());
   });
 });
+
+/**
+ * What a task is worth, and who decides.
+ *
+ * Asked for after severity proved the wrong instrument: "each task should have a
+ * points to earn based on how complex a task is and how much effert is needed...
+ * lets say we need top cap of any task to be 100 but user can decide for each task
+ * how much point should be given... but manager can change the cap of task."
+ */
+describe("what a task is worth", () => {
+  it("takes the number the person raising it chose", async () => {
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Rebuild the gearbox",
+        assigneeIds: [operator.id],
+        maxPoints: 40,
+      })
+    ).json();
+    expect(task.maxPoints).toBe(40);
+  });
+
+  it("defaults to ten rather than nothing", async () => {
+    // A task worth zero cannot be scored at all, which is a strange thing to get
+    // by saying nothing.
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Something ordinary",
+        assigneeIds: [operator.id],
+      })
+    ).json();
+    expect(task.maxPoints).toBe(10);
+  });
+
+  it("refuses a task worth more than the installation allows", async () => {
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const res = await inject("POST", "/tasks", lead.cookie, {
+      title: "Worth a thousand, apparently",
+      assigneeIds: [operator.id],
+      maxPoints: 1000,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/at most 100/);
+  });
+
+  it("lets a manager regrade an open task, and refuses the worker", async () => {
+    // The point of the ceiling being a manager's to set: somebody may say what
+    // their own new task is worth, and only their manager may change it after.
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Swap the bearing",
+        assigneeIds: [operator.id],
+      })
+    ).json();
+
+    const byWorker = await inject("PATCH", `/tasks/${task.id}`, operator.cookie, {
+      maxPoints: 90,
+    });
+    expect(byWorker.statusCode).toBe(403);
+
+    const byLead = await inject("PATCH", `/tasks/${task.id}`, lead.cookie, { maxPoints: 25 });
+    expect(byLead.statusCode).toBe(200);
+    expect(byLead.json().maxPoints).toBe(25);
+  });
+
+  it("is the ceiling of the entry filed against it, not the severity's", async () => {
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "A big job",
+        assigneeIds: [operator.id],
+        maxPoints: 30,
+      })
+    ).json();
+
+    const entry = (
+      await inject("POST", "/journal", operator.cookie, {
+        kind: "work",
+        title: "Did the big job",
+        workSummary: "All of it.",
+        state: "submitted",
+        taskId: task.id,
+      })
+    ).json();
+
+    // Severity would allow ten at most; the task says thirty, and the task wins.
+    const detail = (await inject("GET", `/journal/${entry.id}`, operator.cookie)).json();
+    expect(detail.pointsCeiling).toBe(30);
+
+    const scored = await inject("PUT", `/journal/${entry.id}/scores`, operator.cookie, {
+      scores: [{ userId: operator.id, points: 28 }],
+    });
+    expect(scored.statusCode).toBe(200);
+  });
+
+  it("takes the points back when a manager reopens the task", async () => {
+    // "if any task again reopened by manager it's journal and points should also be
+    // reverted." The entry stays — it is the record of what was done — but what it
+    // paid does not.
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Looked finished",
+        assigneeIds: [operator.id],
+        maxPoints: 20,
+      })
+    ).json();
+    const entry = (
+      await inject("POST", "/journal", operator.cookie, {
+        kind: "work",
+        title: "Wrote it up",
+        workSummary: "Done.",
+        state: "submitted",
+        taskId: task.id,
+      })
+    ).json();
+    await inject("PUT", `/journal/${entry.id}/scores`, operator.cookie, {
+      scores: [{ userId: operator.id, points: 8 }],
+    });
+    const scoredRows = (
+      await inject("GET", `/journal/${entry.id}/scores`, operator.cookie)
+    ).json() as { userId: string; self: number | null }[];
+    expect(scoredRows.find((r) => r.userId === operator.id)?.self).toBe(8);
+
+    // Filing completed the task; the manager sends it back to work.
+    expect((await inject("GET", `/tasks/${task.id}`, lead.cookie)).json().state).toBe("done");
+    const reopened = await inject("PATCH", `/tasks/${task.id}`, lead.cookie, {
+      state: "in_progress",
+    });
+    expect(reopened.statusCode).toBe(200);
+
+    // The entry is still there, and is worth nothing until the job is finished again.
+    const after = await inject("GET", `/journal/${entry.id}`, operator.cookie);
+    expect(after.statusCode).toBe(200);
+    // The grid still lists whoever worked it — that is the membership, not the
+    // payment. What was scored is gone.
+    const cleared = (
+      await inject("GET", `/journal/${entry.id}/scores`, operator.cookie)
+    ).json() as {
+      userId: string;
+      self: number | null;
+      review: number | null;
+      official: number | null;
+    }[];
+    for (const row of cleared) {
+      expect(row.self).toBeNull();
+      expect(row.review).toBeNull();
+      expect(row.official).toBeNull();
+    }
+  });
+});

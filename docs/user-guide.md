@@ -725,12 +725,14 @@ follows your own clock.
 JournalEntry setup → Severities** — not under Settings. A tier may share its ceiling
 among several people; it can never exceed it.
 
-**An entry filed against a task can be given a second ceiling.** Settings → Journal
-→ Task points is a switch, **off by default**. Turn it on and set a number, and any
-entry filed against a task is capped at it whatever its severity — so planned work
-cannot earn what an unplanned three-in-the-morning breakdown earns. The two ceilings
-do not add up or override each other: **the lower one wins**, so a task marked Minor
-is still worth only Minor. While the switch is off nothing changes.
+**An entry filed against a task is worth what the task is worth**, not what its
+severity allows. Every task carries a points number, set by whoever raised it and
+changeable only by a manager; that number is the ceiling the author splits from.
+Severity still sets the ceiling for everything not filed against a task.
+
+**Settings → Tasks → Points** holds the one ceiling that bounds them all — the most
+any single task may be worth, 100 by default. It exists so somebody writing their
+own task cannot decide it earns a thousand.
 
 ### Giving yourself work
 

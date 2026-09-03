@@ -28,6 +28,8 @@ export interface TaskRowRaw {
   departmentId: string | null;
   departmentName: string | null;
   dueAt: Date | null;
+  /** `numeric` comes back from pg as a string; the serializer converts it. */
+  maxPoints: string;
   priority: string;
   state: string;
   completedAt: Date | null;
@@ -47,6 +49,7 @@ const cols = {
   departmentId: tasks.departmentId,
   departmentName: departments.name,
   dueAt: tasks.dueAt,
+  maxPoints: tasks.maxPoints,
   priority: tasks.priority,
   state: tasks.state,
   completedAt: tasks.completedAt,
@@ -206,6 +209,7 @@ export interface NewTask {
   assignerId: string;
   departmentId: string | null;
   dueAt: Date | null;
+  maxPoints: string;
   priority: string;
 }
 
@@ -219,6 +223,7 @@ export type TaskPatch = Partial<{
   detail: string | null;
   departmentId: string | null;
   dueAt: Date | null;
+  maxPoints: string;
   priority: string;
   state: string;
   completedAt: Date | null;

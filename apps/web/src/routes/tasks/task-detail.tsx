@@ -17,7 +17,7 @@ import { useState } from "react";
 import { usePermission } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { HistoryTab } from "@/components/history-tab.js";
-import { Spinner } from "@/components/ui/form.js";
+import { Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { sessionQuery } from "@/lib/queries.js";
@@ -58,6 +58,25 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
   const setState = useMutation({
     mutationFn: (state: TaskState) => updateTask(taskId, { state }),
     onSuccess: invalidate,
+  });
+
+  /**
+   * What the task is worth, changed in place.
+   *
+   * Asked for directly — "allow to set points for existing open tasks" — because a
+   * task raised before any of this existed carries the default, and grading it by
+   * reopening the whole edit form is a heavier act than changing one number. Only
+   * somebody who manages the task may; the server enforces that, and this only
+   * avoids drawing a control that would answer 403.
+   */
+  const [editingPoints, setEditingPoints] = useState(false);
+  const [draftPoints, setDraftPoints] = useState("");
+  const regrade = useMutation({
+    mutationFn: (points: number) => updateTask(taskId, { maxPoints: points }),
+    onSuccess: async () => {
+      await invalidate();
+      setEditingPoints(false);
+    },
   });
 
   const remove = useMutation({
@@ -120,6 +139,8 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
         }
       />
 
+      {regrade.error ? <ErrorAlert error={regrade.error} /> : null}
+
       <div className="grid gap-4 pt-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4 lg:col-span-2">
           <Card className="flex flex-col gap-3 p-6">
@@ -133,6 +154,51 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Priority</dt>
                 <dd>{t.priority}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Worth</dt>
+                <dd className="flex items-center gap-2">
+                  {editingPoints ? (
+                    <>
+                      <Input
+                        aria-label="Worth"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        inputMode="decimal"
+                        className="h-8 w-24"
+                        value={draftPoints}
+                        onChange={(e) => setDraftPoints(e.target.value)}
+                      />
+                      <Button
+                        size="sm"
+                        disabled={regrade.isPending}
+                        onClick={() => regrade.mutate(Number(draftPoints) || 0)}
+                      >
+                        Save
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingPoints(false)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span>{t.maxPoints} points</span>
+                      {manages && !closed ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setDraftPoints(String(t.maxPoints));
+                            setEditingPoints(true);
+                          }}
+                        >
+                          Change
+                        </Button>
+                      ) : null}
+                    </>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Due</dt>

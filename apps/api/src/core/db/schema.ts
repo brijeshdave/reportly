@@ -993,6 +993,15 @@ export const tasks = pgTable(
     departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
     dueAt: timestamp("due_at", { withTimezone: true }),
     priority: text("priority").notNull().default("normal"),
+    /**
+     * What this task is worth — the ceiling of the entry filed against it.
+     *
+     * Per task rather than per grade: the range is open-ended, and no ladder of
+     * four names covers a rebuild worth eighty and a form worth two. Bounded on
+     * write by the installation ceiling, which is a setting so it can be raised
+     * without a migration.
+     */
+    maxPoints: numeric("max_points", { precision: 6, scale: 1 }).notNull().default("10"),
     state: text("state").notNull().default("open"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     ...timestamps,

@@ -17,6 +17,8 @@ import {
   type TaskAssignee,
   type TaskHandover,
   type TaskPrefill,
+  TASK_CLOSED_STATES,
+  TASK_POINTS,
   type TaskPriority,
   type TaskRow,
   type TaskState,
@@ -27,6 +29,7 @@ import {
 } from "@reportly/shared";
 
 import { AppError } from "@/core/errors.js";
+import { getEffectiveSetting } from "@/core/settings/service.js";
 import { notify } from "@/core/queue/notifications.js";
 import { clearTags, tagsFor, tagsForMany } from "@/features/vocabulary/repo.js";
 import { applyTags } from "@/features/vocabulary/service.js";
@@ -34,6 +37,9 @@ import { applyTags } from "@/features/vocabulary/service.js";
 // one to ask who may see a task, and the two must not import each other in a circle.
 import { removeAttachmentsFor } from "@/features/attachments/cleanup.js";
 import { downlineUserIds } from "@/features/journal/hierarchy.js";
+// The journal's own reopen, so a task going back to work clears the points its
+// entry paid by the same path the journal uses when an entry is reopened directly.
+import { reopenReport } from "@/features/journal/service.js";
 import {
   assigneesFor,
   assigneesForMany,
@@ -82,12 +88,34 @@ function serializeRow(
     departmentId: row.departmentId,
     departmentName: row.departmentName,
     dueAt: row.dueAt?.toISOString() ?? null,
+    // Postgres hands `numeric` back as a string; the cast alone would be an
+    // assertion, which is the trap this codebase has fallen into twice.
+    maxPoints: Number(row.maxPoints),
     priority: asPriority(row.priority),
     state: asState(row.state),
     completedAt: row.completedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+/**
+ * A task may not be worth more than the installation allows.
+ *
+ * The whole reason the ceiling exists: "if any user creates his own task and start
+ * giving any number of points it should not be good". Checked on the way in rather
+ * than clamped silently — a task saved as 100 when 500 was typed is a number
+ * somebody will later swear they set differently.
+ */
+async function assertWithinCeiling(points: number | undefined, companyId: string): Promise<void> {
+  if (points === undefined) return;
+  const { maxPoints } = await getEffectiveSetting(TASK_POINTS, { companyId });
+  if (points <= maxPoints) return;
+  throw new AppError(
+    400,
+    ERROR_CODES.VALIDATION_ERROR,
+    `A task can be worth at most ${maxPoints} points. Ask an administrator to raise the limit if this job really is bigger.`,
+  );
 }
 
 /** Everyone the caller may hand work to: themselves plus their whole downline. */
@@ -230,6 +258,8 @@ export async function createTask(input: CreateTask, ctx: AuthContext): Promise<T
     }
   }
 
+  await assertWithinCeiling(input.maxPoints, ctx.companyId);
+
   const values: NewTask = {
     companyId: ctx.companyId,
     title: input.title,
@@ -237,6 +267,7 @@ export async function createTask(input: CreateTask, ctx: AuthContext): Promise<T
     assignerId: ctx.userId,
     departmentId: input.departmentId ?? null,
     dueAt: input.dueAt ? new Date(input.dueAt) : null,
+    maxPoints: String(input.maxPoints ?? 10),
     priority: input.priority,
   };
   const id = await insertTask(values);
@@ -299,6 +330,7 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
     input.assigneeIds !== undefined ||
     input.departmentId !== undefined ||
     input.dueAt !== undefined ||
+    input.maxPoints !== undefined ||
     input.priority !== undefined;
 
   if (editsBeyondState && !manages) {
@@ -329,6 +361,13 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
   if (input.departmentId !== undefined) fields.departmentId = input.departmentId;
   if (input.dueAt !== undefined) fields.dueAt = input.dueAt ? new Date(input.dueAt) : null;
   if (input.priority !== undefined) fields.priority = input.priority;
+  if (input.maxPoints !== undefined) {
+    // Guarded by `editsBeyondState` above, so only somebody who manages the task
+    // reaches here: a person may say what their own new task is worth, and only
+    // their manager may change it afterwards.
+    await assertWithinCeiling(input.maxPoints, row.companyId);
+    fields.maxPoints = String(input.maxPoints);
+  }
   if (input.state !== undefined) {
     fields.state = input.state;
     // The completion stamp is derived from the state, never sent by the client — two
@@ -343,6 +382,23 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
   }
 
   await updateTaskRow(id, fields);
+
+  // Reopening a task takes back what it paid.
+  //
+  // "if any task again reopened by manager it's journal and points should also be
+  // reverted." The entry filed against it stays — the record of what was done is
+  // not a lie because the job turned out to be unfinished — but its scores and its
+  // ledger rows go, exactly as they do when the entry itself is reopened. The
+  // journal's own reopen is called rather than a second implementation of it, so
+  // "this work is not finished after all" means one thing in this codebase.
+  const wasClosed = (TASK_CLOSED_STATES as readonly string[]).includes(row.state);
+  const nowOpen =
+    input.state !== undefined && !(TASK_CLOSED_STATES as readonly string[]).includes(input.state);
+  if (wasClosed && nowOpen) {
+    for (const entry of await reportsForTask(id)) {
+      await reopenReport(entry.id, ctx);
+    }
+  }
 
   if (input.assigneeIds !== undefined) {
     const wanted = [...new Set(input.assigneeIds)];

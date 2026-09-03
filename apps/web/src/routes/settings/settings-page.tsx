@@ -49,6 +49,7 @@ const NAMESPACE_LABELS: Record<string, string> = {
   ui: "Appearance",
   access: "Access",
   journal: "Journal",
+  tasks: "Tasks",
   general: "General",
 };
 

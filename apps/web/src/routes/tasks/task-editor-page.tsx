@@ -46,6 +46,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
   const [detail, setDetail] = useState("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [priority, setPriority] = useState<TaskPriority>("normal");
+  const [maxPoints, setMaxPoints] = useState("10");
   const [dueAt, setDueAt] = useState("");
 
   // Who this person may hand work to: themselves, plus everyone below them.
@@ -70,6 +71,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
     // back to work.
     setAssigneeIds(existing.data.assignees.filter((a) => !a.released).map((a) => a.id));
     setPriority(existing.data.priority);
+    setMaxPoints(String(existing.data.maxPoints));
     setDueAt(toLocalInput(existing.data.dueAt));
   }, [existing.data]);
 
@@ -90,6 +92,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
         title: title.trim(),
         assigneeIds,
         priority,
+        maxPoints: Number(maxPoints) || 0,
         ...(detail.trim() ? { detail: detail.trim() } : {}),
         ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
       };
@@ -209,6 +212,23 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
                   </option>
                 ))}
               </Select>
+            )}
+          </Field>
+
+          <Field
+            label="Worth"
+            hint="Points for the whole job, split between whoever does it. Your manager can change it."
+          >
+            {(props) => (
+              <Input
+                {...props}
+                type="number"
+                min="0"
+                step="0.5"
+                inputMode="decimal"
+                value={maxPoints}
+                onChange={(e) => setMaxPoints(e.target.value)}
+              />
             )}
           </Field>
 

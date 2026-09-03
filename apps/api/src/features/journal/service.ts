@@ -15,7 +15,6 @@
 import {
   APPRAISAL_SETTINGS,
   MAX_ENTRY_POINTS,
-  TASK_POINTS,
   POINTS_LOCK_SETTINGS,
   REPORT_ENTRY_SETTINGS,
   SCORE_EVENT_REASONS,
@@ -50,7 +49,7 @@ import { journalEntries as reportsTable } from "@/core/db/schema.js";
 import { AppError } from "@/core/errors.js";
 import { timezoneFor } from "@/core/timezone.js";
 import { notify } from "@/core/queue/notifications.js";
-import { getEffectiveSetting, getSystemSetting } from "@/core/settings/service.js";
+import { getSystemSetting } from "@/core/settings/service.js";
 import { removeAttachmentsFor } from "@/features/attachments/cleanup.js";
 import { recordChanges } from "@/core/history.js";
 import { logger } from "@/core/logger.js";
@@ -1442,23 +1441,27 @@ async function severityCeiling(severityId: string | null): Promise<number> {
 }
 
 /**
- * What this entry may pay: its severity's ceiling, and — if it was filed against a
- * task — the task ceiling as well, whichever is lower.
+ * What this entry may pay.
  *
- * Lower rather than either-or on purpose. Work somebody was already assigned is
- * planned work, and should not earn what an unplanned three-in-the-morning
- * breakdown earns; but a task marked Minor must not be lifted to the task ceiling
- * either. A cap only ever caps.
+ * An entry filed against a task is worth **what the task is worth** — not what its
+ * severity allows. Severity grades a breakdown by how bad it was, which says
+ * nothing about how much work a planned job took: "giving it points based on
+ * sevirity is not what i thing is good as there may be some tasks that needs much
+ * more points to earn." The person who raised the task said what it was worth, and
+ * their manager agreed or changed it; that number is the answer.
+ *
+ * Everything not filed against a task still takes its severity's ceiling.
  */
 async function entryCeiling(row: {
   severityId: string | null;
   taskId: string | null;
   companyId: string;
 }): Promise<number> {
-  const ceiling = await severityCeiling(row.severityId);
-  if (!row.taskId) return ceiling;
-  const cap = await getEffectiveSetting(TASK_POINTS, { companyId: row.companyId });
-  return cap.enabled ? Math.min(ceiling, cap.maxPoints) : ceiling;
+  if (row.taskId) {
+    const task = await getTaskRow(row.taskId);
+    if (task) return Number(task.maxPoints);
+  }
+  return severityCeiling(row.severityId);
 }
 
 /**
@@ -1743,17 +1746,15 @@ export async function setScores(
   const ceiling = await entryCeiling(row);
   const total = input.scores.reduce((sum, s) => sum + s.points, 0);
   if (total > ceiling) {
-    // Which of the two ceilings bit, so the message names the setting to change
-    // rather than sending somebody to the severities screen that is not the cause.
-    const bySeverity = await severityCeiling(row.severityId);
-    const reason =
-      row.taskId && ceiling < bySeverity
-        ? "This entry was filed against a task, which"
-        : "This entry's severity";
+    // Name the thing to change. Sending somebody to the severities screen when the
+    // number they need is on the task is how a five-minute fix becomes an hour.
+    const reason = row.taskId
+      ? "The task this entry was filed against is worth at most"
+      : "This entry's severity allows at most";
     throw new AppError(
       400,
       ERROR_CODES.VALIDATION_ERROR,
-      `${reason} allows at most ${ceiling} points across everyone who worked it. This adds up to ${total}.`,
+      `${reason} ${ceiling} points across everyone who worked it. This adds up to ${total}.`,
     );
   }
 

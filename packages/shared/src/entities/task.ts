@@ -89,6 +89,15 @@ export const taskSchema = z
     departmentName: z.string().nullable(),
 
     dueAt: z.string().datetime().nullable(),
+    /**
+     * What the task is worth — the ceiling of the entry filed against it, split
+     * between whoever worked it and confirmed by their manager.
+     *
+     * Set by whoever raises the task and changeable only by somebody who manages
+     * it, so a person writing their own work cannot decide what it earns. The
+     * installation ceiling in settings bounds it.
+     */
+    maxPoints: z.number().min(0),
     priority: taskPrioritySchema,
     state: taskStateSchema,
     completedAt: z.string().datetime().nullable(),
@@ -126,6 +135,9 @@ export const createTaskSchema = z.object({
   departmentId: uuidSchema.optional(),
   dueAt: z.string().datetime().optional(),
   priority: taskPrioritySchema.default("normal"),
+  /** In half points like every other number in the scoring model. The server
+   *  refuses anything above the installation ceiling. */
+  maxPoints: z.number().min(0).multipleOf(0.5).optional(),
   tagIds: z.array(uuidSchema).optional(),
 });
 export type CreateTask = z.infer<typeof createTaskSchema>;
@@ -138,6 +150,8 @@ export const updateTaskSchema = z.object({
   departmentId: uuidSchema.nullable().optional(),
   dueAt: z.string().datetime().nullable().optional(),
   priority: taskPrioritySchema.optional(),
+  /** Only somebody who manages the task may change this. */
+  maxPoints: z.number().min(0).multipleOf(0.5).optional(),
   state: taskStateSchema.optional(),
   /** Omit to leave tags untouched; send [] to clear them. */
   tagIds: z.array(uuidSchema).optional(),

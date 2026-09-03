@@ -137,6 +137,26 @@ the work reaches the appraisal loop instead of ending at a tick-box. The report 
 task stay linked — the task shows the report filed against it, and the report says which
 task it came from.
 
+**What a task is worth.** Every task carries a **points** number — what the whole
+job earns, split between whoever does it. Whoever raises the task sets it, and
+**only a manager can change it afterwards**, so nobody decides what their own work
+is worth. A manager assigning work sets it as they assign, and can regrade any open
+task from its page with **Change**.
+
+One installation-wide ceiling (Settings → Tasks → Points, default **100**) bounds
+every task. A task worth more than that is refused rather than quietly trimmed.
+
+**That number is the ceiling of the entry filed against it** — not the entry's
+severity. Severity grades a breakdown by how bad it was, which says nothing about
+how much work a planned job took; a rebuild worth eighty and a form worth two are
+both real. The author splits the task's points between the people who did it and
+their manager confirms, exactly as for any other entry.
+
+**Reopening a task takes its points back.** If a manager sends a finished task back
+to work, the entry filed against it stays — it is the record of what was done — but
+its scores and its ledger rows are cleared, and it earns again only when the job is
+finished and scored again.
+
 **Handing a task over.** Long jobs outlast shifts. When that happens the person
 holding it tells their manager, and the manager uses **Hand over** on the task page,
 naming who picks it up and why. The outgoing person is not removed: the task page
