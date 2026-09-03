@@ -226,6 +226,21 @@ export async function deployPart(
     );
   }
 
+  // A machine holds one cartridge of a given kind at a time. Reported from
+  // production: "it allows to install more than one cartridges to same printer
+  // which is not possible in real." Scoped to the model rather than the machine so
+  // a printer that takes a set of four colours still works — two of the *same*
+  // cartridge is the impossible thing, not two cartridges.
+  const occupant = await repo.occupantOf(input.deviceId, part.partModelId);
+  if (occupant) {
+    throw new AppError(
+      409,
+      ERROR_CODES.CONFLICT,
+      `${device.name} already has ${occupant.identifier} in it. Book that one back in first.`,
+      { deviceId: device.id, occupiedBy: occupant.id },
+    );
+  }
+
   const fits = await compatibilityFor(part.partModelId);
   if (!device.typeId || !fits.includes(device.typeId)) {
     throw new AppError(
@@ -388,7 +403,7 @@ export async function fittingDevices(
   id: string,
   companyId: string,
   ctx: AuthContext,
-): Promise<{ id: string; name: string; typeName: string | null }[]> {
+): Promise<{ id: string; name: string; typeName: string | null; occupiedBy: string | null }[]> {
   const part = await requirePart(id, companyId, ctx);
   return repo.devicesFittingModel(
     part.partModelId,

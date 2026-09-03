@@ -137,7 +137,7 @@ beforeEach(() => {
   vi.mocked(parts.fetchPartTimeline).mockResolvedValue([]);
   vi.mocked(parts.fetchPartModel).mockResolvedValue(model(2300));
   vi.mocked(parts.fetchFittingDevices).mockResolvedValue([
-    { id: "d1", name: "Reception LJ-01", typeName: "Printers LaserJet" },
+    { id: "d1", name: "Reception LJ-01", typeName: "Printers LaserJet", occupiedBy: null },
   ]);
   vi.mocked(parts.fetchServiceKinds).mockResolvedValue([]);
   vi.mocked(parts.fetchConsumables).mockResolvedValue([]);

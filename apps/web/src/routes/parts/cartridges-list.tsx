@@ -74,18 +74,24 @@ const columns: TableColumn<Part>[] = [
     ),
   },
   {
+    // The machine, and only the machine. It used to fall back to the site, which
+    // printed the same answer in both columns for everything on a shelf — reported
+    // as "it shows it on Where and site column both which is not good". A cartridge
+    // that is not in a machine is in the store, and says so.
     id: "where",
     accessorKey: "deviceName",
     header: "Where",
     enableSorting: false,
     cell: ({ row }) =>
-      row.original.deviceName ??
-      row.original.locationName ?? <span className="text-muted-foreground">—</span>,
+      row.original.deviceName ?? (
+        <span className="text-muted-foreground">
+          {row.original.status === "scrapped" ? "—" : "In store"}
+        </span>
+      ),
   },
   {
-    // Its own column. "Where" answers device-then-site, so an installed cartridge
-    // stopped saying which plant it was at — and the site is what decides who sees
-    // it at all.
+    // Its own column, because the two answer different questions: which machine it
+    // is in, and whose stock it is. The site is what decides who sees it at all.
     id: "locationName",
     accessorKey: "locationName",
     header: "Site",

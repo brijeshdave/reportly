@@ -320,9 +320,27 @@ export async function devicesFittingModel(
   // that plant's machines and no others. Null means unplaced stock, which may still
   // go anywhere the caller can reach — and adopts the site of whatever it goes into.
   atLocationId: string | null = null,
-): Promise<{ id: string; name: string; typeName: string | null }[]> {
+): Promise<{ id: string; name: string; typeName: string | null; occupiedBy: string | null }[]> {
+  // The cartridge of this model already in each machine, if there is one. A
+  // correlated sub-select rather than a join: a join would drop machines that hold
+  // nothing, which are exactly the ones the picker exists to offer.
+  const occupant = sql<string | null>`(
+    SELECT p.identifier
+      FROM part_placements pl
+      JOIN parts p ON p.id = pl.part_id
+     WHERE pl.device_id = ${devices.id}
+       AND pl.removed_at IS NULL
+       AND p.part_model_id = ${partModelId}
+     LIMIT 1
+  )`;
+
   return db
-    .select({ id: devices.id, name: devices.name, typeName: deviceTypes.name })
+    .select({
+      id: devices.id,
+      name: devices.name,
+      typeName: deviceTypes.name,
+      occupiedBy: occupant,
+    })
     .from(devices)
     .innerJoin(partModelCompatibility, eq(partModelCompatibility.deviceTypeId, devices.typeId))
     .leftJoin(deviceTypes, eq(deviceTypes.id, devices.typeId))
@@ -335,6 +353,27 @@ export async function devicesFittingModel(
       ),
     )
     .orderBy(asc(devices.name));
+}
+
+/** The cartridge of this model currently in that machine, if any — what makes a
+ *  second install into an occupied printer refusable rather than merely unlikely. */
+export async function occupantOf(
+  deviceId: string,
+  partModelId: string,
+): Promise<{ id: string; identifier: string } | null> {
+  const [row] = await db
+    .select({ id: parts.id, identifier: parts.identifier })
+    .from(partPlacements)
+    .innerJoin(parts, eq(parts.id, partPlacements.partId))
+    .where(
+      and(
+        eq(partPlacements.deviceId, deviceId),
+        isNull(partPlacements.removedAt),
+        eq(parts.partModelId, partModelId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 /** A device's type, so a deploy can check the part actually fits it. */

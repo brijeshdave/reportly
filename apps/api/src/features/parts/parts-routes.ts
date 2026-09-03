@@ -136,7 +136,15 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
         params: idParams,
         response: {
           200: z.array(
-            z.object({ id: z.guid(), name: z.string(), typeName: z.string().nullable() }),
+            z.object({
+              id: z.guid(),
+              name: z.string(),
+              typeName: z.string().nullable(),
+              // The cartridge already in it, if any. The picker draws these
+              // unselectable and says which cartridge is in the way, rather than
+              // hiding the machine and leaving somebody hunting for it.
+              occupiedBy: z.string().nullable(),
+            }),
           ),
         },
       },

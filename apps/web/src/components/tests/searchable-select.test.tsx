@@ -120,4 +120,64 @@ describe("SearchableSelect", () => {
     // screen reader announced an unnamed button.
     expect(screen.getByLabelText("Department")).toHaveAttribute("id", "dept");
   });
+
+  /**
+   * A machine that already holds a cartridge is shown and refused, not hidden.
+   *
+   * Asked for that way: "it should not allow it and even not show that printer in
+   * install selection as there would be already a cartridge there. So it should be
+   * shown disabled non selectable showing cartridge number install in there." A
+   * printer missing from the list reads as a broken list to somebody standing in
+   * front of it.
+   */
+  describe("an option that cannot be chosen", () => {
+    const WITH_FULL = [
+      { value: "d1", label: "Reception LJ-01", hint: "CRT-0007 is already in it", disabled: true },
+      { value: "d2", label: "Store LJ-02", hint: "Printers LaserJet" },
+    ];
+
+    function setupDisabled() {
+      const onChange = vi.fn();
+      render(
+        <SearchableSelect
+          value=""
+          onChange={onChange}
+          options={WITH_FULL}
+          placeholder="Choose…"
+          ariaLabel="Printer"
+        />,
+      );
+      return { onChange, user: userEvent.setup() };
+    }
+
+    it("still lists it, and says what is in the way", async () => {
+      const { user } = setupDisabled();
+      await user.click(screen.getByLabelText("Printer"));
+
+      expect(screen.getByRole("option", { name: /Reception LJ-01/ })).toBeInTheDocument();
+      expect(screen.getByText("CRT-0007 is already in it")).toBeInTheDocument();
+    });
+
+    it("does not choose it when clicked", async () => {
+      const { onChange, user } = setupDisabled();
+      await user.click(screen.getByLabelText("Printer"));
+      await user.click(screen.getByRole("option", { name: /Reception LJ-01/ }));
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("does not choose it from the keyboard either", async () => {
+      // Otherwise it is only disabled for people using a pointer.
+      const { onChange, user } = setupDisabled();
+      await user.click(screen.getByLabelText("Printer"));
+      await user.keyboard("{ArrowDown}{Enter}");
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("leaves the free machine choosable", async () => {
+      const { onChange, user } = setupDisabled();
+      await user.click(screen.getByLabelText("Printer"));
+      await user.click(screen.getByRole("option", { name: /Store LJ-02/ }));
+      expect(onChange).toHaveBeenCalledWith("d2");
+    });
+  });
 });

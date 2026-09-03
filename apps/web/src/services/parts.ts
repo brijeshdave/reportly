@@ -62,9 +62,13 @@ export const setRates = (partModelId: string, rates: ServiceRate[]) =>
 
 /* ---------------------------------- parts ---------------------------------- */
 
-/** The devices this part's model fits — what the install picker offers. */
+/** The devices this part's model fits — what the install picker offers.
+ *  `occupiedBy` is the cartridge already in that machine, which the picker draws
+ *  greyed rather than hiding. */
 export const fetchFittingDevices = (id: string) =>
-  http.get<{ id: string; name: string; typeName: string | null }[]>(`/parts/${id}/fitting-devices`);
+  http.get<{ id: string; name: string; typeName: string | null; occupiedBy: string | null }[]>(
+    `/parts/${id}/fitting-devices`,
+  );
 export const fetchPart = (id: string) => http.get<Part>(`/parts/${id}`);
 export const createPart = (input: CreatePart) => http.post<Part>("/parts", input);
 export const updatePart = (

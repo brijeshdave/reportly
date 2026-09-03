@@ -312,3 +312,90 @@ describe("a cartridge's site and the machine it is in", () => {
     expect(installed.json().locationId).toBe(plantA.id);
   });
 });
+
+/**
+ * One machine, one cartridge of a kind.
+ *
+ * Reported from production: "it allows to install more than one cartridges to same
+ * printer which is not possible in real. So it should not allow it and even not
+ * show that printer in install selection as there would be already a cartridge
+ * there. So it should be shown disabled non selectable showing cartridge number
+ * install in there."
+ *
+ * Scoped to the model rather than the machine, so a printer that takes a set of
+ * four colours still works: two of the *same* cartridge is the impossible thing.
+ */
+describe("a printer that already has a cartridge in it", () => {
+  it("refuses a second cartridge of the same kind", async () => {
+    const { printerA, partA, model } = await twoPlants();
+    const sites = (await inject("GET", "/locations", admin)).json() as { id: string }[];
+    const second = (
+      await inject("POST", "/parts", admin, {
+        identifier: "CART-A2",
+        partModelId: model.id,
+        status: "ready",
+        locationId: sites[0]!.id,
+      })
+    ).json();
+
+    expect(
+      (await inject("POST", `/parts/${partA.id}/deploy`, admin, { deviceId: printerA.id }))
+        .statusCode,
+    ).toBe(200);
+
+    const refused = await inject("POST", `/parts/${second.id}/deploy`, admin, {
+      deviceId: printerA.id,
+    });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.message).toMatch(/already has CART-A/);
+  });
+
+  it("names the cartridge in the way rather than hiding the machine", async () => {
+    // Dropping the printer from the list would send somebody hunting for a machine
+    // they can see standing in front of them.
+    const { printerA, partA, model } = await twoPlants();
+    const sites = (await inject("GET", "/locations", admin)).json() as { id: string }[];
+    const second = (
+      await inject("POST", "/parts", admin, {
+        identifier: "CART-A2",
+        partModelId: model.id,
+        status: "ready",
+        locationId: sites[0]!.id,
+      })
+    ).json();
+    await inject("POST", `/parts/${partA.id}/deploy`, admin, { deviceId: printerA.id });
+
+    const devices = (await inject("GET", `/parts/${second.id}/fitting-devices`, admin)).json() as {
+      id: string;
+      occupiedBy: string | null;
+    }[];
+    expect(devices.map((d) => d.id)).toContain(printerA.id);
+    expect(devices.find((d) => d.id === printerA.id)?.occupiedBy).toBe("CART-A");
+  });
+
+  it("frees the machine again once the cartridge is booked back in", async () => {
+    const { printerA, partA, model } = await twoPlants();
+    const sites = (await inject("GET", "/locations", admin)).json() as { id: string }[];
+    const second = (
+      await inject("POST", "/parts", admin, {
+        identifier: "CART-A2",
+        partModelId: model.id,
+        status: "ready",
+        locationId: sites[0]!.id,
+      })
+    ).json();
+
+    await inject("POST", `/parts/${partA.id}/deploy`, admin, { deviceId: printerA.id });
+    await inject("POST", `/parts/${partA.id}/return`, admin, { outcome: "ok" });
+
+    const devices = (await inject("GET", `/parts/${second.id}/fitting-devices`, admin)).json() as {
+      id: string;
+      occupiedBy: string | null;
+    }[];
+    expect(devices.find((d) => d.id === printerA.id)?.occupiedBy).toBeNull();
+    expect(
+      (await inject("POST", `/parts/${second.id}/deploy`, admin, { deviceId: printerA.id }))
+        .statusCode,
+    ).toBe(200);
+  });
+});

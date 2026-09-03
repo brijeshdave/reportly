@@ -140,6 +140,22 @@ offers that plant's printers and no others, and sending another site's machine i
 by hand is refused. Move the cartridge to the other site first if that is really
 what you want.
 
+In the register, **Where** is the machine and **Site** is the plant. A cartridge
+that is not in a machine reads **In store** — the two columns never print the same
+answer twice.
+
+### One cartridge to a machine
+
+A printer holds one cartridge of a given kind at a time, so installing a second is
+refused, naming the one already in it. The install picker still **lists** that
+printer rather than hiding it — greyed out, with the cartridge number that is in
+the way underneath, because a machine missing from the list reads as a broken list
+to somebody standing in front of it. Book the old one back in and the printer
+becomes selectable again.
+
+It is per **model**, not per machine: a printer that takes a set of four colours
+still takes all four. Two of the _same_ cartridge is the impossible thing.
+
 ### Setting or correcting the site
 
 Open the cartridge and use the **Site** control on its page. It needs

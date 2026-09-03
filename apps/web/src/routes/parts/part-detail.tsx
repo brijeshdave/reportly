@@ -137,15 +137,31 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
             onChange={setDeviceId}
             // The type goes underneath rather than trailing the name: a floor of
             // fifty printers is a list to search, not to read.
+            //
+            // A machine that already holds one of these is shown greyed and names
+            // the cartridge in the way, rather than being dropped from the list —
+            // "it should be shown disabled non selectable showing cartridge number
+            // install in there". A missing printer reads as a broken list.
             options={(devices.data ?? []).map((device) => ({
               value: device.id,
               label: device.name,
-              hint: device.typeName ?? undefined,
+              hint: device.occupiedBy
+                ? `${device.occupiedBy} is already in it`
+                : (device.typeName ?? undefined),
+              disabled: Boolean(device.occupiedBy),
             }))}
             placeholder="Choose…"
           />
         )}
       </Field>
+      {!devices.isLoading &&
+      (devices.data ?? []).length > 0 &&
+      (devices.data ?? []).every((device) => device.occupiedBy) ? (
+        <p className="text-xs text-muted-foreground">
+          Every machine here already has a {part.partModelName} in it. Book one of those back in
+          before installing this one.
+        </p>
+      ) : null}
       {!devices.isLoading && (devices.data ?? []).length === 0 ? (
         // The honest answer to an empty picker. Without it this reads as a
         // broken dropdown, when it is really a model that fits nothing yet or a
@@ -834,7 +850,10 @@ export function PartDetailPage({ partId }: { partId: string }) {
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge tone={STATUS_TONE[p.status]}>{PART_STATUS_LABELS[p.status]}</Badge>
         <span className="text-muted-foreground">
-          {p.deviceName ? `In ${p.deviceName}` : p.locationName ? `At ${p.locationName}` : "—"}
+          {/* The machine, or the fact that there isn't one. Falling back to the site
+              printed it twice over, once here and again in the Site control beside
+              it — the same duplication the register had. */}
+          {p.deviceName ? `In ${p.deviceName}` : p.status === "scrapped" ? "—" : "In store"}
         </span>
 
         {/* Which plant's stock this is.

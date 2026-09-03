@@ -19,6 +19,14 @@ export interface SelectOption {
   label: string;
   /** A second line to tell same-named options apart (a person's department, say). */
   hint?: string;
+  /**
+   * Shown, but not choosable.
+   *
+   * Drawn rather than filtered out on purpose: somebody looking for a printer that
+   * is already full needs to see it there, greyed, with the reason in its hint —
+   * a missing row reads as a broken list and sends them hunting.
+   */
+  disabled?: boolean;
 }
 
 export function SearchableSelect({
@@ -96,7 +104,11 @@ export function SearchableSelect({
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      pick(active === -1 ? "" : (filtered[active]?.value ?? ""));
+      // The keyboard has to refuse what the mouse refuses, or a disabled option is
+      // only disabled for people using a pointer.
+      const chosen = active === -1 ? null : filtered[active];
+      if (chosen?.disabled) return;
+      pick(active === -1 ? "" : (chosen?.value ?? ""));
       return;
     }
     if (event.key === "Escape") {
@@ -218,10 +230,15 @@ export function SearchableSelect({
                         data-label={option.label}
                         data-active={index === active}
                         onMouseEnter={() => setActive(index)}
-                        onClick={() => pick(option.value)}
+                        onClick={() => {
+                          if (!option.disabled) pick(option.value);
+                        }}
+                        disabled={option.disabled}
+                        aria-disabled={option.disabled}
                         className={cn(
                           "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
-                          index === active ? "bg-muted" : "",
+                          index === active && !option.disabled ? "bg-muted" : "",
+                          option.disabled ? "cursor-not-allowed opacity-50" : "",
                         )}
                       >
                         <span className="min-w-0">
