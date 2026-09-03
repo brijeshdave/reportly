@@ -64,6 +64,11 @@ import type { AssetReliability } from "@reportly/shared";
 import { withLocationsNullable } from "@/core/db/scoped.js";
 import { getEffectiveSetting } from "@/core/settings/service.js";
 import * as partsRepo from "@/features/reports/parts-repo.js";
+import {
+  runDeptIrregularity,
+  runDeptWorkload,
+  runDeptWorkloadDaily,
+} from "@/features/reports/workload-service.js";
 import { db } from "@/core/db/index.js";
 import { companies, journalEntries } from "@/core/db/schema.js";
 import { AppError } from "@/core/errors.js";
@@ -169,9 +174,15 @@ export async function runReport(
                     ? await runRoutineLog(ctx, from, to)
                     : definition.source === "routine_compliance"
                       ? await runRoutineCompliance(ctx, from, to)
-                      : isPartSource(definition.source)
-                        ? await runCartridges(ctx, definition, from, to)
-                        : await runJournal(ctx, definition, from, to, tzOffsetMinutes);
+                      : definition.source === "dept_workload"
+                        ? await runDeptWorkload(ctx, definition, from, to)
+                        : definition.source === "dept_workload_daily"
+                          ? await runDeptWorkloadDaily(ctx, definition, from, to, tzOffsetMinutes)
+                          : definition.source === "dept_irregularity"
+                            ? await runDeptIrregularity(ctx, definition, from, to)
+                            : isPartSource(definition.source)
+                              ? await runCartridges(ctx, definition, from, to)
+                              : await runJournal(ctx, definition, from, to, tzOffsetMinutes);
 
   const companyName = ctx.companyId ? await companyNameOf(ctx.companyId) : null;
 

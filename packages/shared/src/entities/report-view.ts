@@ -73,6 +73,7 @@ export const REPORT_GROUPINGS = [
   "status",
   "asset",
   "kind",
+  "designation",
 ] as const;
 export type ReportGrouping = (typeof REPORT_GROUPINGS)[number];
 export const reportGroupingSchema = z.enum(REPORT_GROUPINGS);
@@ -89,6 +90,7 @@ export const REPORT_GROUPING_LABELS: Record<ReportGrouping, string> = {
   status: "By status",
   asset: "By asset",
   kind: "By kind (issue / work)",
+  designation: "By designation",
 };
 
 /**
@@ -172,6 +174,12 @@ export const REPORT_SOURCES = [
   "printer_health",
   "part_failures",
   "part_workload",
+  // Who in a department did how much, over a window. Three views of one query —
+  // the same counts per person, per person per day, and the people doing little
+  // or nothing — which is why they share a filter set and a sort.
+  "dept_workload",
+  "dept_workload_daily",
+  "dept_irregularity",
 ] as const;
 export type ReportSource = (typeof REPORT_SOURCES)[number];
 
@@ -200,6 +208,9 @@ export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
   printer_health: "reports:view:printer_health",
   part_failures: "reports:view:part_failures",
   part_workload: "reports:view:part_workload",
+  dept_workload: "reports:view:dept_workload",
+  dept_workload_daily: "reports:view:dept_workload_daily",
+  dept_irregularity: "reports:view:dept_irregularity",
 };
 
 /**
@@ -245,6 +256,12 @@ export const REPORT_SCOPE: Record<ReportSource, ReportScopeShape> = {
   printer_health: "place",
   part_failures: "place",
   part_workload: "place",
+  // Every row is somebody's work, so the reporting line decides who may read it:
+  // the reader plus their downline, narrowed by company and site. A head of
+  // department sees their nested organisation and nobody else's.
+  dept_workload: "people",
+  dept_workload_daily: "people",
+  dept_irregularity: "people",
 };
 
 /** Every per-report key, for seeding a role that may read all of them. */
@@ -271,6 +288,9 @@ export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
   printer_health: "Printer health — which machines eat cartridges",
   part_failures: "Cartridge failures — what failed, after whose work",
   part_workload: "Cartridge workload — who serviced how many, and what came back",
+  dept_workload: "Department workload — what each person did",
+  dept_workload_daily: "Department workload by day — each person, day by day",
+  dept_irregularity: "Irregularity — who did little or nothing",
 };
 
 /** The sources that read the cartridges module, hidden where it is switched off. */
@@ -328,6 +348,55 @@ export const SHIFT_ATTENDANCE_COLUMNS = [
   "doubles",
 ] as const;
 
+/**
+ * Columns for the department workload reports.
+ *
+ * One row per person, and the same row with a date in front for the daily view.
+ * `workingDays` reads "18 / 24" — days rostered working over the highest anybody
+ * in the same grouping was rostered — because a count of work means nothing
+ * without the days that were available to do it in.
+ *
+ * `points` sits outside `total` deliberately: counts and points are different
+ * units, and adding them would produce a number that means nothing.
+ */
+export const DEPT_WORKLOAD_COLUMNS = [
+  "person",
+  "workingDays",
+  "issues",
+  "plannedWork",
+  "tasks",
+  "cartridges",
+  "routines",
+  "points",
+  "total",
+] as const;
+
+export const DEPT_WORKLOAD_DAILY_COLUMNS = [
+  "date",
+  "person",
+  "issues",
+  "plannedWork",
+  "tasks",
+  "cartridges",
+  "routines",
+  "points",
+  "total",
+] as const;
+
+/**
+ * Columns for the irregularity report — the raw total, the rate and the bar it is
+ * being judged against, all on the row. Asked for that way ("both, side by side"):
+ * a threshold with no context is a number somebody has to take on trust.
+ */
+export const DEPT_IRREGULARITY_COLUMNS = [
+  "person",
+  "workingDays",
+  "total",
+  "perDay",
+  "groupAverage",
+  "below",
+] as const;
+
 /** Columns for the routine reports (one row per completion / per person). */
 export const ROUTINE_LOG_COLUMNS = [
   "date",
@@ -358,10 +427,12 @@ export const REPORT_DOMAINS = [
   "Scheduling",
   "Routines",
   "Cartridges",
+  "Workload",
 ] as const;
 export type ReportDomain = (typeof REPORT_DOMAINS)[number];
 
 export function reportDomain(source: ReportSource): ReportDomain {
+  if (source.startsWith("dept_")) return "Workload";
   if (source.startsWith("shift_")) return "Scheduling";
   if (source.startsWith("routine_")) return "Routines";
   if (isPartSource(source)) return "Cartridges";
@@ -594,6 +665,16 @@ export const ALL_REPORT_COLUMN_LABELS: Record<string, string> = {
   change: "Change",
   action: "Action",
   actor: "By",
+  // department workload
+  workingDays: "Working days",
+  issues: "Issues",
+  plannedWork: "Planned work",
+  tasks: "Tasks",
+  routines: "Routines",
+  total: "Total",
+  perDay: "Per working day",
+  groupAverage: "Group average",
+  below: "Below",
   // shift roster / coverage / attendance
   shift: "Shift",
   hours: "Hours",
@@ -632,6 +713,11 @@ export const MAX_CUSTOM_RANGE_DAYS: Record<ReportSource, number> = {
   // Routine reports likewise.
   routine_log: 366,
   routine_compliance: 366,
+  // A roll-up per person, so a year is a reasonable window. The daily view is a
+  // row per person per day, which is a data dump past a month.
+  dept_workload: 366,
+  dept_workload_daily: 31,
+  dept_irregularity: 366,
   // A cartridge's life is measured in months, and the health reports are only
   // meaningful over enough tours to see a pattern.
   part_register: 366,
@@ -829,6 +915,14 @@ export const reportDefinitionSchema = z.object({
   byDevice: z.boolean().optional(),
   /** The department a shift-source report reads. Required by the shift_* sources. */
   departmentId: uuidSchema.nullable().optional(),
+  /**
+   * Irregularity only: list people whose total activity is below this.
+   *
+   * One by default, so the report opens on "did nothing at all" and is tightened by
+   * hand from there. A number rather than a fixed rule because what counts as too
+   * little differs by department, and the person reading knows their own.
+   */
+  irregularityThreshold: z.number().int().min(0).max(1000).optional(),
 });
 export type ReportDefinition = z.infer<typeof reportDefinitionSchema>;
 

@@ -251,6 +251,7 @@ const REPORT_FAMILIES: { name: string; matches: (source: ReportSource) => boolea
     matches: (s) => s.startsWith("part_") || s === "printer_health",
   },
   { name: "Leaderboard reports viewer", matches: (s) => s === "leaderboard" },
+  { name: "Workload reports viewer", matches: (s) => s.startsWith("dept_") },
 ];
 
 const REPORT_FAMILY_ROLES: { name: string; permissions: Permission[] }[] = REPORT_FAMILIES.map(

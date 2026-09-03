@@ -110,6 +110,7 @@ export default defineConfig({
           { text: "Shifts", link: "/user/shifts" },
           { text: "Routines", link: "/user/routines" },
           { text: "Cartridges", link: "/user/cartridges" },
+          { text: "Workload reports", link: "/user/workload" },
           { text: "Import & export", link: "/user/import-export" },
           { text: "FAQ", link: "/user/faq" },
         ],

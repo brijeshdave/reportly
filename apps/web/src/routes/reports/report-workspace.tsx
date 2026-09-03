@@ -517,6 +517,46 @@ function ControlsPanel({
         </Labeled>
       ) : null}
 
+      {/* The workload reports group people, so their groupings are the ones a person
+          has: their site, their designation, their department. The journal's own
+          groupings (severity, status, asset) would each produce one group. */}
+      {definition.source.startsWith("dept_") ? (
+        <Labeled label="Group by">
+          <Select
+            value={definition.grouping}
+            onChange={(e) => patch({ grouping: e.target.value as ReportGrouping })}
+          >
+            {(["none", "location", "designation", "department"] as ReportGrouping[]).map((g) => (
+              <option key={g} value={g}>
+                {REPORT_GROUPING_LABELS[g]}
+              </option>
+            ))}
+          </Select>
+        </Labeled>
+      ) : null}
+
+      {/* How little is too little. A box rather than a fixed rule: what counts as
+          too quiet differs by department, and the person reading knows their own. */}
+      {definition.source === "dept_irregularity" ? (
+        <Labeled label="List people below">
+          <Input
+            type="number"
+            min="0"
+            inputMode="numeric"
+            className="w-28"
+            value={String(definition.irregularityThreshold ?? 1)}
+            onChange={(e) =>
+              patch({
+                irregularityThreshold: e.target.value === "" ? 1 : Number(e.target.value),
+              })
+            }
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Total pieces of work in the period. One lists only the people who did nothing at all.
+          </p>
+        </Labeled>
+      ) : null}
+
       {/* Cartridge reports narrow by the person who did the work. Offered only
           where it changes something: the register and the health reports have no
           person to narrow by, and a filter that does nothing reads as broken. */}

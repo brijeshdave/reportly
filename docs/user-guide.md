@@ -109,6 +109,10 @@ offers **Log the work now**. A completed task is never a dead end.
 
 ### Seeing whether your work has been scored
 
+For a manager's view of how much work each person is doing, see
+[Workload reports](user/workload.md) — who did how many issues, tasks and cartridge
+jobs, the days they were rostered to do them in, and who did little or nothing.
+
 **Reviews** has two halves. If you manage people, the entries awaiting your score
 are there. And whoever you are, **your own entries waiting on your manager** are
 listed too — so you can tell the difference between work nobody has looked at and
@@ -484,6 +488,19 @@ those groups; you can then remove the scope deliberately, or deactivate instead.
 Each company has a `Remote` location, created with it, for people without an
 office. It can be renamed, but never deleted or deactivated.
 
+### Somebody with no site sees every site
+
+Site access is set per person (**People → _name_ → Sites**), and **a person with no
+site assigned is unrestricted** — every site picker offers them all of them, and
+every scoped list shows them everything. Nobody is narrowed until you narrow them,
+because on a fresh install nobody has been placed yet and the alternative is an
+application where no screen shows anything.
+
+The consequence worth knowing: a person you forget to place sees the whole company
+rather than nothing. If a site picker is offering somebody more than you expect,
+check their Sites first — the pickers are scoped, so an unexpectedly long list is
+almost always an unplaced person rather than a leak.
+
 ---
 
 ## Company administrator
@@ -746,14 +763,23 @@ Every one of those is an ordinary filter, so widen or clear them freely:
 
 - **Whose** — only mine, my direct team, two levels down, my whole team, or
   everyone I can see. It can only ever _narrow_ what you may already see.
-- **Review** — "not yet reviewed" finds entries still sitting with a manager. It
-  does not show the score (scoring stays blind upward), only whether anybody has
-  looked yet.
+- **Whose** — only mine, my direct team, two levels down, my whole team,
+  **everyone except my direct team**, or everyone I can see. The last-but-one is for
+  a head of department reading everything that is _not_ their own immediate team.
+  Like every other scope it can only ever narrow what you may already see.
+- **Review** — **Waiting for review**, **Reviewed**, or **Not ready to review**. It
+  does not show the score (scoring stays blind upward), only where the entry stands.
 
-The table has a **Reviewed** column saying the same thing per row, so a list of
-thirty entries shows at a glance which ones are still waiting rather than making you
-filter twice to find out. Like the filter, it says only _whether_ a manager has
-scored it — never what they gave.
+The table has a **Review** column saying the same thing per row, so a list of thirty
+entries shows at a glance which ones are still waiting. Like the filter, it says only
+_where the entry stands_ — never what anybody gave.
+
+**"Waiting" means a reviewer can act on it today.** An entry is waiting only when it
+is submitted, resolved, and not rejected — the same three things the server insists
+on before it will accept a score. Anything else reads **—**: still being worked,
+finished in a way that earns nothing (cancelled, duplicate, not an issue), or struck
+out. It used to say "Waiting" for all of those, which put work in managers' queues
+that the server would have refused to score.
 
 **My day** is its own page under Work now, rather than the journal's first tab, so
 opening the journal takes you to the entries.

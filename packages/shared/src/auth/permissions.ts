@@ -212,6 +212,9 @@ export const PERMISSIONS = {
   REPORTS_VIEW_PRINTER_HEALTH: "reports:view:printer_health",
   REPORTS_VIEW_PART_FAILURES: "reports:view:part_failures",
   REPORTS_VIEW_PART_WORKLOAD: "reports:view:part_workload",
+  REPORTS_VIEW_DEPT_WORKLOAD: "reports:view:dept_workload",
+  REPORTS_VIEW_DEPT_WORKLOAD_DAILY: "reports:view:dept_workload_daily",
+  REPORTS_VIEW_DEPT_IRREGULARITY: "reports:view:dept_irregularity",
   REPORTS_MANAGE: "reports:manage",
 
   // The dedicated leaderboard page — the podium ranking of people by points earned.

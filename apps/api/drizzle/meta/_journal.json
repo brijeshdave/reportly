@@ -176,6 +176,13 @@
       "when": 1786791600015,
       "tag": "0024_parts_keep_their_site",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786791600016,
+      "tag": "0025_workload_report_permissions",
+      "breakpoints": true
     }
   ]
 }
