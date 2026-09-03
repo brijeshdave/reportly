@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -129,6 +130,7 @@ async function buildTeam(admin: string) {
 async function fileReport(cookie: string, title = "Belt snapped"): Promise<string> {
   const res = await inject("POST", "/journal", cookie, {
     kind: "issue",
+    severityId: await anySeverityId(),
     title,
     state: "submitted",
     issueSummary: "It snapped",
@@ -144,7 +146,18 @@ async function fileReport(cookie: string, title = "Belt snapped"): Promise<strin
  * progress has not finished being done. Every test that scores a report goes
  * through here rather than repeating the lookup.
  */
-async function finish(cookie: string, reportId: string): Promise<void> {
+async function finish(
+  cookie: string,
+  reportId: string,
+  // Resolving needs the work written down, and only somebody on the entry may write
+  // it — so when a manager moves the status, the author still logs what was done.
+  workedBy: string = cookie,
+): Promise<void> {
+  const logged = await inject("POST", `/journal/${reportId}/work`, workedBy, {
+    summary: "Replaced the belt",
+  });
+  expect(logged.statusCode).toBe(201);
+
   const statuses = (await inject("GET", "/journal-statuses", cookie)).json();
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
   const res = await inject("PATCH", `/journal/${reportId}/status`, cookie, {
@@ -211,7 +224,7 @@ describe("comments", () => {
     const { manager, author } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
 
-    await finish(manager.cookie, reportId);
+    await finish(manager.cookie, reportId, author.cookie);
     await score(manager.cookie, reportId, [{ userId: author.id, points: 8 }]);
     const locked = (await inject("GET", `/journal/${reportId}`, author.cookie)).json();
     expect(locked.lockedAt).not.toBeNull();
@@ -345,7 +358,7 @@ describe("comments", () => {
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
         title: "Check the tensioner",
-        assigneeId: author.id,
+        assigneeIds: [author.id],
       })
     ).json();
 
@@ -478,6 +491,16 @@ describe("handover", () => {
 });
 
 describe("status changes", () => {
+  /** Write down what was done. Resolving refuses an entry with an empty work log —
+   *  the record is what the points are scored against — so every test that reaches
+   *  a finished state puts one there first, as the person who did the work. */
+  async function logWork(cookie: string, reportId: string) {
+    const res = await inject("POST", `/journal/${reportId}/work`, cookie, {
+      summary: "Replaced the belt",
+    });
+    expect(res.statusCode).toBe(201);
+  }
+
   async function statuses(admin: string) {
     const list = (await inject("GET", "/journal-statuses", admin)).json();
     const by = (name: string) => list.find((s: { name: string }) => s.name === name);
@@ -510,6 +533,8 @@ describe("status changes", () => {
         })
       ).statusCode,
     ).toBe(200);
+
+    await logWork(author.cookie, reportId);
     expect(
       (
         await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
@@ -525,6 +550,7 @@ describe("status changes", () => {
     const reportId = await fileReport(author.cookie);
     const s = await statuses(admin);
 
+    await logWork(author.cookie, reportId);
     await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
       statusId: s.resolved.id,
     });
@@ -559,7 +585,7 @@ describe("status changes", () => {
     const reportId = await fileReport(author.cookie);
     const s = await statuses(admin);
 
-    await finish(manager.cookie, reportId);
+    await finish(manager.cookie, reportId, author.cookie);
     await score(manager.cookie, reportId, [{ userId: author.id, points: 8 }]);
     // Editing the content is refused...
     expect(
@@ -611,6 +637,9 @@ describe("status changes", () => {
         .json()
         .data.some((x: { id: string }) => x.id === reportId),
     ).toBe(true);
+    // The author did the work and writes it down; the entry cannot be resolved with
+    // an empty timeline, whoever is moving the status.
+    await logWork(author.cookie, reportId);
     expect(
       (
         await inject("PATCH", `/journal/${reportId}/status`, mate.cookie, {
@@ -1028,9 +1057,14 @@ describe("the work timeline", () => {
         .statusCode,
     ).toBe(404);
 
+    // Something has to be on the timeline before it can be resolved at all.
+    await inject("POST", `/journal/${reportId}/work`, author.cookie, { summary: "Replaced it" });
     const statuses = (await inject("GET", "/journal-statuses", author.cookie)).json();
     const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
-    await inject("PATCH", `/journal/${reportId}/status`, author.cookie, { statusId: resolved.id });
+    const finished = await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
+      statusId: resolved.id,
+    });
+    expect(finished.statusCode).toBe(200);
 
     const closed = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
       summary: "One more thing",

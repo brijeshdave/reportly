@@ -20,6 +20,7 @@ import type { StorageProvider } from "@/core/storage/provider.js";
 import { attachmentsOnBackend } from "@/features/attachments/repo.js";
 import type { StorageBackend } from "@reportly/shared";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -75,7 +76,12 @@ async function seedFile(admin: string): Promise<{ id: string; key: string }> {
       method: "POST",
       url: `${API_PREFIX}/journal`,
       headers: { cookie: admin, "x-company-id": DEMO_COMPANY_ID },
-      payload: { kind: "issue", title: "Belt seized", state: "submitted" },
+      payload: {
+        kind: "issue",
+        severityId: await anySeverityId(),
+        title: "Belt seized",
+        state: "submitted",
+      },
     })
   ).json();
 

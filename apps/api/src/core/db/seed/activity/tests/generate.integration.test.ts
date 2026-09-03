@@ -19,6 +19,7 @@ import {
   devices,
   journalEntries,
   pointAwards,
+  taskAssignees,
   tasks,
   userCompanies,
   users,
@@ -150,14 +151,17 @@ describe("seed:activity", () => {
   it("purges what it wrote, and only what it wrote", async () => {
     const [userId] = await staffEngineering();
     // Somebody's real work, filed while the demo data was on screen.
-    await db.insert(tasks).values({
-      companyId: DEMO_COMPANY_ID,
-      title: "Real task somebody typed",
-      assigneeId: userId!,
-      assignerId: userId!,
-      departmentId: DEPT_ENGINEERING,
-      state: "open",
-    });
+    const [ownTask] = await db
+      .insert(tasks)
+      .values({
+        companyId: DEMO_COMPANY_ID,
+        title: "Real task somebody typed",
+        assignerId: userId!,
+        departmentId: DEPT_ENGINEERING,
+        state: "open",
+      })
+      .returning({ id: tasks.id });
+    await db.insert(taskAssignees).values({ taskId: ownTask!.id, userId: userId! });
     await db.insert(journalEntries).values({
       companyId: DEMO_COMPANY_ID,
       authorId: userId!,

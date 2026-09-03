@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -148,6 +149,7 @@ async function fileIssue(
 ): Promise<string> {
   const res = await inject("POST", "/journal", cookie, {
     kind: "issue",
+    severityId: await anySeverityId(),
     title,
     state: "submitted",
     issueSummary: "Something broke",
@@ -403,6 +405,7 @@ describe("report timeline", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Bearing noise",
       state: "submitted",
       issueSummary: "Grinding",

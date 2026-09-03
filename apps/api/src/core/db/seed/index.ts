@@ -342,6 +342,11 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.COMPANIES_CREATE,
       PERMISSIONS.COMPANIES_UPDATE,
       PERMISSIONS.COMPANIES_DELETE,
+      // Reading the list you administer. Its absence let the editor tier below hold
+      // something its admin did not — which is what the subset guard exists to
+      // catch, and it caught it: an organisation admin could create, rename and
+      // delete sites without being able to list them.
+      PERMISSIONS.LOCATIONS_READ,
       PERMISSIONS.LOCATIONS_CREATE,
       PERMISSIONS.LOCATIONS_UPDATE,
       PERMISSIONS.LOCATIONS_DELETE,

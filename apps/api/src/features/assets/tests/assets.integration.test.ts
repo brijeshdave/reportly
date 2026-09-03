@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -199,6 +200,7 @@ describe("asset tree and device registry", () => {
 
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Robot arm stalling",
       state: "submitted",
       targets: [
@@ -253,6 +255,7 @@ describe("asset tree and device registry", () => {
       (
         await inject("POST", "/journal", author.cookie, {
           kind: "issue",
+          severityId: await anySeverityId(),
           title,
           state: "submitted",
           targets,
@@ -298,6 +301,7 @@ describe("asset tree and device registry", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Cross-company scope",
       state: "submitted",
       targets: [{ kind: "asset", id: foreign.json().id }],

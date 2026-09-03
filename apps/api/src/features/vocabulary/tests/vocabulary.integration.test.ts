@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -161,6 +162,7 @@ describe("tags", () => {
     const report = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Coolant on the floor",
         state: "submitted",
         issueSummary: "Puddle",
@@ -195,6 +197,7 @@ describe("tags", () => {
     const tagged = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Guard missing",
         state: "submitted",
         issueSummary: "No guard",
@@ -204,6 +207,7 @@ describe("tags", () => {
     ).json();
     await inject("POST", "/journal", admin, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Unrelated",
       state: "submitted",
       issueSummary: "Something else",
@@ -288,7 +292,7 @@ describe("tags", () => {
     const task = (
       await inject("POST", "/tasks", admin, {
         title: "Check the pump",
-        assigneeId: me.user.id,
+        assigneeIds: [me.user.id],
         departmentId: engineering.id,
         tagIds: [tag.id],
       })

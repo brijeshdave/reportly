@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -147,6 +148,7 @@ async function setup(admin: string) {
   const report = (
     await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Belt seized",
       state: "submitted",
     })
@@ -165,6 +167,13 @@ const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
  * through here rather than repeating the lookup.
  */
 async function finish(cookie: string, reportId: string): Promise<void> {
+  // An entry cannot be resolved with an empty work log — the record is what the
+  // points are scored against — and only somebody on it may write one.
+  const logged = await inject("POST", `/journal/${reportId}/work`, cookie, {
+    summary: "Replaced the belt",
+  });
+  expect(logged.statusCode).toBe(201);
+
   const statuses = (await inject("GET", "/journal-statuses", cookie)).json();
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
   const res = await inject("PATCH", `/journal/${reportId}/status`, cookie, {

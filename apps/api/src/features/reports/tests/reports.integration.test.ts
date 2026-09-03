@@ -20,6 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -328,6 +329,7 @@ describe("reports", () => {
     const openIssue = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Open one",
         state: "submitted",
         locationId: plantA.id,
@@ -336,6 +338,7 @@ describe("reports", () => {
     ).json();
     await inject("POST", "/journal", lead.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Resolved one",
       state: "submitted",
       locationId: plantA.id,
@@ -363,6 +366,7 @@ describe("reports", () => {
     // A recurrence of the open one, and the recurring filter keeps only it.
     await inject("POST", "/journal", lead.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "It happened again",
       state: "submitted",
       locationId: plantA.id,
@@ -487,6 +491,7 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
         locationId: plantA.id,
@@ -523,6 +528,7 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
         locationId: plantA.id,
@@ -559,12 +565,14 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
         locationId: plantA.id,
         reportDate: FIXED_DATE,
       })
     ).json();
+    await inject("POST", `/journal/${report.id}/work`, lead.cookie, { summary: "Fixed it" });
     const statuses = (await inject("GET", "/journal-statuses", lead.cookie)).json();
     const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
     await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, { statusId: resolved.id });
@@ -606,12 +614,14 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
         locationId: plantA.id,
         reportDate: FIXED_DATE,
       })
     ).json();
+    await inject("POST", `/journal/${report.id}/work`, lead.cookie, { summary: "Fixed it" });
     const statuses = (await inject("GET", "/journal-statuses", lead.cookie)).json();
     const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
     await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, { statusId: resolved.id });
@@ -643,12 +653,14 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
         locationId: plantA.id,
         reportDate: FIXED_DATE, // 15 May 2026
       })
     ).json();
+    await inject("POST", `/journal/${report.id}/work`, lead.cookie, { summary: "Fixed it" });
     const statuses = (await inject("GET", "/journal-statuses", lead.cookie)).json();
     const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
     await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, { statusId: resolved.id });
@@ -678,6 +690,7 @@ describe("reports", () => {
     // One entry about the device, one about nothing.
     await inject("POST", "/journal", lead.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Sensor fault",
       state: "submitted",
       locationId: plantA.id,
@@ -709,6 +722,7 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Sensor down",
         state: "submitted",
         locationId: plantA.id,
@@ -742,6 +756,7 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
         locationId: plantA.id,
@@ -808,12 +823,14 @@ describe("reports", () => {
       const report = (
         await inject("POST", "/journal", who.cookie, {
           kind: "issue",
+          severityId: await anySeverityId(),
           title: `Work at ${locationId}`,
           state: "submitted",
           locationId,
           reportDate: FIXED_DATE,
         })
       ).json();
+      await inject("POST", `/journal/${report.id}/work`, who.cookie, { summary: "Fixed it" });
       const statuses = (await inject("GET", "/journal-statuses", admin)).json();
       const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
       await inject("PATCH", `/journal/${report.id}/status`, admin, { statusId: resolved.id });
@@ -873,12 +890,14 @@ describe("reports", () => {
       const report = (
         await inject("POST", "/journal", operator.cookie, {
           kind: "issue",
+          severityId: await anySeverityId(),
           title,
           state: "submitted",
           locationId,
           reportDate: FIXED_DATE,
         })
       ).json();
+      await inject("POST", `/journal/${report.id}/work`, operator.cookie, { summary: "Fixed it" });
       const statuses = (await inject("GET", "/journal-statuses", admin)).json();
       const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
       await inject("PATCH", `/journal/${report.id}/status`, admin, { statusId: resolved.id });

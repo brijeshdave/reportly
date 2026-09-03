@@ -17,6 +17,7 @@ import { db } from "@/core/db/index.js";
 import { appPool, logPool } from "@/core/db/pool.js";
 import { journalEntries, journalWorkLogs, userCompanies, users } from "@/core/db/schema.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const migrationFile = fileURLToPath(
@@ -64,6 +65,7 @@ async function entryWithWorkText(overrides: {
       companyId: DEMO_COMPANY_ID,
       authorId,
       kind: "issue",
+      severityId: await anySeverityId(),
       state: "submitted",
       title: "Belt snapped",
       reportDate: new Date("2026-08-01T09:00:00.000Z"),

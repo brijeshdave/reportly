@@ -61,7 +61,7 @@ async function taskDueIn(cookie: string, assigneeId: string, hours: number): Pro
   const dueAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
   const res = await inject("POST", "/tasks", cookie, {
     title: "Grease the bearings",
-    assigneeId,
+    assigneeIds: [assigneeId],
     dueAt,
     priority: "normal",
   });

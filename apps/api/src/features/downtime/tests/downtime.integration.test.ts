@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -115,6 +116,7 @@ async function setup(admin: string) {
   const report = (
     await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      severityId: await anySeverityId(),
       title: "Conveyor jam on line 3",
       state: "submitted",
       // The person's own time on the job: 30 minutes.
@@ -304,6 +306,7 @@ describe("which things carry downtime", () => {
     const entry = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Line down while the PC was reimaged",
         state: "submitted",
         targets: [
@@ -340,6 +343,7 @@ describe("which things carry downtime", () => {
     const entry = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Labeller stopped the line",
         state: "submitted",
         targets: [{ kind: "device", id: printer.id }],
@@ -360,6 +364,7 @@ describe("which things carry downtime", () => {
     const entry = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        severityId: await anySeverityId(),
         title: "Compressor out",
         state: "submitted",
         targets: [{ kind: "asset", id: loose.id }],
