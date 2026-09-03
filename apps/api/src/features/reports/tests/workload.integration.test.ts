@@ -265,18 +265,111 @@ describe("the department workload report", () => {
 });
 
 describe("the daily workload report", () => {
-  it("puts each person's work on the day it happened", async () => {
+  /**
+   * A grid, not a list. Asked for after the first version shipped as a row per
+   * person per day: "what i want is it should show for my department like for a
+   * week in column and employee in row with only single row for each".
+   */
+  it("gives one row per person and one column per day", async () => {
     const { lead, one } = await team();
     await fileIssue(one, "Today's job");
 
     const res = await run(lead.cookie, "dept_workload_daily");
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    const rows = body.groups.flatMap((g: { rows: { cells: Record<string, string> }[] }) => g.rows);
-    const withWork = rows.filter((r: { cells: Record<string, string> }) => r.cells.issues === "1");
-    expect(withWork).toHaveLength(1);
-    expect(withWork[0]!.cells.person).toBe("Sam Operator");
-    expect(withWork[0]!.cells.date).toBe(new Date().toISOString().slice(0, 10));
+
+    // The window in `run` is four days wide, so four day columns plus the three
+    // fixed ones. The columns are the period; nothing here names them in advance.
+    const today = new Date().toISOString().slice(0, 10);
+    expect(body.meta.columns[0]).toBe("person");
+    expect(body.meta.columns).toContain(today);
+    expect(body.meta.columns[body.meta.columns.length - 1]).toBe("total");
+    // And the headers are readable rather than raw dates.
+    expect(body.meta.columnLabels).toContain("Person");
+    expect(body.meta.columnLabels.some((l: string) => /^[A-Z][a-z]{2} \d\d$/.test(l))).toBe(true);
+
+    const rows = rowsByPerson(body);
+    // One row each, whatever they did — three people in the fixture, three rows.
+    expect(rows.size).toBe(3);
+    expect(rows.get("Sam Operator")?.[today]).toBe("1");
+    expect(rows.get("Sam Operator")?.total).toBe("1");
+    expect(rows.get("Anil Fitter")?.total).toBe("0");
+  });
+
+  it("gives a week seven columns in every timezone", async () => {
+    // The bug a test at offset zero cannot see. A window that starts at local
+    // midnight starts at 18:30 the previous day in UTC, so reading the boundary in
+    // UTC put an eighth column on the grid and the wrong day at each end. It was
+    // found by counting the headers on a screen, which is why the offsets here are
+    // real ones — India, New York, Los Angeles — rather than zero.
+    const { lead } = await team();
+    for (const offset of [0, 330, -300, -480]) {
+      const res = await inject("POST", `/reports/run?tzOffsetMinutes=${offset}`, lead.cookie, {
+        definition: {
+          source: "dept_workload_daily",
+          range: "this_week",
+          grouping: "none",
+          columns: ["person"],
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const days = (res.json().meta.columns as string[]).filter((c) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(c),
+      );
+      expect(days, `offset ${offset}`).toHaveLength(7);
+    }
+  });
+
+  it("marks a day somebody was not rostered, so it reads differently from an idle one", async () => {
+    // A day off and a day at work with nothing done are not the same thing, and a
+    // grid of zeros cannot tell them apart. This is the "W/O or Leave do not count"
+    // rule made visible on the row.
+    const { lead, one, dept } = await team();
+    const site = (await inject("GET", "/locations", admin)).json()[0];
+    const shift = (
+      await inject("POST", "/shifts", admin, {
+        name: "Morning",
+        code: "M",
+        startMinute: 360,
+        endMinute: 840,
+      })
+    ).json();
+    const now = new Date();
+    const schedule = (
+      await inject("POST", "/schedules", admin, {
+        departmentId: dept.id,
+        locationId: site.id,
+        year: now.getUTCFullYear(),
+        month: now.getUTCMonth() + 1,
+      })
+    ).json();
+    const today = now.toISOString().slice(0, 10);
+    await inject("POST", `/schedules/${schedule.id}/assign`, admin, {
+      date: today,
+      userId: one.id,
+      shiftId: shift.id,
+      state: "working",
+    });
+
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const res = await inject("POST", "/reports/run", lead.cookie, {
+      definition: {
+        source: "dept_workload_daily",
+        range: "custom",
+        from: from.toISOString(),
+        to: to.toISOString(),
+        grouping: "none",
+        columns: ["person"],
+      },
+    });
+    const rows = rowsByPerson(res.json());
+    const sam = rows.get("Sam Operator")!;
+    // Rostered today and did nothing: a nought, which is a question worth asking.
+    expect(sam[today]).toBe("0");
+    // Not rostered on the day after: a dash, which is not.
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (tomorrow.slice(0, 7) === today.slice(0, 7)) expect(sam[tomorrow]).toBe("—");
   });
 });
 

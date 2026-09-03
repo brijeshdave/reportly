@@ -4,13 +4,15 @@ Three reports that answer one question from three sides: **who in my department 
 how much, over a period.**
 
 - **Department workload** — one row per person, with a column per kind of work.
-- **Department workload by day** — the same, a row per person per day.
+- **Department workload by day** — a grid: one row per person, one column per day.
 - **Irregularity** — the people who did little or nothing.
 
 They share a filter set, a grouping and a sort, because they are three views of one
 query. A window you set on one means the same thing on the next.
 
-Find them under **Reports → New report**, in the **Workload** group.
+Find them on the **Reports** page under the **Workload** tab, ready to run or to
+clone; or build one from scratch with **New report** and pick them under
+**Report on**.
 
 ---
 
@@ -43,6 +45,30 @@ quietly erase the first person's shift.
 points are different units; a total mixing them would be a number that means
 nothing. Only _direct_ points count here — a manager's share of what their team
 earned is theirs on the leaderboard, not activity of their own.
+
+---
+
+## The grid, day by day
+
+**Department workload by day** is a timesheet, not a list:
+
+| Person       | Working days | Mon 31 | Tue 01 | Wed 02 | Thu 03 | …   | Total |
+| ------------ | ------------ | ------ | ------ | ------ | ------ | --- | ----- |
+| Anil Fitter  | 4 / 4        | —      | 0      | 2      | 1      |     | 3     |
+| Sam Operator | 2 / 4        | —      | —      | 4      | 0      |     | 4     |
+
+**One row per person, whatever they did**, and one column for every day of the
+period — a week gives seven columns, a month gives thirty-one, three days give
+three. The date range decides; nothing needs setting up.
+
+Each cell is what that person did that day, counted the same way as the summary.
+**A dash means they were not on the rota** — so a day off reads differently from a
+day they were in and did nothing, which is the whole point of the distinction. Work
+logged on a day off still shows its number: that happened, and hiding it would be
+the bigger lie.
+
+A month of columns is wide; the table scrolls sideways, and Excel export keeps the
+same shape.
 
 ---
 
@@ -127,8 +153,7 @@ reporting line — it decides whether the report opens, not whose work is in it.
 
 The named ranges (this month, last month, and so on) work as they do everywhere.
 A custom range may span a year for the summary and irregularity reports, and a
-month for the daily one — a row per person per day past that stops being a report
-and becomes a data dump.
+month for the grid — past that the columns stop fitting on any page.
 
 Both export to Excel and to a printable page like every other report, and both can
 be saved as a view and shared.

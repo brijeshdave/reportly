@@ -349,9 +349,11 @@ export const SHIFT_ATTENDANCE_COLUMNS = [
 ] as const;
 
 /**
- * Columns for the department workload reports.
+ * Columns for the department workload summary.
  *
- * One row per person, and the same row with a date in front for the daily view.
+ * One row per person. The by-day report has no fixed column set at all — its
+ * columns are the days of whatever period was asked for, so it builds them, and its
+ * headers, as it runs.
  * `workingDays` reads "18 / 24" — days rostered working over the highest anybody
  * in the same grouping was rostered — because a count of work means nothing
  * without the days that were available to do it in.
@@ -362,18 +364,6 @@ export const SHIFT_ATTENDANCE_COLUMNS = [
 export const DEPT_WORKLOAD_COLUMNS = [
   "person",
   "workingDays",
-  "issues",
-  "plannedWork",
-  "tasks",
-  "cartridges",
-  "routines",
-  "points",
-  "total",
-] as const;
-
-export const DEPT_WORKLOAD_DAILY_COLUMNS = [
-  "date",
-  "person",
   "issues",
   "plannedWork",
   "tasks",

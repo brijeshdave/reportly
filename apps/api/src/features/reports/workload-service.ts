@@ -9,7 +9,6 @@
 import {
   DEPT_IRREGULARITY_COLUMNS,
   DEPT_WORKLOAD_COLUMNS,
-  DEPT_WORKLOAD_DAILY_COLUMNS,
   type AuthContext,
   type ReportDefinition,
   type ReportGroup,
@@ -34,6 +33,8 @@ export interface WorkloadSourceResult {
   groups: ReportGroup[];
   totals: ReportTotals;
   columns: readonly string[];
+  /** Supplied by the matrix, whose columns are days rather than a fixed set. */
+  columnLabels?: readonly string[];
   assetName: string | null;
 }
 
@@ -42,10 +43,22 @@ export interface WorkloadSourceResult {
 const activityTotal = (c: WorkloadCounts): number =>
   c.issues + c.plannedWork + c.tasks + c.cartridges + c.routines;
 
-const dayOf = (d: Date): string => d.toISOString().slice(0, 10);
+/**
+ * The local day an instant falls on.
+ *
+ * `tzOffsetMinutes` is minutes east of UTC, the same convention the range builder
+ * uses. Reading these boundaries in UTC instead is an off-by-one-day waiting to
+ * happen: a window that begins at local midnight begins at 18:30 the previous day
+ * in UTC, so a week came out with eight columns and the wrong one at each end. It
+ * did not show up in any test, because a test runs at offset zero where the two
+ * readings agree — it showed up on a screen.
+ */
+const dayOf = (d: Date, tzOffsetMinutes: number): string =>
+  new Date(d.getTime() + tzOffsetMinutes * 60_000).toISOString().slice(0, 10);
 
 /** The last day actually inside a `[from, to)` window. */
-const lastDayOf = (to: Date): string => dayOf(new Date(to.getTime() - 1));
+const lastDayOf = (to: Date, tzOffsetMinutes: number): string =>
+  dayOf(new Date(to.getTime() - 1), tzOffsetMinutes);
 
 function requireCompany(ctx: AuthContext): string {
   if (!ctx.companyId) {
@@ -61,10 +74,10 @@ const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompar
  * Everything the three reports need before they diverge: who is in scope, what each
  * of them did, and how many days they were rostered to do it in.
  */
-async function gather(ctx: AuthContext, from: Date, to: Date) {
+async function gather(ctx: AuthContext, from: Date, to: Date, tzOffsetMinutes: number) {
   const companyId = requireCompany(ctx);
-  const fromDay = dayOf(from);
-  const toDay = lastDayOf(to);
+  const fromDay = dayOf(from, tzOffsetMinutes);
+  const toDay = lastDayOf(to, tzOffsetMinutes);
 
   const people = await peopleInScope(ctx, companyId);
   const ids = people.map((p) => p.userId);
@@ -107,8 +120,9 @@ export async function runDeptWorkload(
   definition: ReportDefinition,
   from: Date,
   to: Date,
+  tzOffsetMinutes: number,
 ): Promise<WorkloadSourceResult> {
-  const { people, counts, workingDays } = await gather(ctx, from, to);
+  const { people, counts, workingDays } = await gather(ctx, from, to, tzOffsetMinutes);
 
   const labels = new Map(people.map((p) => [p.userId, groupLabelFor(p, definition.grouping)]));
   const rows = people
@@ -162,7 +176,15 @@ export async function runDeptWorkload(
 
 // --- 2. one row per person per day -------------------------------------------
 
-/** Every day in the window, so a quiet Tuesday is a row of zeros rather than a gap. */
+/** "Mon 01" — a weekday and a date, which is what somebody reads a timesheet by.
+ *  Short because a month puts thirty-one of these across the page. */
+function dayHeader(day: string): string {
+  const d = new Date(`${day}T00:00:00.000Z`);
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()];
+  return `${weekday} ${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** Every day in the window, so a quiet Tuesday is a column of its own rather than a gap. */
 function daysBetween(fromDay: string, toDay: string): string[] {
   const days: string[] = [];
   const cursor = new Date(`${fromDay}T00:00:00.000Z`);
@@ -182,77 +204,67 @@ export async function runDeptWorkloadDaily(
   tzOffsetMinutes: number,
 ): Promise<WorkloadSourceResult> {
   const companyId = requireCompany(ctx);
-  const fromDay = dayOf(from);
-  const toDay = lastDayOf(to);
+  const fromDay = dayOf(from, tzOffsetMinutes);
+  const toDay = lastDayOf(to, tzOffsetMinutes);
 
   const people = await peopleInScope(ctx, companyId);
   const ids = people.map((p) => p.userId);
   const daily = await dailyCountsFor(ids, companyId, from, to, fromDay, toDay, tzOffsetMinutes);
   const rostered = await workingDayFlags(ids, fromDay, toDay);
+  const workingDays = await workingDaysFor(ids, fromDay, toDay);
 
   const byPersonDay = new Map(daily.map((d) => [`${d.userId} ${d.day}`, d]));
   const days = daysBetween(fromDay, toDay);
-  const nameOf = new Map(people.map((p) => [p.userId, p.name]));
 
-  // One group per person by default — a month for one person reads down the page,
-  // which is what "for each day for each user" asks for. Any other grouping falls
-  // back to the shared labels so the three reports still group alike.
+  // One column per day, one row per person. Asked for exactly that way: "for a week
+  // in column and employee in row with only single row for each" — a timesheet, not
+  // a list of days. The columns are the period, so a week gives seven and a month
+  // gives thirty-one; the range picker decides, and nothing here has to know which.
+  const columns = ["person", "workingDays", ...days, "total"];
+  const columnLabels = ["Person", "Working days", ...days.map(dayHeader), "Total"];
+
+  const labels = new Map(people.map((p) => [p.userId, groupLabelFor(p, definition.grouping)]));
+  const rows = people.map((person) => ({ person })).sort((a, b) => byName(a.person, b.person));
+
   const groups: ReportGroup[] = [];
-  let dayRows = 0;
-  let overallPoints = 0;
+  let rowCount = 0;
 
-  for (const person of [...people].sort(byName)) {
-    const reportRows: ReportRow[] = [];
-    for (const day of days) {
-      const key = `${person.userId} ${day}`;
-      const counts = byPersonDay.get(key);
-      const worked = rostered.has(key);
-      // A day somebody was off is not a day they did nothing, and the report says
-      // which: an empty row on a rostered day is the one worth asking about.
-      if (!counts && !worked) continue;
-      const tally = counts ?? emptyCounts(person.userId, day);
-      const total = activityTotal(tally);
-      dayRows += 1;
-      overallPoints += tally.points;
-      reportRows.push({
-        id: key,
-        reportId: null,
-        cells: {
-          date: day,
-          person: person.name,
-          issues: String(tally.issues),
-          plannedWork: String(tally.plannedWork),
-          tasks: String(tally.tasks),
-          cartridges: String(tally.cartridges),
-          routines: String(tally.routines),
-          points: String(tally.points),
-          total: String(total),
-        },
-      });
-    }
-    if (reportRows.length === 0) continue;
-    const label =
-      definition.grouping === "none" || definition.grouping === "date"
-        ? (nameOf.get(person.userId) ?? person.name)
-        : groupLabelFor(person, definition.grouping);
-    const existing = groups.find((g) => g.label === label);
-    if (existing) existing.rows.push(...reportRows);
-    else {
-      groups.push({
-        key: label,
-        label,
-        rows: reportRows,
-        totals: { ...EMPTY_TOTALS, count: reportRows.length },
-      });
-    }
+  for (const [label, members] of grouped(rows, labels)) {
+    const high = Math.max(0, ...members.map((m) => workingDays.get(m.person.userId) ?? 0));
+    const reportRows: ReportRow[] = members.map((m) => {
+      const cells: Record<string, string> = {
+        person: m.person.name,
+        workingDays: workingDaysCell(workingDays.get(m.person.userId) ?? 0, high),
+      };
+      let total = 0;
+      for (const day of days) {
+        const key = `${m.person.userId} ${day}`;
+        const tally = byPersonDay.get(key);
+        const did = tally ? activityTotal(tally) : 0;
+        total += did;
+        // A day off and a day at work with nothing done are not the same thing, and
+        // the grid says which: a dash for a day they were not rostered, a number
+        // for one they were. Work logged on a day off still shows its number —
+        // that happened, and hiding it behind a dash would be the bigger lie.
+        cells[day] = did === 0 && !rostered.has(key) ? "—" : String(did);
+      }
+      cells.total = String(total);
+      rowCount += 1;
+      return { id: m.person.userId, reportId: null, cells };
+    });
+    groups.push({
+      key: label || null,
+      label: label || "Everyone",
+      rows: reportRows,
+      totals: { ...EMPTY_TOTALS, count: reportRows.length },
+    });
   }
-
-  for (const group of groups) group.totals = { ...EMPTY_TOTALS, count: group.rows.length };
 
   return {
     groups,
-    totals: { ...EMPTY_TOTALS, count: dayRows, points: overallPoints },
-    columns: DEPT_WORKLOAD_DAILY_COLUMNS,
+    totals: { ...EMPTY_TOTALS, count: rowCount },
+    columns,
+    columnLabels,
     assetName: null,
   };
 }
@@ -268,8 +280,9 @@ export async function runDeptIrregularity(
   definition: ReportDefinition,
   from: Date,
   to: Date,
+  tzOffsetMinutes: number,
 ): Promise<WorkloadSourceResult> {
-  const { people, counts, workingDays } = await gather(ctx, from, to);
+  const { people, counts, workingDays } = await gather(ctx, from, to, tzOffsetMinutes);
   const threshold = definition.irregularityThreshold ?? DEFAULT_IRREGULARITY_THRESHOLD;
 
   const labels = new Map(people.map((p) => [p.userId, groupLabelFor(p, definition.grouping)]));

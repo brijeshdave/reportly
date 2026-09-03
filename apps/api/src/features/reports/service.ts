@@ -97,6 +97,15 @@ interface SourceResult {
   groups: ReportGroup[];
   totals: ReportTotals;
   columns: readonly string[];
+  /**
+   * Headers, when the columns are not known in advance.
+   *
+   * Every other source picks from a fixed set, so `ALL_REPORT_COLUMN_LABELS` can
+   * name them. A matrix cannot: its columns are the days of whatever period was
+   * asked for, so it supplies its own headings or the table reads `2026-09-01`
+   * across the top.
+   */
+  columnLabels?: readonly string[];
   assetName: string | null;
 }
 
@@ -175,11 +184,11 @@ export async function runReport(
                     : definition.source === "routine_compliance"
                       ? await runRoutineCompliance(ctx, from, to)
                       : definition.source === "dept_workload"
-                        ? await runDeptWorkload(ctx, definition, from, to)
+                        ? await runDeptWorkload(ctx, definition, from, to, tzOffsetMinutes)
                         : definition.source === "dept_workload_daily"
                           ? await runDeptWorkloadDaily(ctx, definition, from, to, tzOffsetMinutes)
                           : definition.source === "dept_irregularity"
-                            ? await runDeptIrregularity(ctx, definition, from, to)
+                            ? await runDeptIrregularity(ctx, definition, from, to, tzOffsetMinutes)
                             : isPartSource(definition.source)
                               ? await runCartridges(ctx, definition, from, to)
                               : await runJournal(ctx, definition, from, to, tzOffsetMinutes);
@@ -197,7 +206,8 @@ export async function runReport(
       source: definition.source,
       grouping: definition.grouping,
       columns: [...source.columns],
-      columnLabels: source.columns.map((c) => ALL_REPORT_COLUMN_LABELS[c] ?? c),
+      columnLabels:
+        source.columnLabels?.slice() ?? source.columns.map((c) => ALL_REPORT_COLUMN_LABELS[c] ?? c),
       viewId: view?.id ?? null,
       viewName: view?.name ?? null,
       companyName,

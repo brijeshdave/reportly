@@ -1081,6 +1081,24 @@ const SYSTEM_REPORT_VIEWS: { name: string; description: string; definition: Repo
     definition: def({ source: "shift_attendance", range: "this_month", grouping: "none" }),
   },
   {
+    name: "Department workload",
+    description:
+      "Per person this month: issues, planned work, tasks, cartridge jobs and routines, with the days they were rostered to do them in.",
+    definition: def({ source: "dept_workload", range: "this_month", grouping: "none" }),
+  },
+  {
+    name: "Department workload by day",
+    description:
+      "One row per person, one column per day — what each of them did on each day of the period.",
+    definition: def({ source: "dept_workload_daily", range: "this_month", grouping: "none" }),
+  },
+  {
+    name: "Irregularity",
+    description:
+      "Who did little or nothing this month, with their rate per working day beside the group's average.",
+    definition: def({ source: "dept_irregularity", range: "this_month", grouping: "none" }),
+  },
+  {
     name: "Routine log",
     description:
       "Your team's routine completions this month — who did what, and when they started and finished.",
