@@ -163,76 +163,86 @@ describe("what an entry may be worth", () => {
     expect(at.statusCode).toBe(200);
   });
 
-  it("caps an entry filed against a task at the task ceiling when that is lower", async () => {
-    const { admin, manager, author, severity } = await scene(8);
-    await setCompanySetting(TASK_POINTS, DEMO_COMPANY_ID, { enabled: true, maxPoints: 3 });
+  it("takes its ceiling from the task, not the task's severity", async () => {
+    // The model he asked for, replacing the one this file used to test: "giving it
+    // points based on sevirity is not what i thing is good as there may be some
+    // tasks that needs much more points to earn." A severity grades how bad a
+    // breakdown was, which says nothing about how much work a planned job took.
+    const { admin, manager, author, severity } = await scene(2);
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
-        title: "Swap the belt",
+        title: "Strip and rebuild the gearbox",
         assigneeIds: [author.id],
+        maxPoints: 40,
       })
     ).json();
+    expect(task.maxPoints).toBe(40);
     const reportId = await fileAndResolve(admin, author, severity.id, task.id);
 
-    // The severity would allow 8; the task ceiling is 3, and the lower one wins.
-    const over = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
-      scores: [{ userId: author.id, points: 4 }],
+    // The severity allows two. The task says forty, and the task is the answer.
+    const paid = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 30 }],
     });
-    expect(over.statusCode).toBe(400);
-    // The message names the cap that actually bit, so nobody is sent to the
-    // severities screen to change a number that was not the cause.
-    expect(over.json().error.message).toContain("filed against a task");
-
-    const at = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
-      scores: [{ userId: author.id, points: 3 }],
-    });
-    expect(at.statusCode).toBe(200);
+    expect(paid.statusCode).toBe(200);
   });
 
-  it("never lifts a lower severity ceiling to the task ceiling", async () => {
-    // A cap only ever caps. A task marked Minor stays worth Minor.
-    const { admin, manager, author, severity } = await scene(2);
-    await setCompanySetting(TASK_POINTS, DEMO_COMPANY_ID, { enabled: true, maxPoints: 9 });
+  it("refuses a score above what the task is worth, and names the task", async () => {
+    const { admin, manager, author, severity } = await scene(50);
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
         title: "Tighten the guard",
         assigneeIds: [author.id],
+        maxPoints: 3,
       })
     ).json();
     const reportId = await fileAndResolve(admin, author, severity.id, task.id);
 
     const over = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
-      scores: [{ userId: author.id, points: 3 }],
+      scores: [{ userId: author.id, points: 4 }],
     });
     expect(over.statusCode).toBe(400);
-    expect(over.json().error.message).toContain("at most 2");
-  });
+    // The message names the thing to change. Sending somebody to the severities
+    // screen when the number they need is on the task wastes an hour.
+    expect(over.json().error.message).toContain("task this entry was filed against");
 
-  it("does nothing at all while the cap is switched off", async () => {
-    // The default. Installing the setting must not quietly lower anybody's points.
-    const { admin, manager, author, severity } = await scene(7);
-    await setCompanySetting(TASK_POINTS, DEMO_COMPANY_ID, { enabled: false, maxPoints: 1 });
-
-    const task = (
-      await inject("POST", "/tasks", manager.cookie, {
-        title: "Check the guard",
-        assigneeIds: [author.id],
-      })
-    ).json();
-    const reportId = await fileAndResolve(admin, author, severity.id, task.id);
     const at = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
-      scores: [{ userId: author.id, points: 7 }],
+      scores: [{ userId: author.id, points: 3 }],
     });
     expect(at.statusCode).toBe(200);
   });
 
-  it("leaves entries with no task alone", async () => {
+  it("refuses a task worth more than the installation allows", async () => {
+    // The reason the ceiling exists: "if any user creates his own task and start
+    // giving any number of points it should not be good."
+    const { manager, author } = await scene(10);
+    await setCompanySetting(TASK_POINTS, DEMO_COMPANY_ID, { maxPoints: 20 });
+
+    const over = await inject("POST", "/tasks", manager.cookie, {
+      title: "A thousand points, please",
+      assigneeIds: [author.id],
+      maxPoints: 1000,
+    });
+    expect(over.statusCode).toBe(400);
+    expect(over.json().error.message).toContain("at most 20");
+
+    const ok = await inject("POST", "/tasks", manager.cookie, {
+      title: "Twenty is fine",
+      assigneeIds: [author.id],
+      maxPoints: 20,
+    });
+    expect(ok.statusCode).toBe(201);
+  });
+
+  it("leaves entries with no task on their severity's ceiling", async () => {
     const { admin, manager, author, severity } = await scene(7);
-    await setCompanySetting(TASK_POINTS, DEMO_COMPANY_ID, { enabled: true, maxPoints: 1 });
 
     const reportId = await fileAndResolve(admin, author, severity.id);
+    const over = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 8 }],
+    });
+    expect(over.statusCode).toBe(400);
     const at = await inject("PUT", `/journal/${reportId}/scores`, manager.cookie, {
       scores: [{ userId: author.id, points: 7 }],
     });

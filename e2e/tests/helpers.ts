@@ -316,3 +316,61 @@ export async function addMember(
   // of forty is forty entries to scroll past, and the name is the thing you know.
   if (reportsTo) await pickFromCombo(page, `Reports to: ${name}`, reportsTo);
 }
+
+/**
+ * Choose a severity, then submit a breakdown.
+ *
+ * A submitted issue must name a severity — it is what sets the points ceiling, so
+ * one filed without it would be scored against a fallback nobody chose. The specs
+ * predate that rule and filled a title and pressed Submit, which the server now
+ * refuses; they stayed on the form and every assertion after it failed on a URL
+ * that had not changed.
+ *
+ * The picker is a real `<select>` labelled "Severity", and the first option is
+ * "None" — so the choice is made by index rather than by name, which keeps this
+ * working whatever an installation calls its ladder.
+ */
+export async function submitIssue(page: Page): Promise<void> {
+  await page.getByLabel("Severity").selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Submit", exact: true }).click();
+}
+
+/**
+ * Write down what was done, then move an entry to its finished status.
+ *
+ * Resolving refuses an entry with an empty work log: the record of the work is what
+ * the points are scored against, and an entry closed with nothing in it cannot be
+ * scored at all. Only somebody on the entry may add one, so this runs as whoever is
+ * signed in — which in every spec that uses it is the author.
+ */
+export async function logWork(page: Page, summary = "Replaced the belt"): Promise<void> {
+  await page.getByRole("button", { name: "Log work", exact: true }).click();
+  await page.getByLabel("What you did").fill(summary);
+  await page.getByRole("button", { name: "Save work", exact: true }).click();
+  // The entry is only resolvable once the log has actually landed.
+  await expect(page.getByText(summary).first()).toBeVisible();
+}
+
+/**
+ * Put people on a multi-select, then close it.
+ *
+ * The closing is the point. A multi-select stays open after a pick — that is what
+ * makes it multi — so the panel sits over whatever is beneath it, and the next
+ * click lands on the dropdown instead of the button it was aimed at. Both specs
+ * that drive the task form hit that as a thirty-second timeout on a visible,
+ * enabled "Assign" button.
+ */
+export async function pickPeople(page: Page, label: string, ...names: string[]): Promise<void> {
+  const trigger = page.getByLabel(label, { exact: true });
+  await trigger.click();
+  for (const name of names) {
+    // A prefix, because the caller's own row reads "Ravi Lead (you)" — the picker
+    // marks which one is you, and an exact match on the name alone misses it.
+    await page.getByRole("listbox").locator(`[data-label^="${name}"]`).first().click();
+  }
+  // `dismissPicker` rather than the trigger or Escape, and its own comment above
+  // says why: the backdrop swallows a click aimed at the trigger, and Escape is
+  // wired to the search box which no longer has focus once an option was clicked.
+  await dismissPicker(page);
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+}

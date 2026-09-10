@@ -15,10 +15,12 @@ import {
   createGroup,
   createPerson,
   expectSignedIn,
+  logWork,
   pickFromCombo,
   signIn,
   signInAs,
   signOut,
+  submitIssue,
   superadmin,
   unique,
   type Person,
@@ -73,10 +75,15 @@ test("a junior's work is split, reviewed by their manager, and lands as points",
   await page.goto("/journal/new");
   const title = `Gearbox rebuild ${tag}`;
   await page.getByLabel("Title").fill(title);
-  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  // A submitted breakdown names its severity — that is what sets the ceiling the
+  // split below has to fit inside.
+  await submitIssue(page);
   await expect(page).toHaveURL(/\/journal\/[0-9a-f-]{36}$/);
   const entryUrl = page.url();
 
+  // And it is the junior's own work log, because only somebody on the entry may
+  // write one and an entry cannot be resolved with none.
+  await logWork(page);
   await page.getByLabel("Status").selectOption({ label: "Resolved" });
   await page.getByRole("button", { name: "Save", exact: true }).click();
 

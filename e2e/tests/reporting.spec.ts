@@ -8,7 +8,7 @@
 // them, which is the part no amount of fastify.inject can tell you.
 import { expect, test, type Page } from "@playwright/test";
 
-import { addMember, superadminName, unique } from "./helpers.js";
+import { addMember, logWork, pickPeople, submitIssue, superadminName, unique } from "./helpers.js";
 
 /**
  * Put the signed-in superadmin into a department, once for the file.
@@ -90,6 +90,9 @@ async function pickAsset(page: Page, name: string): Promise<void> {
  * in progress would be marking something that has not finished changing.
  */
 async function resolve(page: Page): Promise<void> {
+  // Nothing is resolved with an empty work log: the record of what was done is what
+  // the points are scored against, and an entry closed with none cannot be scored.
+  await logWork(page);
   await page.getByLabel("Status").selectOption({ label: "Resolved" });
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
@@ -99,7 +102,7 @@ async function resolve(page: Page): Promise<void> {
 async function fileReport(page: Page, title: string): Promise<void> {
   await page.goto("/journal/new");
   await page.getByLabel("Title").fill(title);
-  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await submitIssue(page);
   await expect(page).toHaveURL(/\/journal\/[0-9a-f-]{36}$/);
 }
 
@@ -115,7 +118,7 @@ test("files an issue scoped to a line, then records and closes its downtime", as
   await page.goto("/journal/new");
   await page.getByLabel("Title").fill(`Drive belt sheared on ${lineName}`);
   await pickAsset(page, lineName);
-  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await submitIssue(page);
   await expect(page).toHaveURL(/\/journal\/[0-9a-f-]{36}$/);
 
   // The scope round-trips onto the detail page as a chip.
@@ -143,6 +146,10 @@ test("assigns a task, completes it, and the work lands as a linked report", asyn
   await page.goto("/tasks/new");
   await page.getByLabel("Title").fill(title);
   await page.getByLabel("Detail").fill("Monthly PM. Grease gun is in the east store.");
+  // A task may now be raised with nobody on it — planned in advance and handed out
+  // later — so the picker starts empty and the button says "Save for later" until
+  // somebody is chosen. This spec is about completing the work, so it takes it on.
+  await pickPeople(page, "Assign to", superadminName());
   await page.getByRole("button", { name: "Assign", exact: true }).click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]{36}$/);
   const taskUrl = page.url();

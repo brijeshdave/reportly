@@ -651,7 +651,10 @@ function WorkForm({
           disabled={mutation.isPending || summary.trim() === ""}
           onClick={() => mutation.mutate()}
         >
-          Save
+          {/* Not just "Save": the status panel above has a Save of its own, so a
+              screen reader announced two identical buttons on one screen with
+              nothing to tell them apart. */}
+          Save work
         </Button>
       </div>
     </div>
