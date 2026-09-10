@@ -734,6 +734,11 @@ Severity still sets the ceiling for everything not filed against a task.
 any single task may be worth, 100 by default. It exists so somebody writing their
 own task cannot decide it earns a thousand.
 
+**Regrading tells the people doing the work.** Changing a task's points sends
+everybody on it a notification saying what it was and what it is now — finding out
+at review time that the job you took on for forty pays ten is not a thing to
+discover quietly.
+
 ### Giving yourself work
 
 **Tasks → New task** lets anybody plan their own day: a task assigned to themselves,

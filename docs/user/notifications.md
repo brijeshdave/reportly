@@ -69,7 +69,7 @@ unticked is a decision that sticks.
 | Group    | You are told when                                                                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Journal  | an entry is assigned to you; somebody comments on yours; its status changes; it is appraised, rejected or reopened; somebody in your reporting line files work that needs your review |
-| Tasks    | a task is assigned to you; a task you hold falls due within a day                                                                                                                     |
+| Tasks    | a task is assigned to you; a task changes hands; a task you are on is regraded; a task you hold falls due within a day                                                                |
 | Shifts   | a colleague asks to swap with you; your swap is approved or refused; your department's roster is published                                                                            |
 | Routines | a routine of yours is due tomorrow; one has gone past its date unlogged; month-end routine points are awarded to you                                                                  |
 | Downtime | downtime is opened or closed on your department's equipment                                                                                                                           |

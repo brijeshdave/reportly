@@ -210,6 +210,15 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     defaultChannels: INAPP_AND_EMAIL,
   },
   {
+    type: "task.regraded",
+    category: "tasks",
+    label: "A task of yours changed what it is worth",
+    description:
+      "A manager changed the points on a task you are on — what the work will earn is not what it was.",
+    audience: "assignee",
+    defaultChannels: INAPP_AND_EMAIL,
+  },
+  {
     type: "task.due-soon",
     category: "tasks",
     label: "A task of yours is due soon",

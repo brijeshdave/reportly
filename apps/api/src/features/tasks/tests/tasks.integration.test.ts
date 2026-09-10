@@ -8,10 +8,12 @@
 //
 // The harness builds a real reporting line — operator → lead — with real signed-in
 // users, because that line is the only thing assignment is computed from.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
+import * as queue from "@/core/queue/notifications.js";
+import type { NotificationRequest } from "@/features/notifications/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
@@ -30,6 +32,22 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
 });
+
+/** Run something and collect the events it emitted, instead of queueing them.
+ *  `notify` enqueues and a worker delivers; no worker runs in these tests, so the
+ *  emitted event is what there is to assert on. */
+async function captureNotifications(run: () => Promise<unknown>): Promise<NotificationRequest[]> {
+  const events: NotificationRequest[] = [];
+  const spy = vi.spyOn(queue, "notify").mockImplementation(async (event) => {
+    events.push(event as NotificationRequest);
+  });
+  try {
+    await run();
+  } finally {
+    spy.mockRestore();
+  }
+  return events;
+}
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
   const raw = res.headers["set-cookie"];
@@ -578,10 +596,19 @@ describe("who is on a task", () => {
     expect(mine.json().data.map((t: { id: string }) => t.id)).toContain(created.json().id);
 
     // Nobody was given anything, so nobody was told anything.
-    const bell = await inject("GET", "/notifications", lead.cookie);
-    expect(
-      (bell.json().data ?? []).filter((n: { type: string }) => n.type === "task.assigned"),
-    ).toHaveLength(0);
+    //
+    // This read `.data` off `/notifications`, a route with neither, so the filter
+    // always ran over an empty array and the assertion passed whether or not
+    // anything was sent — a test that could not have noticed the bug it was
+    // written for. The inbox is the wrong place to look regardless: `notify`
+    // enqueues, and no worker runs here to drain it.
+    const events = await captureNotifications(() =>
+      inject("POST", "/tasks", lead.cookie, {
+        title: "Order the replacement seals, again",
+        assigneeIds: [],
+      }),
+    );
+    expect(events.filter((e) => e.type === "task.assigned")).toHaveLength(0);
   });
 
   it("finds the unassigned ones with the assignee filter", async () => {
@@ -801,6 +828,51 @@ describe("what a task is worth", () => {
       scores: [{ userId: operator.id, points: 28 }],
     });
     expect(scored.statusCode).toBe(200);
+  });
+
+  it("tells the people on a task when a manager regrades it", async () => {
+    // What their work will earn is not what it was, and finding that out at review
+    // time is how somebody discovers the job they took on for forty pays ten.
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Strip the gearbox",
+        assigneeIds: [operator.id],
+        maxPoints: 40,
+      })
+    ).json();
+
+    // Collected rather than read from an inbox: `notify` enqueues, and only a
+    // running worker turns a job into an inbox row. No worker runs here, so the
+    // thing this code is responsible for is the event it emits.
+    const events = await captureNotifications(async () => {
+      const regraded = await inject("PATCH", `/tasks/${task.id}`, lead.cookie, { maxPoints: 12 });
+      expect(regraded.statusCode).toBe(200);
+    });
+
+    const told = events.filter((e) => e.type === "task.regraded");
+    expect(told).toHaveLength(1);
+    expect(told[0]!.subjectUserId).toBe(operator.id);
+    expect(told[0]!.title).toContain("12 points");
+  });
+
+  it("says nothing when the points are set to what they already were", async () => {
+    // A save that changed nothing is not news.
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        title: "Check the guard",
+        assigneeIds: [operator.id],
+        maxPoints: 15,
+      })
+    ).json();
+
+    const events = await captureNotifications(() =>
+      inject("PATCH", `/tasks/${task.id}`, lead.cookie, { maxPoints: 15 }),
+    );
+    expect(events.filter((e) => e.type === "task.regraded")).toHaveLength(0);
   });
 
   it("takes the points back when a manager reopens the task", async () => {

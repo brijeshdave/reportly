@@ -400,6 +400,27 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
     }
   }
 
+  // Regrading a task changes what somebody's work will earn, so the people doing it
+  // are told. Silently is how a person finds out at review time that the job they
+  // took on for forty now pays ten.
+  if (input.maxPoints !== undefined && input.maxPoints !== Number(row.maxPoints)) {
+    const was = Number(row.maxPoints);
+    for (const person of onIt) {
+      if (person === ctx.userId) continue;
+      await notify({
+        type: "task.regraded",
+        companyId: row.companyId,
+        actorUserId: ctx.userId,
+        subjectUserId: person,
+        title: `${row.title} is now worth ${input.maxPoints} points`,
+        body: `It was ${was}. The points are split between everybody who worked it and confirmed by a manager, as before.`,
+        link: `/tasks/${id}`,
+        entityKind: "task",
+        entityId: id,
+      });
+    }
+  }
+
   if (input.assigneeIds !== undefined) {
     const wanted = [...new Set(input.assigneeIds)];
     await setAssignees(id, wanted);
