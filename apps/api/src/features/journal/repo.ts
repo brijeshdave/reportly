@@ -45,6 +45,8 @@ export interface JournalEntryRowRaw {
   /** Whether a manager has scored it. Not the score — only that it happened. */
   reviewed: boolean;
   reviewState: string;
+  selfPoints: string | null;
+  reviewPoints: string | null;
   reportDate: Date;
   occurredAt: Date | null;
   startedAt: Date | null;
@@ -135,6 +137,25 @@ const cols = {
    * on yet. `waiting` is the same three conditions `setScores` refuses without, so
    * the badge and the server cannot disagree about what is reviewable.
    */
+  /**
+   * What the entry has been scored, by tier, as totals across everybody on it.
+   *
+   * Correlated sub-selects rather than joins, for the reason the `reviewed` flag
+   * above already documents: joining `journal_scores` multiplies the row by the
+   * number of people scored and doubles both the page and its count.
+   *
+   * `sum` over no rows is NULL, which is the answer wanted — "not scored" and
+   * "scored nothing" are different things and a nought would say the wrong one.
+   * They come back as strings; the serializer converts, and does not cast.
+   */
+  selfPoints: sql<string | null>`(
+    SELECT sum(s.points) FROM journal_scores s
+    WHERE s.report_id = ${journalEntries.id} AND s.tier = 'self'
+  )`,
+  reviewPoints: sql<string | null>`(
+    SELECT sum(s.points) FROM journal_scores s
+    WHERE s.report_id = ${journalEntries.id} AND s.tier = 'review'
+  )`,
   reviewState: sql<string>`CASE
     WHEN EXISTS (
       SELECT 1 FROM journal_scores s

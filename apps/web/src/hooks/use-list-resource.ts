@@ -1,9 +1,15 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Binds list state to a server-side list endpoint: one hook per table. Owns the
 // query key, so changing a page or a filter refetches exactly that table.
-import type { Filter, PageSize, PaginatedResult, TableDensity } from "@reportly/shared";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  Filter,
+  PageSize,
+  PaginatedResult,
+  TableColumns,
+  TableDensity,
+} from "@reportly/shared";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   clearFilters,
@@ -16,6 +22,7 @@ import {
   type ListState,
 } from "@/lib/list-query.js";
 import { preferencesQuery } from "@/lib/queries.js";
+import { saveMyTableColumns, type MyPreferences } from "@/services/settings.js";
 import { exportFilename, exportList, fetchList, type ExportFormat } from "@/services/list.js";
 
 export interface UseListResourceOptions {
@@ -42,6 +49,16 @@ export interface ListResource<T> {
   /** The size actually in effect, once the user's default is known. */
   pageSize: number;
   density: TableDensity;
+
+  /**
+   * The columns this person has hidden on this table, or `null` when they have
+   * never chosen — which is not the same as choosing to hide nothing, and is why
+   * the table's own default can still apply.
+   */
+  hiddenColumns: string[] | null;
+  /** Remember a new choice. Saved against the account, so it survives a refresh,
+   *  a new tab and a different machine. */
+  onColumnsChange: (hidden: string[]) => void;
 
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: PageSize) => void;
@@ -119,6 +136,35 @@ export function useListResource<T>({
 
   const update = useCallback((next: (current: ListState) => ListState) => setState(next), []);
 
+  // Which columns this person hides, kept on the account rather than in the
+  // browser: the same person wants the same columns on the plant machine and on
+  // their laptop, and a shared machine must not hand one person's layout to the
+  // next. Written debounced — the Columns menu is a row of checkboxes and somebody
+  // ticking four of them should cost one request, not four.
+  const queryClient = useQueryClient();
+  const saveColumns = useMutation({
+    mutationFn: (all: TableColumns) => saveMyTableColumns(all),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(preferencesQuery.queryKey, (current: MyPreferences | undefined) =>
+        current ? { ...current, tableColumns: saved } : current,
+      );
+    },
+  });
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onColumnsChange = useCallback(
+    (hidden: string[]) => {
+      const all = { ...(preferences?.tableColumns ?? {}), [resource]: hidden };
+      // Shown immediately, saved shortly: the checkbox must not wait on a round
+      // trip, and a failed save leaves the table working and simply forgetful.
+      queryClient.setQueryData(preferencesQuery.queryKey, (current: MyPreferences | undefined) =>
+        current ? { ...current, tableColumns: all } : current,
+      );
+      if (pending.current) clearTimeout(pending.current);
+      pending.current = setTimeout(() => saveColumns.mutate(all), 500);
+    },
+    [preferences, resource, queryClient, saveColumns],
+  );
+
   return useMemo(
     () => ({
       state,
@@ -132,6 +178,11 @@ export function useListResource<T>({
       // to the user's stored preference.
       pageSize: query.data?.pageSize ?? state.pageSize ?? preferences?.tableDefaults.pageSize ?? 20,
       density: preferences?.tableDefaults.density ?? "comfortable",
+      // Optional-chained twice: a preferences object from before this setting
+      // existed has no `tableColumns` at all, and a missing preference must never be
+      // what breaks a table.
+      hiddenColumns: preferences?.tableColumns?.[resource] ?? null,
+      onColumnsChange,
 
       onPageChange: (page) => update((current) => setPage(current, page)),
       onPageSizeChange: (size) => update((current) => setPageSize(current, size)),
@@ -143,6 +194,6 @@ export function useListResource<T>({
         ? (format) => exportList(exportPath, state, format, exportFilename(resource, format))
         : undefined,
     }),
-    [state, query, preferences, update, exportPath, resource],
+    [state, query, preferences, update, exportPath, resource, onColumnsChange],
   );
 }

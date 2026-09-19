@@ -612,3 +612,67 @@ describe("what counts as waiting for review", () => {
     expect(await filtered("reviewed")).toEqual([]);
   });
 });
+
+/**
+ * Points on the list, and who may read the review.
+ *
+ * Asked for from use: "there is no column for points in journal to see i.e. self
+ * reviewed and manager reviewed." The review is blind upward — only somebody above
+ * the author may see it — and the detail page has always enforced that. The list
+ * must not be the hole in it, so the server withholds the number rather than the
+ * table hiding one it was sent.
+ */
+describe("points on the journal list", () => {
+  async function scoredEntry() {
+    const admin = await superadmin();
+    const { hod, manager, author, critical } = await buildChain(admin);
+    const id = await file(author.cookie, "Scored on the list", critical.id);
+    await inject("POST", `/journal/${id}/work`, author.cookie, { summary: "Fixed it" });
+    const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
+      id: string;
+      group: string;
+    }[];
+    await inject("PATCH", `/journal/${id}/status`, admin, {
+      statusId: statuses.find((s) => s.group === "resolved")!.id,
+    });
+    await inject("PUT", `/journal/${id}/scores`, author.cookie, {
+      scores: [{ userId: author.id, points: 2 }],
+    });
+    await inject("PUT", `/journal/${id}/scores`, manager.cookie, {
+      scores: [{ userId: author.id, points: 3 }],
+    });
+    return { id, hod, manager, author };
+  }
+
+  const rowOf = async (cookie: string, id: string) =>
+    (
+      (await inject("GET", "/journal", cookie)).json().data as {
+        id: string;
+        selfPoints: number | null;
+        reviewPoints: number | null;
+      }[]
+    ).find((row) => row.id === id);
+
+  it("shows the manager both the self split and the review", async () => {
+    const { id, manager } = await scoredEntry();
+    const row = await rowOf(manager.cookie, id);
+    expect(row?.selfPoints).toBe(2);
+    expect(row?.reviewPoints).toBe(3);
+  });
+
+  it("shows the author their own split and withholds the review", async () => {
+    const { id, author } = await scoredEntry();
+    const row = await rowOf(author.cookie, id);
+    expect(row?.selfPoints).toBe(2);
+    // Withheld by the server, not hidden by the table.
+    expect(row?.reviewPoints).toBeNull();
+  });
+
+  it("says nothing rather than nought for an entry nobody has scored", async () => {
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const id = await file(author.cookie, "Not scored yet", critical.id);
+    const row = await rowOf(author.cookie, id);
+    expect(row?.selfPoints).toBeNull();
+  });
+});

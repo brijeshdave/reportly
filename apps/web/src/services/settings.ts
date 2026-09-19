@@ -6,9 +6,12 @@ import {
   TABLE_DEFAULTS,
   UI_THEME,
   type PasswordRules,
+  type TableColumns,
   type TableDefaults,
   type ThemeSettings,
   passwordRulesSchema,
+  TABLE_COLUMNS,
+  tableColumnsSchema,
   tableDefaultsSchema,
   themeSettingsSchema,
   UI_TOASTS,
@@ -33,6 +36,8 @@ function pick(records: SettingRecord[], namespace: string, key: string): unknown
 export interface MyPreferences {
   theme: ThemeSettings;
   tableDefaults: TableDefaults;
+  /** Per table, the columns this person has hidden. Absent means show everything. */
+  tableColumns: TableColumns;
   toasts: ToastSettings;
 }
 
@@ -43,6 +48,9 @@ export async function fetchMyPreferences(): Promise<MyPreferences> {
     theme: themeSettingsSchema.parse(pick(records, UI_THEME.namespace, UI_THEME.key) ?? {}),
     tableDefaults: tableDefaultsSchema.parse(
       pick(records, TABLE_DEFAULTS.namespace, TABLE_DEFAULTS.key) ?? {},
+    ),
+    tableColumns: tableColumnsSchema.parse(
+      pick(records, TABLE_COLUMNS.namespace, TABLE_COLUMNS.key) ?? {},
     ),
     toasts: toastSettingsSchema.parse(pick(records, UI_TOASTS.namespace, UI_TOASTS.key) ?? {}),
   };
@@ -85,6 +93,20 @@ export async function saveMyTableDefaults(defaults: TableDefaults): Promise<Tabl
     { value: defaults },
   );
   return tableDefaultsSchema.parse(record.value);
+}
+
+/**
+ * Persist which columns this person hides, for every table at once.
+ *
+ * The whole record is sent because a setting is stored whole — writing one table's
+ * entry alone would drop the others. Callers pass the map they already hold.
+ */
+export async function saveMyTableColumns(columns: TableColumns): Promise<TableColumns> {
+  const record = await http.put<SettingRecord>(
+    `/settings/me/${TABLE_COLUMNS.namespace}/${TABLE_COLUMNS.key}`,
+    { value: columns },
+  );
+  return tableColumnsSchema.parse(record.value);
 }
 
 /** Every setting with its effective value (admin view). Needs settings:read. */

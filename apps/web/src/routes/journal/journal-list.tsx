@@ -127,6 +127,36 @@ const columns: TableColumn<JournalEntryRow>[] = [
     header: "Date",
     cell: ({ row }) => formatDate(row.original.reportDate),
   },
+  {
+    // The author's own split, which everybody on the entry may see.
+    id: "selfPoints",
+    accessorKey: "selfPoints",
+    header: "Self points",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.selfPoints === null ? (
+        // Not scored is not the same as scored nothing, and a nought here would
+        // say the wrong one.
+        <span className="text-muted-foreground">—</span>
+      ) : (
+        row.original.selfPoints
+      ),
+  },
+  {
+    // The management review, and blind upward: the server sends null unless the
+    // reader is above the author, so this column is empty for the person whose
+    // work it is rather than showing them what their manager gave.
+    id: "reviewPoints",
+    accessorKey: "reviewPoints",
+    header: "Review points",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.reviewPoints === null ? (
+        <span className="text-muted-foreground">—</span>
+      ) : (
+        row.original.reviewPoints
+      ),
+  },
 ];
 
 // Kept out of the way until turned on from the Columns menu, so the default table

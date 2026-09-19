@@ -10,6 +10,7 @@ import {
   useTable,
   type ColumnDef,
   type ColumnVisibilityState,
+  type Updater,
   type RowData,
 } from "@tanstack/react-table";
 import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUpDown, Inbox } from "lucide-react";
@@ -111,9 +112,28 @@ export function DataTable<T extends RowData>({
   quickToggle,
   ...list
 }: DataTableProps<T>) {
-  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(
-    initialColumnVisibility ?? {},
-  );
+  // The person's own choice wins; the table's default applies only until they have
+  // made one. `hiddenColumns` being null is the difference between "has not chosen"
+  // and "chose to hide nothing" — collapsing those two would make a table's default
+  // impossible to switch off, or impossible to keep.
+  //
+  // This was plain component state seeded from the default, so the one part of a
+  // table anybody deliberately curates was the one part thrown away on refresh.
+  const columnVisibility: ColumnVisibilityState =
+    list.hiddenColumns === null
+      ? (initialColumnVisibility ?? {})
+      : Object.fromEntries(list.hiddenColumns.map((id) => [id, false]));
+
+  // The table hands back either the next state or a function producing it, so both
+  // shapes are resolved here before the hidden ids are read off it.
+  const setColumnVisibility = (updater: Updater<ColumnVisibilityState>): void => {
+    const next = typeof updater === "function" ? updater(columnVisibility) : updater;
+    list.onColumnsChange(
+      Object.entries(next)
+        .filter(([, visible]) => visible === false)
+        .map(([id]) => id),
+    );
+  };
   const [density, setDensity] = useState<TableDensity | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
 

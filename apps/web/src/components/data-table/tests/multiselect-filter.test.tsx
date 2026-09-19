@@ -116,6 +116,8 @@ describe("a list the server refuses", () => {
           error: new Error("Something went wrong"),
           pageSize: 20,
           density: "comfortable",
+          hiddenColumns: null,
+          onColumnsChange: vi.fn(),
           onPageChange: vi.fn(),
           onPageSizeChange: vi.fn(),
           onSortChange: vi.fn(),

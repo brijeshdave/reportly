@@ -149,6 +149,11 @@ function serialize(
   row: JournalEntryRowRaw,
   targets: JournalTarget[] = [],
   tags: { id: string; name: string; color: string }[] = [],
+  // Whether this reader may see the management review. Defaults to false, so a
+  // caller that forgets to pass it withholds the number rather than leaking it —
+  // the safe direction for a rule whose whole purpose is that workers do not see
+  // what their manager gave them.
+  canSeeReview = false,
 ): JournalEntry {
   return {
     targets,
@@ -179,6 +184,9 @@ function serialize(
       row.reviewState === "reviewed" || row.reviewState === "waiting"
         ? row.reviewState
         : "not_ready",
+    // `numeric` arrives as a string, and null means nobody has scored it.
+    selfPoints: row.selfPoints === null ? null : Number(row.selfPoints),
+    reviewPoints: canSeeReview && row.reviewPoints !== null ? Number(row.reviewPoints) : null,
     reportDate: row.reportDate.toISOString(),
     occurredAt: iso(row.occurredAt),
     startedAt: iso(row.startedAt),
@@ -532,9 +540,15 @@ export async function listReports(
   ctx: AuthContext,
 ): Promise<{ rows: JournalEntryRow[]; total: number }> {
   // Superadmin may see every author; everyone else, themselves plus their downline.
-  const visibleAuthorIds = ctx.isSuperadmin
-    ? null
-    : [ctx.userId, ...(await downlineUserIds(ctx.userId))];
+  const below = ctx.isSuperadmin ? null : await downlineUserIds(ctx.userId);
+  const visibleAuthorIds = below === null ? null : [ctx.userId, ...below];
+
+  // Strictly above the author is what earns sight of the review — the same rule
+  // `getReport` applies one entry at a time, answered here from the downline that
+  // was fetched anyway rather than a query per row. Strictly: their own entries
+  // are not in it, so nobody reads their own review off a list.
+  const mayReadReview = (authorId: string): boolean =>
+    ctx.isSuperadmin || (below?.has(authorId) ?? false);
 
   // A team scope narrows that set. Intersected rather than replacing it, so the
   // filter can never widen what somebody may see.
@@ -561,7 +575,9 @@ export async function listReports(
     rows.map((r) => r.id),
   );
   return {
-    rows: rows.map((row) => toRow(serialize(row, [], tagsByReport.get(row.id) ?? []))),
+    rows: rows.map((row) =>
+      toRow(serialize(row, [], tagsByReport.get(row.id) ?? [], mayReadReview(row.authorId))),
+    ),
     total,
   };
 }

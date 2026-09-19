@@ -462,6 +462,30 @@ export const tableDefaultsSchema = z.object({
 
 export type TableDefaults = z.infer<typeof tableDefaultsSchema>;
 
+/**
+ * Which columns each table hides, per person.
+ *
+ * Keyed by the table's resource name, holding the column ids that are **hidden** —
+ * the absent case is then "show everything", which is what a new table and a new
+ * person should both get without anybody writing a default.
+ *
+ * A user setting rather than `localStorage`, unlike the schedule grid's zoom: this
+ * codebase keeps screen-shaped preferences in the browser and account-shaped ones
+ * on the server, and which columns you care about is not a property of the monitor
+ * you are sitting at. It also matters that a plant machine is shared — "preserved
+ * for each user" has to mean the account, not whoever used the browser last.
+ */
+export const tableColumnsSchema = z.record(z.string(), z.array(z.string()));
+export type TableColumns = z.infer<typeof tableColumnsSchema>;
+
+export const TABLE_COLUMNS: SettingDef<typeof tableColumnsSchema> = {
+  namespace: "ui",
+  key: "tableColumns",
+  schema: tableColumnsSchema,
+  userOverridable: true,
+  description: "Per table, the columns a person has hidden",
+};
+
 export const TABLE_DEFAULTS: SettingDef<typeof tableDefaultsSchema> = {
   namespace: "ui",
   key: "tableDefaults",
@@ -964,6 +988,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   LOG_RETENTION,
   LOG_BUFFER,
   DEBUG_MODE,
+  TABLE_COLUMNS,
   TABLE_DEFAULTS,
   UI_THEME,
   UI_TOASTS,

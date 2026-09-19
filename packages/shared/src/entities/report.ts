@@ -141,6 +141,22 @@ export const journalEntrySchema = z
      */
     reviewState: z.enum(["reviewed", "waiting", "not_ready"]).default("not_ready"),
 
+    /**
+     * What the entry has been scored, as totals across everybody on it.
+     *
+     * `selfPoints` is the author's split and is shown to anybody who may read the
+     * entry. `reviewPoints` is the management review and is **blind upward** — it
+     * arrives null unless the reader is strictly above the author, or a
+     * superadmin, which is the same rule the scoring grid enforces on the detail
+     * page. The list must not be the hole in it, so the server withholds the
+     * number rather than the table hiding a number it was sent.
+     *
+     * Null means "not scored", not "scored nothing" — a nought is a real answer
+     * and has to be distinguishable from an absent one.
+     */
+    selfPoints: z.number().nullable().default(null),
+    reviewPoints: z.number().nullable().default(null),
+
     reportDate: z.string(),
     /** When an issue actually happened (may predate the report). */
     occurredAt: z.string().datetime().nullable(),

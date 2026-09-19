@@ -5,6 +5,7 @@
 import type { PaginatedResult } from "@reportly/shared";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
@@ -62,10 +63,19 @@ const handlers = {
   onExport: vi.fn(),
 };
 
-function renderTable(
-  overrides: Partial<ListResource<Row>> = {},
-  state: ListState = initialListState,
-) {
+/**
+ * The table with its column choice held above it, which is where it now lives: the
+ * choice is saved against the account, so `DataTable` is a controlled component and
+ * a stub handler would leave the header exactly as it was.
+ */
+function Harness({
+  overrides,
+  state,
+}: {
+  overrides: Partial<ListResource<Row>>;
+  state: ListState;
+}) {
+  const [hidden, setHidden] = useState<string[] | null>(null);
   const list: ListResource<Row> = {
     state,
     result: result(),
@@ -74,10 +84,19 @@ function renderTable(
     error: undefined,
     pageSize: 20,
     density: "comfortable",
+    hiddenColumns: hidden,
+    onColumnsChange: setHidden,
     ...handlers,
     ...overrides,
   };
-  return render(<DataTable {...list} columns={columns} filterDefs={filterDefs} />);
+  return <DataTable {...list} columns={columns} filterDefs={filterDefs} />;
+}
+
+function renderTable(
+  overrides: Partial<ListResource<Row>> = {},
+  state: ListState = initialListState,
+) {
+  return render(<Harness overrides={overrides} state={state} />);
 }
 
 /** The same table with the toolbar's quick controls turned on. */
@@ -90,6 +109,8 @@ function renderWithQuickControls(state: ListState = initialListState) {
     error: undefined,
     pageSize: 20,
     density: "comfortable",
+    hiddenColumns: null,
+    onColumnsChange: vi.fn(),
     ...handlers,
   };
   return render(
