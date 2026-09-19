@@ -3,7 +3,7 @@
 // there can be thousands of machines, and no one is going to file them into a
 // hierarchy by hand. Each one records where it lives instead, which is what lets
 // "issues under Line 3" still find it.
-import { PERMISSIONS, type Device } from "@reportly/shared";
+import { PERMISSIONS, type Device, formatDate } from "@reportly/shared";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -97,6 +97,18 @@ const columns: TableColumn<Device>[] = [
       </Badge>
     ),
   },
+  {
+    id: "createdAt",
+    accessorKey: "createdAt",
+    header: "Added",
+    cell: ({ row }) => formatDate(row.original.createdAt),
+  },
+  {
+    id: "updatedAt",
+    accessorKey: "updatedAt",
+    header: "Updated",
+    cell: ({ row }) => formatDate(row.original.updatedAt),
+  },
 ];
 
 /**
@@ -110,6 +122,7 @@ function filterDefsFor(
   departments: { id: string; name: string }[],
   locations: { id: string; name: string }[],
   assets: { id: string; name: string }[],
+  types: { id: string; name: string }[],
 ): FilterDef[] {
   const options = (rows: { id: string; name: string }[]) =>
     rows.map((row) => ({ value: row.id, label: row.name }));
@@ -135,6 +148,9 @@ function filterDefsFor(
     { field: "departmentId", label: "Department", kind: "combobox", options: options(departments) },
     { field: "locationId", label: "Location", kind: "combobox", options: options(locations) },
     { field: "assetId", label: "Asset", kind: "combobox", options: options(assets) },
+    // The most natural question to ask a list of machines — "show me the printers" —
+    // and the one filter it did not have.
+    { field: "typeId", label: "Type", kind: "combobox", options: options(types) },
     { field: "createdAt", label: "Added", kind: "daterange" },
   ];
 }
@@ -148,9 +164,16 @@ export function DevicesListPage() {
   const departments = useOptions<{ id: string; name: string }>("departments", "/departments");
   const locations = useOptions<{ id: string; name: string }>("locations", "/locations");
   const assets = useOptions<{ id: string; name: string }>("assets", "/assets");
+  const types = useOptions<{ id: string; name: string }>("device-types", "/device-types");
   const filterDefs = useMemo(
-    () => filterDefsFor(departments.data ?? [], locations.data ?? [], assets.data ?? []),
-    [departments.data, locations.data, assets.data],
+    () =>
+      filterDefsFor(
+        departments.data ?? [],
+        locations.data ?? [],
+        assets.data ?? [],
+        types.data ?? [],
+      ),
+    [departments.data, locations.data, assets.data, types.data],
   );
 
   // The registry belongs to a company; without one the request can only 400.
@@ -208,7 +231,12 @@ export function DevicesListPage() {
         // Site and Department are off by default rather than absent: eight columns
         // crowd the table, and the Columns menu is where somebody who wants them
         // goes. Everything the device carries is now offered there.
-        initialColumnVisibility={{ locationName: false, departmentName: false }}
+        initialColumnVisibility={{
+          locationName: false,
+          departmentName: false,
+          createdAt: false,
+          updatedAt: false,
+        }}
         emptyTitle="No devices yet"
         emptyDescription="Register the machines your reports will name."
         renderCard={(device) => (

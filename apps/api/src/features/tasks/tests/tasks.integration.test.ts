@@ -932,3 +932,32 @@ describe("what a task is worth", () => {
     }
   });
 });
+
+/**
+ * Who raised a task — "if tasks need to see it was created by himself or manager".
+ */
+describe("the raised-by filter", () => {
+  it("tells a person's own work from the work handed to them", async () => {
+    const admin = await superadmin();
+    const { lead, operator } = await buildChain(admin);
+    await inject("POST", "/tasks", lead.cookie, {
+      title: "Handed down",
+      assigneeIds: [operator.id],
+    });
+    await inject("POST", "/tasks", operator.cookie, {
+      title: "My own idea",
+      assigneeIds: [operator.id],
+    });
+
+    const raisedBy = async (userId: string) => {
+      const q = encodeURIComponent(
+        JSON.stringify([{ field: "assignerId", op: "eq", value: userId }]),
+      );
+      const res = await inject("GET", `/tasks?filters=${q}`, operator.cookie);
+      expect(res.statusCode).toBe(200);
+      return (res.json().data as { title: string }[]).map((t) => t.title);
+    };
+    expect(await raisedBy(operator.id)).toEqual(["My own idea"]);
+    expect(await raisedBy(lead.id)).toEqual(["Handed down"]);
+  });
+});

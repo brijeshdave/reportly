@@ -79,6 +79,9 @@ const listConfig: ListConfig = {
     assetId: devices.assetId,
     departmentId: devices.departmentId,
     locationId: devices.locationId,
+    // What kind of machine it is — the Type filter on the register.
+    typeId: devices.typeId,
+    updatedAt: devices.updatedAt,
   },
   defaultSort: devices.name,
 };

@@ -257,6 +257,12 @@ const listConfig: ListConfig = {
     state: journalEntries.state,
     reportDate: journalEntries.reportDate,
     createdAt: journalEntries.createdAt,
+    // Columns on the entry itself, for the date columns the table can sort and
+    // filter on. Deliberately not joined names: a joined column here can be filtered
+    // on, and a filter the count query cannot see is what made severity 500.
+    occurredAt: journalEntries.occurredAt,
+    submittedAt: journalEntries.submittedAt,
+    updatedAt: journalEntries.updatedAt,
     authorName: author.name,
     assigneeName: assignee.name,
     categoryName: categories.name,
@@ -346,6 +352,24 @@ function awaitingReviewScope(query: ResolvedListQuery): SQL | undefined {
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Where an entry came from: raised directly, or filed against a task.
+ *
+ * Asked for as a Kind filter "to filter issues and tasks". The Kind filter exists
+ * but is hidden whenever planned work is switched off, which is always, because it
+ * would offer a choice of one. What people actually want to separate is the work
+ * somebody was asked to do from the breakdowns they reported — and that is whether
+ * the entry points at a task, which is true whatever the kind setting says.
+ */
+function sourceScope(query: ResolvedListQuery): SQL | undefined {
+  const filter = query.filters.find((f) => f.field === "source");
+  if (!filter) return undefined;
+  const value = String(filter.value);
+  if (value === "task") return sql`${journalEntries.taskId} IS NOT NULL`;
+  if (value === "direct") return sql`${journalEntries.taskId} IS NULL`;
+  return undefined;
+}
+
 function searchScope(query: ResolvedListQuery): SQL | undefined {
   const filter = query.filters.find((f) => f.field === "search");
   const text = String(filter?.value ?? "").trim();
@@ -409,6 +433,7 @@ export async function listReports(
     locationScope,
     tagScopeFor(query),
     awaitingReviewScope(query),
+    sourceScope(query),
     searchScope(query),
     parts.where,
   );

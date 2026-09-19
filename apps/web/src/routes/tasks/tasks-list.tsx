@@ -5,7 +5,7 @@
 // ever finished buries the two jobs due today under a year of completed ones.
 import { PERMISSIONS, UNASSIGNED, type TaskRow, formatDate } from "@reportly/shared";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useMemo } from "react";
 
@@ -14,6 +14,8 @@ import { DataTable, type TableColumn } from "@/components/data-table/data-table.
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
+import { taskViewFilters, type TaskView } from "@/lib/list-views.js";
+import { sessionQuery } from "@/lib/queries.js";
 import { fetchOrgPeople } from "@/services/departments.js";
 
 const STATE_TONE = {
@@ -90,7 +92,17 @@ const columns: TableColumn<TaskRow>[] = [
       );
     },
   },
-  { id: "assignerName", accessorKey: "assignerName", header: "Assigned by" },
+  {
+    id: "assignerName",
+    accessorKey: "assignerName",
+    header: "Assigned by",
+    // Not sortable: the server sorts by the task's own columns, and an unknown sort
+    // silently falls back to the default order — a header that looks clickable and
+    // does nothing. Filter by "Raised by" instead. Not added to the server's list
+    // either, because a joined name there is the shape that made the journal's
+    // severity filter 500.
+    enableSorting: false,
+  },
   {
     id: "priority",
     accessorKey: "priority",
@@ -117,11 +129,54 @@ const columns: TableColumn<TaskRow>[] = [
       return <span className={due.overdue ? "text-danger" : undefined}>{due.text}</span>;
     },
   },
+  {
+    // What the task is worth — the ceiling of the entry filed against it.
+    id: "maxPoints",
+    accessorKey: "maxPoints",
+    header: "Worth",
+    cell: ({ row }) => `${row.original.maxPoints} pts`,
+  },
+  {
+    id: "departmentName",
+    accessorKey: "departmentName",
+    header: "Department",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.departmentName ?? <span className="text-muted-foreground">—</span>,
+  },
+  {
+    id: "createdAt",
+    accessorKey: "createdAt",
+    header: "Raised",
+    cell: ({ row }) => formatDate(row.original.createdAt),
+  },
+  {
+    id: "completedAt",
+    accessorKey: "completedAt",
+    header: "Completed",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.completedAt ? (
+        formatDate(row.original.completedAt)
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
 ];
+
+// Every column is one tick away in the Columns menu; these start hidden so the
+// default table stays the four things a task list is opened to read.
+const initialColumnVisibility = {
+  departmentName: false,
+  createdAt: false,
+  completedAt: false,
+};
 
 export function TasksListPage() {
   const navigate = useNavigate();
   const people = useQuery({ queryKey: ["org", "people"], queryFn: fetchOrgPeople });
+  const { data: session } = useQuery(sessionQuery);
+  const me = session?.user;
   const filterDefs = useMemo<FilterDef[]>(
     () => [
       { field: "title", label: "Task", kind: "text" },
@@ -162,20 +217,49 @@ export function TasksListPage() {
           })),
         ],
       },
+      {
+        // "If tasks need to see it was created by himself or manager." A person's own
+        // planned work and the work handed to them are different questions, so the
+        // first option is the one-click answer to the commoner of the two.
+        field: "assignerId",
+        label: "Raised by",
+        kind: "combobox",
+        options: [
+          ...(me ? [{ value: me.id, label: "Me" }] : []),
+          ...(people.data ?? [])
+            .filter((p) => p.userId !== me?.id)
+            .map((p) => ({
+              value: p.userId,
+              label: p.name,
+              hint: p.departmentNames.join(", ") || undefined,
+            })),
+        ],
+      },
       { field: "dueAt", label: "Due", kind: "daterange" },
+      { field: "createdAt", label: "Raised", kind: "daterange" },
     ],
-    [people.data],
+    [people.data, me],
   );
+  // A Reviews "Read all" link opens this on a named view. Read from the URL here
+  // rather than passed down, so the route can stay lazily loaded.
+  const { view } = useSearch({ strict: false }) as { view?: TaskView };
+  const linked = view && me ? taskViewFilters(view, me.id) : null;
+
   const list = useListResource<TaskRow>({
-    resource: "tasks",
+    // Its own slot for a linked view, so the link neither inherits the ordinary
+    // list's filters nor overwrites them. The columns still follow "tasks".
+    resource: linked ? `tasks:view:${view}` : "tasks",
     path: "/tasks",
     // Soonest deadline first, and open work only — the two questions a task list is
     // opened to answer. Both are ordinary filters, so they clear like any other.
     initial: {
       sortBy: "dueAt",
       sortDir: "asc",
-      filters: [{ field: "state", op: "in", value: ["open", "in_progress"] }],
+      filters: linked ?? [{ field: "state", op: "in", value: ["open", "in_progress"] }],
     },
+    // A linked view names "me", so it waits until it knows who that is rather than
+    // briefly listing everything and then jumping.
+    enabled: !view || Boolean(me),
   });
 
   const mayAssign = usePermission(PERMISSIONS.TASKS_CREATE);
@@ -205,6 +289,7 @@ export function TasksListPage() {
           {...list}
           columns={columns}
           filterDefs={filterDefs}
+          initialColumnVisibility={initialColumnVisibility}
           emptyTitle="Nothing on your plate"
           emptyDescription="Tasks assigned to you, or that you assign to your team, appear here."
         />

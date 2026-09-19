@@ -14,6 +14,7 @@ import {
   type Part,
   type PartModel,
   type PartStatus,
+  formatDate,
 } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -114,7 +115,41 @@ const columns: TableColumn<Part>[] = [
       </span>
     ),
   },
+  {
+    id: "notes",
+    accessorKey: "notes",
+    header: "Notes",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.notes ? (
+        <span className="block max-w-xs truncate" title={row.original.notes}>
+          {row.original.notes}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+  {
+    id: "createdAt",
+    accessorKey: "createdAt",
+    header: "Registered",
+    cell: ({ row }) => formatDate(row.original.createdAt),
+  },
+  {
+    id: "updatedAt",
+    accessorKey: "updatedAt",
+    header: "Updated",
+    cell: ({ row }) => formatDate(row.original.updatedAt),
+  },
 ];
+
+// One tick away in the Columns menu, and out of the way until then: the register is
+// read for identifier, model and where it is, and these are for the times it is not.
+const initialColumnVisibility = {
+  notes: false,
+  createdAt: false,
+  updatedAt: false,
+};
 
 function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -253,6 +288,9 @@ export function CartridgesListPage() {
   // model list is short and a person filters by "HP 12A", not by a uuid.
   const filterDefs: FilterDef[] = [
     { field: "identifier", label: "Cartridge", kind: "text" },
+    // The server's list already filters and sorts on these; nothing offered them.
+    { field: "createdAt", label: "Registered", kind: "daterange" },
+    { field: "cycleCount", label: "Cycles", kind: "number" },
     {
       field: "status",
       label: "Status",
@@ -327,6 +365,7 @@ export function CartridgesListPage() {
         {...list}
         columns={columns}
         filterDefs={filterDefs}
+        initialColumnVisibility={initialColumnVisibility}
         emptyTitle="No cartridges yet"
         emptyDescription="Register the cartridges your team refills, and they will appear here."
         renderCard={(part) => (

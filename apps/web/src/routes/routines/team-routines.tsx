@@ -13,6 +13,7 @@ import {
   ROUTINE_CADENCES,
   ROUTINE_CADENCE_LABELS,
   type Routine,
+  formatDate,
 } from "@reportly/shared";
 import { useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -107,6 +108,35 @@ const columns: TableColumn<Routine>[] = [
     header: "Started",
     cell: ({ row }) => <span className="text-xs">{row.original.startDate}</span>,
   },
+  {
+    id: "description",
+    accessorKey: "description",
+    header: "Description",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.description ? (
+        <span className="block max-w-xs truncate" title={row.original.description}>
+          {row.original.description}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+  {
+    // How long an occurrence may run late before it locks — worth seeing beside the
+    // cadence, because it is the other half of how strict a routine is.
+    id: "graceDays",
+    accessorKey: "graceDays",
+    header: "Grace days",
+    enableSorting: false,
+    cell: ({ row }) => <span className="tabular-nums">{row.original.graceDays}</span>,
+  },
+  {
+    id: "createdAt",
+    accessorKey: "createdAt",
+    header: "Created",
+    cell: ({ row }) => formatDate(row.original.createdAt),
+  },
 ];
 
 /** The month that just closed, as the "YYYY-MM" an <input type="month"> holds. */
@@ -195,6 +225,9 @@ export function TeamRoutinesPage() {
         options: (myLocations.data ?? []).map((l) => ({ value: l.id, label: l.name })),
       },
       { field: "points", label: "Points at least", kind: "number", op: "gte" },
+      // Both are on the server's list already; nothing offered them.
+      { field: "startDate", label: "Started", kind: "daterange" },
+      { field: "createdAt", label: "Created", kind: "daterange" },
     ],
     [myDepartments.data, downline.data, myLocations.data, session.companyId],
   );
@@ -273,7 +306,12 @@ export function TeamRoutinesPage() {
         filterDefs={filterDefs}
         // Started is detail rather than headline: it settles an argument about
         // when a duty began, and crowds the table the rest of the time.
-        initialColumnVisibility={{ startDate: false }}
+        initialColumnVisibility={{
+          startDate: false,
+          description: false,
+          graceDays: false,
+          createdAt: false,
+        }}
         emptyTitle="No routines yet"
         emptyDescription="Create a recurring duty for your team."
         renderCard={(routine) => (

@@ -92,6 +92,10 @@ may assign work to yourself or to anyone below you in the reporting line.
 nobody is notified, and you hand it out when you are ready. Filter the list by
 **Assignee → Not assigned yet** to see everything still waiting to be given out.
 
+**Raised by** tells your own work from the work handed to you: **Raised by → Me** is
+every task you wrote yourself. The task list also offers **Worth**, **Department**,
+**Raised** and **Completed** as columns, from the Columns menu.
+
 **Handing work over.** When a job outlasts a shift, the person holding it asks their
 manager, and the manager uses **Hand over** on the task page. The outgoing person is
 not removed — the task page shows them struck through, they can still open it, and
@@ -117,6 +121,12 @@ jobs, the days they were rostered to do them in, and who did little or nothing.
 are there. And whoever you are, **your own entries waiting on your manager** are
 listed too — so you can tell the difference between work nobody has looked at and
 work that has been scored.
+
+**Read all**, on every section, opens the full table already filtered to what that
+section shows — sorted, paged and exportable, which a card on a summary page cannot
+be. It opens in a view of its own, so following it never disturbs the filters you had
+on the journal or the task list, and coming back to either finds them as you left
+them.
 
 ### Your points
 
@@ -381,6 +391,18 @@ anybody may override it for themselves.
 
 Every table carries the same paging controls above the rows and below them, so on a
 full page you do not have to scroll to the end to reach "next".
+
+### Your column choices are kept
+
+**Columns** on any table lets you show or hide each column, and the choice is
+**remembered against your account, for that table** — a refresh, a new tab or a
+different computer all open the table the way you left it. It is kept per person
+rather than per browser because plant machines are shared: your layout does not
+become the next person's.
+
+Until you choose, a table opens on its own default, which usually hides the less
+common columns so the table stays readable. Everything the row carries is one tick
+away in the menu.
 
 ### How departments are shown when you pick one
 
@@ -768,14 +790,23 @@ organisation back to the beginning.
 
 Every one of those is an ordinary filter, so widen or clear them freely:
 
-- **Whose** — only mine, my direct team, two levels down, my whole team, or
-  everyone I can see. It can only ever _narrow_ what you may already see.
 - **Whose** — only mine, my direct team, two levels down, my whole team,
   **everyone except my direct team**, or everyone I can see. The last-but-one is for
   a head of department reading everything that is _not_ their own immediate team.
   Like every other scope it can only ever narrow what you may already see.
 - **Review** — **Waiting for review**, **Reviewed**, or **Not ready to review**. It
   does not show the score (scoring stays blind upward), only where the entry stands.
+- **Source** — **Raised directly** or **From a task**: breakdowns somebody reported,
+  versus work somebody was asked to do. Offered always, unlike **Kind**, which only
+  appears while planned work is switched on.
+- **Occurred** and **Submitted** — date ranges, beside the report date.
+
+**Points are columns too.** **Self points** is the author's own split, which anybody
+on the entry may see. **Review points** is the manager's review and is **blind
+upward**, exactly as on the entry itself: only somebody above the author sees the
+number, and for everybody else — the author included — the column reads **—**. The
+server withholds it rather than the table hiding it. An entry nobody has scored
+reads **—** in both, which is not the same as scored nothing.
 
 The table has a **Review** column saying the same thing per row, so a list of thirty
 entries shows at a glance which ones are still waiting. Like the filter, it says only

@@ -676,3 +676,40 @@ describe("points on the journal list", () => {
     expect(row?.selfPoints).toBeNull();
   });
 });
+
+/**
+ * Where an entry came from.
+ *
+ * Asked for as a Kind filter "to filter issues and tasks". Kind is hidden whenever
+ * planned work is off, which is always; what people mean is "reported directly" versus
+ * "filed against a task", and that is whether the entry points at one.
+ */
+describe("the source filter", () => {
+  it("separates entries filed against a task from those raised directly", async () => {
+    const admin = await superadmin();
+    const { manager, author, critical } = await buildChain(admin);
+    await file(author.cookie, "Found it myself", critical.id);
+
+    const task = (
+      await inject("POST", "/tasks", manager.cookie, {
+        title: "Asked to do this",
+        assigneeIds: [author.id],
+      })
+    ).json();
+    const fromTask = await inject("POST", "/journal", author.cookie, {
+      kind: "work",
+      title: "Did what I was asked",
+      state: "submitted",
+      taskId: task.id,
+    });
+    expect(fromTask.statusCode).toBe(201);
+
+    const by = async (value: string) => {
+      const q = encodeURIComponent(JSON.stringify([{ field: "source", op: "eq", value }]));
+      return titles(await inject("GET", `/journal?filters=${q}`, author.cookie));
+    };
+    expect(await by("task")).toEqual(["Did what I was asked"]);
+    expect(await by("direct")).toContain("Found it myself");
+    expect(await by("direct")).not.toContain("Did what I was asked");
+  });
+});

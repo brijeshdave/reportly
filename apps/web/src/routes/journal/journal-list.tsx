@@ -2,13 +2,18 @@
 // Reports — the list, above it the "My day" strip that makes the whole thing get
 // used. The point of the feature is reporting from everyone, so the first thing you
 // see is your own work: what you owe, and what you have earned.
-import { PERMISSIONS, type JournalEntryRow, formatDate } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  type JournalEntryRow,
+  formatDate,
+  formatDurationMinutes,
+} from "@reportly/shared";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { sessionQuery } from "@/lib/queries.js";
 import { Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import { DATE_RANGE_PRESETS } from "@/lib/date-ranges.js";
 
@@ -24,6 +29,24 @@ import { fetchCategories, fetchSeverities, fetchStatuses } from "@/services/jour
 import { fetchTags } from "@/services/vocabulary.js";
 import { fetchDepartments, fetchOrgPeople } from "@/services/departments.js";
 import { fetchLocations } from "@/services/locations.js";
+import { JOURNAL_VIEWS, type JournalView } from "@/lib/list-views.js";
+
+/** An absent value reads as a dash, so an empty cell is never mistaken for a
+ *  column that failed to load. */
+function dash(value: string | null | undefined): ReactNode {
+  return value ? value : <span className="text-muted-foreground">—</span>;
+}
+
+/** Long free text, kept to one readable line in a table cell; the whole of it is on
+ *  hover and on the entry itself. */
+function clipped(value: string | null): ReactNode {
+  if (!value) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="block max-w-xs truncate" title={value}>
+      {value}
+    </span>
+  );
+}
 
 const columns: TableColumn<JournalEntryRow>[] = [
   {
@@ -128,6 +151,80 @@ const columns: TableColumn<JournalEntryRow>[] = [
     cell: ({ row }) => formatDate(row.original.reportDate),
   },
   {
+    id: "occurredAt",
+    accessorKey: "occurredAt",
+    header: "Occurred",
+    cell: ({ row }) => dash(row.original.occurredAt && formatDate(row.original.occurredAt)),
+  },
+  {
+    id: "durationMinutes",
+    accessorKey: "durationMinutes",
+    header: "Time spent",
+    enableSorting: false,
+    cell: ({ row }) =>
+      dash(
+        row.original.durationMinutes === null
+          ? null
+          : formatDurationMinutes(row.original.durationMinutes),
+      ),
+  },
+  {
+    id: "issueSummary",
+    accessorKey: "issueSummary",
+    header: "Description",
+    enableSorting: false,
+    cell: ({ row }) => clipped(row.original.issueSummary),
+  },
+  {
+    id: "workSummary",
+    accessorKey: "workSummary",
+    header: "Work done",
+    enableSorting: false,
+    cell: ({ row }) => clipped(row.original.workSummary),
+  },
+  {
+    // The task it was filed against, so work somebody was asked to do can be told
+    // from a breakdown they found — and followed back to the task in one click.
+    id: "taskTitle",
+    accessorKey: "taskTitle",
+    header: "Task",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.taskId && row.original.taskTitle ? (
+        <Link
+          to="/tasks/$taskId"
+          params={{ taskId: row.original.taskId }}
+          className="hover:underline"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {row.original.taskTitle}
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+  {
+    id: "submittedAt",
+    accessorKey: "submittedAt",
+    header: "Submitted",
+    cell: ({ row }) => dash(row.original.submittedAt && formatDate(row.original.submittedAt)),
+  },
+  {
+    // Rejected entries count for nothing, so which ones they are — and who said so —
+    // is worth a column rather than a trip into each.
+    id: "rejectedByName",
+    accessorKey: "rejectedByName",
+    header: "Rejected by",
+    enableSorting: false,
+    cell: ({ row }) => dash(row.original.rejectedByName),
+  },
+  {
+    id: "updatedAt",
+    accessorKey: "updatedAt",
+    header: "Updated",
+    cell: ({ row }) => formatDate(row.original.updatedAt),
+  },
+  {
     // The author's own split, which everybody on the entry may see.
     id: "selfPoints",
     accessorKey: "selfPoints",
@@ -162,6 +259,14 @@ const columns: TableColumn<JournalEntryRow>[] = [
 // Kept out of the way until turned on from the Columns menu, so the default table
 // stays readable while every field is still one click away.
 const initialColumnVisibility = {
+  occurredAt: false,
+  durationMinutes: false,
+  issueSummary: false,
+  workSummary: false,
+  taskTitle: false,
+  submittedAt: false,
+  rejectedByName: false,
+  updatedAt: false,
   assigneeName: false,
   // Shown by default: how bad it was is part of reading the row, and hiding it
   // behind the Columns menu meant people reported the journal had no severity at
@@ -211,16 +316,22 @@ function defaultState() {
 // A leaderboard link lands here with `?authorId=`, so the table opens filtered to
 // that person's entries. That is a deliberate question about one person, so it
 // replaces the team default rather than fighting it.
-export function JournalListPage({ authorId }: { authorId?: string } = {}) {
+export function JournalListPage({
+  authorId,
+  view,
+}: { authorId?: string; view?: JournalView } = {}) {
   const navigate = useNavigate();
   const list = useListResource<JournalEntryRow>({
-    // Its own slot when a link names one person, so "their entries" never inherits
-    // the team view's filters — nor leaves them behind on the way out.
-    resource: authorId ? `journal:author:${authorId}` : "journal",
+    // Its own slot when a link names one person or one view, so a link never
+    // inherits the team view's filters — nor leaves its own behind on the way out.
+    // The columns still follow the journal: they are keyed by table, not by slot.
+    resource: authorId ? `journal:author:${authorId}` : view ? `journal:view:${view}` : "journal",
     path: "/journal",
     initial: authorId
       ? { filters: [{ field: "authorId", op: "eq", value: authorId }] }
-      : defaultState(),
+      : view
+        ? { filters: [...JOURNAL_VIEWS[view].filters] }
+        : defaultState(),
   });
 
   /**
@@ -335,6 +446,20 @@ export function JournalListPage({ authorId }: { authorId?: string } = {}) {
         ],
       },
       { field: "title", label: "Title", kind: "text" },
+      { field: "occurredAt", label: "Occurred", kind: "daterange" },
+      { field: "submittedAt", label: "Submitted", kind: "daterange" },
+      {
+        // Issues somebody reported versus work somebody was asked to do. Offered
+        // always, unlike Kind below: whether an entry came from a task is true
+        // whatever the planned-work setting says.
+        field: "source",
+        label: "Source",
+        kind: "select",
+        options: [
+          { value: "direct", label: "Raised directly" },
+          { value: "task", label: "From a task" },
+        ],
+      },
       // Only where a second kind still exists. With it retired every entry is an
       // issue, so the filter offers a choice of one — and offering the retired name
       // was worse than that.

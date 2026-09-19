@@ -72,6 +72,12 @@ const listConfig: ListConfig = {
     priority: tasks.priority,
     dueAt: tasks.dueAt,
     createdAt: tasks.createdAt,
+    // Who raised it — asked for as "see it was created by himself or manager".
+    // Filterable because a person's own planned work and the work handed to them
+    // are different questions, and today the only way to tell was to read a name.
+    assignerId: tasks.assignerId,
+    maxPoints: tasks.maxPoints,
+    departmentId: tasks.departmentId,
   },
   defaultSort: tasks.createdAt,
 };

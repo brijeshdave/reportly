@@ -201,3 +201,31 @@ describe("device import", () => {
     expect(res.rawPayload.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Filtering the register by what kind of machine it is — "show me the printers", the
+ * most natural question to ask a list of devices and the one filter it lacked.
+ */
+describe("the device type filter", () => {
+  it("lists only the machines of the chosen type", async () => {
+    const admin = await superadmin();
+    const departmentId = await engineeringId(admin);
+    const printer = (
+      await inject("POST", "/device-types", admin, { departmentId, name: "Printer" })
+    ).json();
+    const pump = (
+      await inject("POST", "/device-types", admin, { departmentId, name: "Pump" })
+    ).json();
+    await inject("POST", "/devices", admin, { name: "Reception printer", typeId: printer.id });
+    await inject("POST", "/devices", admin, { name: "Coolant pump", typeId: pump.id });
+
+    const q = encodeURIComponent(
+      JSON.stringify([{ field: "typeId", op: "eq", value: printer.id }]),
+    );
+    const res = await inject("GET", `/devices?filters=${q}`, admin);
+    expect(res.statusCode).toBe(200);
+    expect((res.json().data as { name: string }[]).map((d) => d.name)).toEqual([
+      "Reception printer",
+    ]);
+  });
+});

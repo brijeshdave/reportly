@@ -19,13 +19,20 @@ import {
 } from "@reportly/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ClipboardCheck, Hourglass, ListChecks } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardCheck,
+  Hourglass,
+  ListChecks,
+  type LucideIcon,
+} from "lucide-react";
 
 import { usePermission } from "@/components/can.js";
 import { KindBadge } from "@/components/report-badges.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Spinner } from "@/components/ui/form.js";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
+import type { JournalView, TaskView } from "@/lib/list-views.js";
 import { fetchAwaitingReview, fetchPending } from "@/services/journal.js";
 import { fetchAssignedOpenTasks } from "@/services/tasks.js";
 
@@ -85,13 +92,12 @@ export function ReviewPage() {
         {/* Each section scrolls inside itself: four queues share this page, and a
             long one in any of them used to push the other three off the screen. */}
         <Card className="flex flex-col gap-3 p-6">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Hourglass className="h-4 w-4" />
-            Your entries waiting to be scored
-            {mine.data && mine.data.length > 0 ? (
-              <Badge tone="brand">{mine.data.length}</Badge>
-            ) : null}
-          </h2>
+          <SectionHeading
+            icon={Hourglass}
+            title="Your entries waiting to be scored"
+            count={mine.data?.length}
+            readAll={{ to: "/journal", search: { view: "mine-waiting" } }}
+          />
 
           {mine.isLoading ? <Spinner /> : null}
           {mine.error ? <ErrorAlert error={mine.error} /> : null}
@@ -142,11 +148,12 @@ export function ReviewPage() {
 
         {canAppraise ? (
           <Card className="flex flex-col gap-3 p-6">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <ClipboardCheck className="h-4 w-4" />
-              Journal entries awaiting your review
-              {direct.length > 0 ? <Badge tone="brand">{direct.length}</Badge> : null}
-            </h2>
+            <SectionHeading
+              icon={ClipboardCheck}
+              title="Journal entries awaiting your review"
+              count={direct.length}
+              readAll={{ to: "/journal", search: { view: "direct-waiting" } }}
+            />
 
             {pending.isLoading ? <Spinner /> : null}
             {pending.error ? <ErrorAlert error={pending.error} /> : null}
@@ -187,11 +194,13 @@ export function ReviewPage() {
 
         {canAppraise && deeper.length > 0 ? (
           <Card className="flex flex-col gap-3 p-6">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <ClipboardCheck className="h-4 w-4" />
-              Waiting on your managers
-              <Badge tone="warning">{deeper.length}</Badge>
-            </h2>
+            <SectionHeading
+              icon={ClipboardCheck}
+              title="Waiting on your managers"
+              count={deeper.length}
+              tone="warning"
+              readAll={{ to: "/journal", search: { view: "deeper-waiting" } }}
+            />
             {/* Not yours to score — theirs. Shown because only points that a manager
                 has reviewed count for anything, so an entry sitting unscored two
                 levels down is somebody's work quietly earning nothing, and the only
@@ -230,13 +239,12 @@ export function ReviewPage() {
 
         {canAppraise && canReadTasks ? (
           <Card className="flex flex-col gap-3 p-6">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <ListChecks className="h-4 w-4" />
-              Tasks you assigned, still open
-              {tasks.data && tasks.data.length > 0 ? (
-                <Badge tone="brand">{tasks.data.length}</Badge>
-              ) : null}
-            </h2>
+            <SectionHeading
+              icon={ListChecks}
+              title="Tasks you assigned, still open"
+              count={tasks.data?.length}
+              readAll={{ to: "/tasks", search: { view: "assigned-open" } }}
+            />
 
             {tasks.isLoading ? <Spinner /> : null}
             {tasks.error ? <ErrorAlert error={tasks.error} /> : null}
@@ -287,5 +295,48 @@ export function ReviewPage() {
         ) : null}
       </div>
     </>
+  );
+}
+
+/**
+ * A section's heading, with its count and a way to the whole list.
+ *
+ * Asked for from use: "In review page for all different sections i need something
+ * like Read All that redirect me that page with applied filters." Each card here is
+ * a short summary of a question the full table answers properly — sorted, paged and
+ * exportable — and this is the step between the two. The link names a view rather
+ * than carrying the filters, so the list page and this one cannot disagree about
+ * what "waiting to be scored" means; see lib/list-views.
+ */
+function SectionHeading({
+  icon: Icon,
+  title,
+  count,
+  tone = "brand",
+  readAll,
+}: {
+  icon: LucideIcon;
+  title: string;
+  count: number | undefined;
+  tone?: "brand" | "warning";
+  readAll:
+    | { to: "/journal"; search: { view: JournalView } }
+    | { to: "/tasks"; search: { view: TaskView } };
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <Icon className="h-4 w-4" />
+        {title}
+        {count ? <Badge tone={tone}>{count}</Badge> : null}
+      </h2>
+      <Link
+        to={readAll.to}
+        search={readAll.search}
+        className="shrink-0 text-xs font-medium text-primary hover:underline"
+      >
+        Read all
+      </Link>
+    </div>
   );
 }

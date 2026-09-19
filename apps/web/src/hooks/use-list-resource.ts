@@ -117,6 +117,17 @@ export function useListResource<T>({
 }: UseListResourceOptions): ListResource<T> {
   const [state, setState] = useState<ListState>(() => remembered(resource, initial));
 
+  // A different resource is a different memory slot. The slot was read once, at
+  // mount, so a page whose resource settles a beat later — a linked view that has to
+  // wait for the session to know who "me" is — kept the slot it started with and
+  // never applied the view. Switching here, during render, is React's pattern for
+  // state that follows a prop, and avoids a frame showing the wrong filters.
+  const [slot, setSlot] = useState(resource);
+  if (slot !== resource) {
+    setSlot(resource);
+    setState(remembered(resource, initial));
+  }
+
   // Keep it for the trip to a record and back. Filters and sorting lived in this
   // component's own state, so opening a row unmounted the table and threw them
   // away — every question had to be asked again after reading one answer.
@@ -141,6 +152,13 @@ export function useListResource<T>({
   // their laptop, and a shared machine must not hand one person's layout to the
   // next. Written debounced — the Columns menu is a row of checkboxes and somebody
   // ticking four of them should cost one request, not four.
+  // Columns belong to the table, not to a particular view of it. A link that opens
+  // the journal on one person — `journal:author:<id>` — keeps its own filters so it
+  // neither inherits nor overwrites the team view's, but it is still the journal,
+  // and the columns somebody chose for the journal must come with it. Keying them
+  // by the full resource made every such link open on the defaults.
+  const tableKey = resource.split(":")[0]!;
+
   const queryClient = useQueryClient();
   const saveColumns = useMutation({
     mutationFn: (all: TableColumns) => saveMyTableColumns(all),
@@ -153,7 +171,7 @@ export function useListResource<T>({
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onColumnsChange = useCallback(
     (hidden: string[]) => {
-      const all = { ...(preferences?.tableColumns ?? {}), [resource]: hidden };
+      const all = { ...(preferences?.tableColumns ?? {}), [tableKey]: hidden };
       // Shown immediately, saved shortly: the checkbox must not wait on a round
       // trip, and a failed save leaves the table working and simply forgetful.
       queryClient.setQueryData(preferencesQuery.queryKey, (current: MyPreferences | undefined) =>
@@ -162,7 +180,7 @@ export function useListResource<T>({
       if (pending.current) clearTimeout(pending.current);
       pending.current = setTimeout(() => saveColumns.mutate(all), 500);
     },
-    [preferences, resource, queryClient, saveColumns],
+    [preferences, tableKey, queryClient, saveColumns],
   );
 
   return useMemo(
@@ -181,7 +199,7 @@ export function useListResource<T>({
       // Optional-chained twice: a preferences object from before this setting
       // existed has no `tableColumns` at all, and a missing preference must never be
       // what breaks a table.
-      hiddenColumns: preferences?.tableColumns?.[resource] ?? null,
+      hiddenColumns: preferences?.tableColumns?.[tableKey] ?? null,
       onColumnsChange,
 
       onPageChange: (page) => update((current) => setPage(current, page)),

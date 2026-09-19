@@ -124,6 +124,7 @@ const UserDetailPage = lazy(() =>
   import("@/routes/users/user-detail.js").then((m) => ({ default: m.UserDetailPage })),
 );
 import { ThemePreview } from "@/components/theme-preview.js";
+import { isJournalView, isTaskView, type JournalView, type TaskView } from "@/lib/list-views.js";
 import { debugQuery, sessionQuery } from "@/lib/queries.js";
 import type { Session } from "@/services/session.js";
 
@@ -521,13 +522,17 @@ const reportsRoute = createRoute({
   path: "/journal",
   // An `authorId` in the URL pre-filters the table to one person's entries — this is
   // how the leaderboard links a name to "their reports".
-  validateSearch: (search: Record<string, unknown>): { authorId?: string } => ({
+  // `view` is a named view a Reviews "Read all" link opens the table on — see
+  // lib/list-views. Validated against the known names, so an unknown one is simply
+  // ignored rather than trusted.
+  validateSearch: (search: Record<string, unknown>): { authorId?: string; view?: JournalView } => ({
     authorId: typeof search.authorId === "string" ? search.authorId : undefined,
+    view: isJournalView(search.view) ? search.view : undefined,
   }),
   beforeLoad: requirePermission(PERMISSIONS.JOURNAL_READ),
   component: function JournalList() {
-    const { authorId } = reportsRoute.useSearch();
-    return <JournalListPage authorId={authorId} />;
+    const { authorId, view } = reportsRoute.useSearch();
+    return <JournalListPage authorId={authorId} view={view} />;
   },
 });
 
@@ -625,6 +630,11 @@ const reportCreateRoute = createRoute({
 const tasksRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/tasks",
+  // A named view a Reviews "Read all" link opens the list on — see lib/list-views.
+  // The page reads it from the URL itself, so the list stays lazily loaded.
+  validateSearch: (search: Record<string, unknown>): { view?: TaskView } => ({
+    view: isTaskView(search.view) ? search.view : undefined,
+  }),
   beforeLoad: requirePermission(PERMISSIONS.TASKS_READ),
   component: lazyRouteComponent(() => import("@/routes/tasks/tasks-list.js"), "TasksListPage"),
 });
