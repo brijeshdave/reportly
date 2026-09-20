@@ -11,6 +11,7 @@ import {
   handoverTaskSchema,
   listQuerySchema,
   paginatedResult,
+  taskLimitsSchema,
   taskPrefillSchema,
   taskRowSchema,
   taskSchema,
@@ -50,6 +51,26 @@ export async function tasksRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request) =>
       tasks.listTasks(await resolveListQuery(request.query, request.authUserId), request.ctx!),
+  );
+
+  // Registered before /tasks/:id so the word is not read as an id. What the editor
+  // needs to draw its own limits: how far ahead this priority may be due, and the
+  // most a task may be worth.
+  //
+  // Its own route rather than the settings API, because reading settings needs
+  // `settings:read` and everybody who raises a task needs these two numbers. A form
+  // that cannot see the rule it is about to break can only discover it on save.
+  app.get(
+    "/tasks/limits",
+    {
+      preHandler: guard(PERMISSIONS.TASKS_READ),
+      schema: {
+        tags: ["Tasks"],
+        summary: "The limits a new task must satisfy: due-date ceilings by priority, and worth",
+        response: { 200: taskLimitsSchema },
+      },
+    },
+    async (request) => tasks.taskLimits(request.ctx!),
   );
 
   // Registered before /tasks/:id so "assigned-open" is not read as an id. The

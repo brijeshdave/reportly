@@ -112,6 +112,9 @@ const columns: TableColumn<Routine>[] = [
     id: "description",
     accessorKey: "description",
     header: "Description",
+    // A sentence, not a token: this one may take a second line rather than
+    // making the column as wide as the longest entry anybody ever filed.
+    wrap: true,
     enableSorting: false,
     cell: ({ row }) =>
       row.original.description ? (

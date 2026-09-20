@@ -11,7 +11,10 @@ import {
   type ThemeSettings,
   passwordRulesSchema,
   TABLE_COLUMNS,
+  TABLE_VIEWS,
   tableColumnsSchema,
+  tableViewsSchema,
+  type TableViews,
   tableDefaultsSchema,
   themeSettingsSchema,
   UI_TOASTS,
@@ -27,10 +30,16 @@ export interface SettingRecord {
   userOverridable: boolean;
   description: string;
   value: unknown;
+  /** What everyone without an answer of their own gets. Only `/settings/me` sends it. */
+  orgValue?: unknown;
 }
 
 function pick(records: SettingRecord[], namespace: string, key: string): unknown {
   return records.find((r) => r.namespace === namespace && r.key === key)?.value;
+}
+
+function pickOrg(records: SettingRecord[], namespace: string, key: string): unknown {
+  return records.find((r) => r.namespace === namespace && r.key === key)?.orgValue;
 }
 
 export interface MyPreferences {
@@ -38,6 +47,17 @@ export interface MyPreferences {
   tableDefaults: TableDefaults;
   /** Per table, the columns this person has hidden. Absent means show everything. */
   tableColumns: TableColumns;
+  /** How this person has arranged each table: columns, sorting, filters. */
+  tableViews: TableViews;
+  /**
+   * The same, as an administrator set it for everyone.
+   *
+   * Kept beside the person's own rather than resolved into it, because the
+   * inheritance is per table: somebody who arranged the journal has said nothing
+   * about the tasks table, and that table must still follow the organisation's
+   * default. The merge happens a table at a time, in `useListResource`.
+   */
+  orgTableViews: TableViews;
   toasts: ToastSettings;
 }
 
@@ -51,6 +71,10 @@ export async function fetchMyPreferences(): Promise<MyPreferences> {
     ),
     tableColumns: tableColumnsSchema.parse(
       pick(records, TABLE_COLUMNS.namespace, TABLE_COLUMNS.key) ?? {},
+    ),
+    tableViews: tableViewsSchema.parse(pick(records, TABLE_VIEWS.namespace, TABLE_VIEWS.key) ?? {}),
+    orgTableViews: tableViewsSchema.parse(
+      pickOrg(records, TABLE_VIEWS.namespace, TABLE_VIEWS.key) ?? {},
     ),
     toasts: toastSettingsSchema.parse(pick(records, UI_TOASTS.namespace, UI_TOASTS.key) ?? {}),
   };
@@ -107,6 +131,35 @@ export async function saveMyTableColumns(columns: TableColumns): Promise<TableCo
     { value: columns },
   );
   return tableColumnsSchema.parse(record.value);
+}
+
+/**
+ * Persist how this person has arranged their tables — columns, sorting and filters.
+ *
+ * The whole record is sent, as every setting write here does: a setting is stored
+ * whole, so posting one table's entry alone would drop every other table's.
+ */
+export async function saveMyTableViews(views: TableViews): Promise<TableViews> {
+  const record = await http.put<SettingRecord>(
+    `/settings/me/${TABLE_VIEWS.namespace}/${TABLE_VIEWS.key}`,
+    { value: views },
+  );
+  return tableViewsSchema.parse(record.value);
+}
+
+/**
+ * Set how a table opens for everyone who has not arranged it themselves.
+ *
+ * The installation-wide write, so it needs `settings:manage` — the permission that
+ * already governs every other installation setting, rather than a new one invented
+ * for tables.
+ */
+export async function saveOrgTableViews(views: TableViews): Promise<TableViews> {
+  const record = await http.put<SettingRecord>(
+    `/settings/${TABLE_VIEWS.namespace}/${TABLE_VIEWS.key}`,
+    { value: views },
+  );
+  return tableViewsSchema.parse(record.value);
 }
 
 /** Every setting with its effective value (admin view). Needs settings:read. */

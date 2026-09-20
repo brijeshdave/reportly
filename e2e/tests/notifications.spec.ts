@@ -14,6 +14,7 @@ import {
   createGroup,
   createPerson,
   expectSignedIn,
+  fillDueDate,
   pickPeople,
   signIn,
   signInAs,
@@ -55,6 +56,8 @@ test("a task assigned to somebody reaches their bell, and can be cleared", async
   await page.goto("/tasks/new");
   await page.getByLabel("Title").fill(title);
   await pickPeople(page, "Assign to", staffName);
+  // A task must say when it is due before it can be saved.
+  await fillDueDate(page);
   await page.getByRole("button", { name: "Assign", exact: true }).click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]{36}$/);
 

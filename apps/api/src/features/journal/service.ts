@@ -385,8 +385,12 @@ function daysBetween(earlier: Date, later: Date): number {
  * is a whole-day count; a superadmin is exempt. `subject` names the date in the error.
  */
 async function assertWithinGrace(date: Date, ctx: AuthContext, subject: string): Promise<void> {
-  if (ctx.isSuperadmin) return;
-  const { graceDays } = await getSystemSetting(REPORT_ENTRY_SETTINGS);
+  const { graceDays, graceAppliesToSuperadmins } = await getSystemSetting(REPORT_ENTRY_SETTINGS);
+  // The exemption is a setting now. Reported from use as the rule not working at
+  // all: on an installation where the superadmin is also the person filing entries,
+  // a limit that never applies to the only account being tested is indistinguishable
+  // from one that is switched off.
+  if (ctx.isSuperadmin && !graceAppliesToSuperadmins) return;
   if (daysBetween(date, new Date()) > graceDays) {
     const days = `${graceDays} ${graceDays === 1 ? "day" : "days"}`;
     throw new AppError(
@@ -398,17 +402,27 @@ async function assertWithinGrace(date: Date, ctx: AuthContext, subject: string):
 }
 
 /**
- * The date the grace period judges, or null when there is nothing to limit. An issue is
- * bound by when it occurred (an issue with no occurred date is treated as happening now,
- * so a plain "file it now" is never blocked); a work log by its report date.
+ * The dates the grace period judges. Every one of them must be within the grace.
+ *
+ * A work log is bound by its report date — when the work was done, which is when its
+ * points count. An issue is bound by **both**: when it occurred, and its own report
+ * date, which is the date its points count against.
+ *
+ * The report date used to go unchecked on an issue, which left the whole rule open:
+ * the limit refused an old occurrence and then accepted the same entry dated a year
+ * back, and the backdating the rule exists to stop was the part that got through. An
+ * issue with no occurred date is still never blocked for that — "it is happening now"
+ * — but its report date is judged like everything else.
  */
-function graceDate(
+function graceDates(
   isWorkLog: boolean,
   reportDate: Date,
   occurredAt: Date | null,
-): { date: Date; subject: string } | null {
-  if (isWorkLog) return { date: reportDate, subject: "This work is dated" };
-  return occurredAt ? { date: occurredAt, subject: "This issue occurred" } : null;
+): { date: Date; subject: string }[] {
+  if (isWorkLog) return [{ date: reportDate, subject: "This work is dated" }];
+  const dates = [{ date: reportDate, subject: "This entry is dated" }];
+  if (occurredAt) dates.push({ date: occurredAt, subject: "This issue occurred" });
+  return dates;
 }
 
 /**
@@ -1119,12 +1133,12 @@ export async function createReport(
 
   // An issue may be reported after it happened, so the grace judges its occurred date;
   // a work log is judged by its report date. Filing an issue "now" is never blocked.
-  const grace = graceDate(
+  const grace = graceDates(
     isWorkLog,
     input.reportDate ? new Date(input.reportDate) : new Date(),
     input.occurredAt ? new Date(input.occurredAt) : null,
   );
-  if (grace) await assertWithinGrace(grace.date, ctx, grace.subject);
+  for (const { date, subject } of grace) await assertWithinGrace(date, ctx, subject);
 
   // Submitting says "this is finished being written", and an entry with no
   // severity cannot be scored: the ceiling comes from the severity, so one filed
@@ -1326,9 +1340,17 @@ export async function updateReport(
   // work log's report date. The kind can change in the same edit, so read it from the patch.
   const nextKind = (input.kind as string | undefined) ?? row.kind;
   const isWorkLog = nextKind === "work" || Boolean(row.taskId);
-  if (isWorkLog) {
-    if (patch.reportDate) await assertWithinGrace(patch.reportDate, ctx, "This work is dated");
-  } else if (input.occurredAt) {
+  if (patch.reportDate) {
+    // An edit that moves the report date is judged for both kinds now: backdating an
+    // issue after it was filed was the way round the limit on the create path, and an
+    // edit that nobody checked would have been the second one.
+    await assertWithinGrace(
+      patch.reportDate,
+      ctx,
+      isWorkLog ? "This work is dated" : "This entry is dated",
+    );
+  }
+  if (!isWorkLog && input.occurredAt) {
     await assertWithinGrace(new Date(input.occurredAt as string), ctx, "This issue occurred");
   }
   if (input.startedAt !== undefined) patch.startedAt = toDate(input.startedAt as string | null);

@@ -658,6 +658,76 @@ describe("reports and scoring", () => {
     expect((await issue(daysAgo(3))).statusCode).toBe(201);
   });
 
+  it("judges an issue's own date too, so backdating cannot go round the occurred date", async () => {
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    await inject("PUT", "/settings/reports/entry", admin, { value: { graceDays: 2 } });
+
+    const daysAgo = (n: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - n);
+      return d.toISOString();
+    };
+
+    // The report date is the date an issue's points count against, and it went
+    // unchecked: the limit refused an old occurrence and then accepted the same
+    // entry dated a year back, which is the backdating the rule exists to stop.
+    const backdated = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Belt seized",
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "x",
+      reportDate: daysAgo(40),
+    });
+    expect(backdated.statusCode).toBe(400);
+
+    // And an edit cannot move it back either, or the create-path check would simply
+    // be a step to walk around.
+    const filed = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Belt seized",
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "x",
+    });
+    expect(filed.statusCode).toBe(201);
+    const moved = await inject("PATCH", `/journal/${filed.json().id}`, author.cookie, {
+      reportDate: daysAgo(40),
+    });
+    expect(moved.statusCode).toBe(400);
+  });
+
+  it("can hold a superadmin to the grace period as well", async () => {
+    const admin = await superadmin();
+    const { critical } = await buildChain(admin);
+    const daysAgo = (n: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() - n);
+      return d.toISOString();
+    };
+    const file = () =>
+      inject("POST", "/journal", admin, {
+        kind: "work",
+        title: "Greased the line",
+        state: "submitted",
+        severityId: critical.id,
+        workSummary: "x",
+        reportDate: daysAgo(30),
+      });
+
+    // Reported as the rule not working at all. On an installation where the
+    // superadmin is also the person filing entries, a limit that never applies to
+    // the only account being tested is indistinguishable from one switched off.
+    await inject("PUT", "/settings/reports/entry", admin, { value: { graceDays: 2 } });
+    expect((await file()).statusCode).toBe(201);
+
+    await inject("PUT", "/settings/reports/entry", admin, {
+      value: { graceDays: 2, graceAppliesToSuperadmins: true },
+    });
+    expect((await file()).statusCode).toBe(400);
+  });
+
   it("refuses to log work against a closed entry, and takes it once re-opened", async () => {
     // A finished record that still accepts "what was done" can be rewritten after
     // everybody has stopped looking. Re-opening is the way back, and that move is

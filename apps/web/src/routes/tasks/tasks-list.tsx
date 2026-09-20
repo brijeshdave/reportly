@@ -10,6 +10,7 @@ import { Plus } from "lucide-react";
 import { useMemo } from "react";
 
 import { usePermission } from "@/components/can.js";
+import { PriorityBadge } from "@/components/report-badges.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
@@ -17,6 +18,7 @@ import { useListResource } from "@/hooks/use-list-resource.js";
 import { taskViewFilters, type TaskView } from "@/lib/list-views.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchOrgPeople } from "@/services/departments.js";
+import { fetchLocations } from "@/services/locations.js";
 
 const STATE_TONE = {
   open: "neutral",
@@ -30,13 +32,6 @@ const STATE_LABEL = {
   in_progress: "In progress",
   done: "Done",
   cancelled: "Cancelled",
-} as const;
-
-const PRIORITY_TONE = {
-  low: "neutral",
-  normal: "neutral",
-  high: "warning",
-  urgent: "danger",
 } as const;
 
 /** "Overdue", "Today", or the date — a date alone makes you do the arithmetic. */
@@ -55,6 +50,9 @@ const columns: TableColumn<TaskRow>[] = [
     id: "title",
     accessorKey: "title",
     header: "Task",
+    // A sentence, not a token: this one may take a second line rather than
+    // making the column as wide as the longest entry anybody ever filed.
+    wrap: true,
     cell: ({ row }) => (
       <Link
         to="/tasks/$taskId"
@@ -107,9 +105,7 @@ const columns: TableColumn<TaskRow>[] = [
     id: "priority",
     accessorKey: "priority",
     header: "Priority",
-    cell: ({ row }) => (
-      <Badge tone={PRIORITY_TONE[row.original.priority]}>{row.original.priority}</Badge>
-    ),
+    cell: ({ row }) => <PriorityBadge priority={row.original.priority} />,
   },
   {
     id: "state",
@@ -135,6 +131,18 @@ const columns: TableColumn<TaskRow>[] = [
     accessorKey: "maxPoints",
     header: "Worth",
     cell: ({ row }) => `${row.original.maxPoints} pts`,
+  },
+  {
+    // The site the work is for. Shown by default, not tucked behind the Columns
+    // menu: "in journal or task or any place need location or site to be shown in
+    // table column always". Not sortable — the server sorts tasks by their own
+    // columns, and the name comes from a join.
+    id: "locationName",
+    accessorKey: "locationName",
+    header: "Site",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.locationName ?? <span className="text-muted-foreground">—</span>,
   },
   {
     id: "departmentName",
@@ -175,6 +183,7 @@ const initialColumnVisibility = {
 export function TasksListPage() {
   const navigate = useNavigate();
   const people = useQuery({ queryKey: ["org", "people"], queryFn: fetchOrgPeople });
+  const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
   const { data: session } = useQuery(sessionQuery);
   const me = session?.user;
   const filterDefs = useMemo<FilterDef[]>(
@@ -235,10 +244,16 @@ export function TasksListPage() {
             })),
         ],
       },
+      {
+        field: "locationId",
+        label: "Site",
+        kind: "combobox",
+        options: (sites.data ?? []).map((l) => ({ value: l.id, label: l.name })),
+      },
       { field: "dueAt", label: "Due", kind: "daterange" },
       { field: "createdAt", label: "Raised", kind: "daterange" },
     ],
-    [people.data, me],
+    [people.data, me, sites.data],
   );
   // A Reviews "Read all" link opens this on a named view. Read from the URL here
   // rather than passed down, so the route can stay lazily loaded.

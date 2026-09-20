@@ -291,6 +291,8 @@ describe("tags", () => {
     const me = (await inject("GET", "/me", admin)).json();
     const task = (
       await inject("POST", "/tasks", admin, {
+        // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Check the pump",
         assigneeIds: [me.user.id],
         departmentId: engineering.id,

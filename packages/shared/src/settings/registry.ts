@@ -7,7 +7,12 @@ import { z } from "zod";
 
 import { ALL_NOTIFICATION_TYPES, notificationMatrixSchema } from "@/entities/notification.js";
 import { shiftColorSchema } from "@/entities/shift.js";
-import { DEFAULT_PAGE_SIZE, pageSizeSchema } from "@/http/pagination.js";
+import {
+  DEFAULT_PAGE_SIZE,
+  filterSchema,
+  pageSizeSchema,
+  sortDirSchema,
+} from "@/http/pagination.js";
 
 export const SETTING_SCOPES = ["system", "company", "user"] as const;
 export type SettingScope = (typeof SETTING_SCOPES)[number];
@@ -202,9 +207,59 @@ export const reportEntrySettingsSchema = z.object({
    * The default (3650) effectively disables the limit — lower it to enforce one.
    */
   graceDays: z.number().int().min(0).max(3650).default(3650),
+  /**
+   * Whether the grace period applies to superadmins too.
+   *
+   * Off by default, which is how the limit shipped: a superadmin is the person who
+   * fixes a mess, and locking them out of correcting a date makes the mess
+   * permanent. But on an installation where the superadmin is also somebody filing
+   * their own work, "the rule applies to everyone but me" makes the rule impossible
+   * to test and easy to believe broken — reported exactly that way. A switch, so
+   * either reading is available and neither is assumed.
+   */
+  graceAppliesToSuperadmins: z.boolean().default(false),
 });
 
 export type ReportEntrySettings = z.infer<typeof reportEntrySettingsSchema>;
+
+/**
+ * How far ahead a task may be due, by priority.
+ *
+ * Asked for from use: "don't allow users to create tasks without due date and due
+ * date should be within limit… for low priority to critical --> more days to less
+ * days". A due date is now required outright rather than being a setting, because a
+ * task nobody has to finish by a date is the thing being complained about; the part
+ * worth configuring is how long each priority gets.
+ *
+ * Four flat fields rather than one nested object: the admin screen is generated from
+ * this schema, and it draws a number box per field. The ceiling is counted in whole
+ * days from today, so "urgent, 2" means today, tomorrow or the day after.
+ */
+export const taskDueSettingsSchema = z.object({
+  lowDays: z.number().int().min(1).max(3650).default(30),
+  normalDays: z.number().int().min(1).max(3650).default(14),
+  highDays: z.number().int().min(1).max(3650).default(7),
+  urgentDays: z.number().int().min(1).max(3650).default(2),
+  /**
+   * Whether the ceiling binds a superadmin as well. Off, matching the journal's
+   * grace period: the account that can do anything is the one that fixes what the
+   * rule got wrong.
+   */
+  limitAppliesToSuperadmins: z.boolean().default(false),
+});
+
+export type TaskDueSettings = z.infer<typeof taskDueSettingsSchema>;
+
+/** The ceiling for one priority, in days. Keeps the four field names in one place. */
+export function dueDaysFor(
+  settings: TaskDueSettings,
+  priority: "low" | "normal" | "high" | "urgent",
+): number {
+  if (priority === "low") return settings.lowDays;
+  if (priority === "high") return settings.highDays;
+  if (priority === "urgent") return settings.urgentDays;
+  return settings.normalDays;
+}
 
 export const pointsLockSettingsSchema = z.object({
   /**
@@ -484,6 +539,53 @@ export const TABLE_COLUMNS: SettingDef<typeof tableColumnsSchema> = {
   schema: tableColumnsSchema,
   userOverridable: true,
   description: "Per table, the columns a person has hidden",
+};
+
+/**
+ * How one table is set up: which columns are hidden, how it is sorted, and what it
+ * is filtered by.
+ *
+ * Asked for from use: "you can allow me to set this for all users in settings or
+ * some dedicated menu and also to the users that stays throut the logins as well. If
+ * user do not have custom preferances it should follow what I have set in global
+ * settings for that table. Also same for the filters and sorting for all tables."
+ *
+ * One setting holding all three rather than three settings: they are one answer to
+ * "how should this table look when I open it", and split across three records they
+ * would drift apart — a global default sorted by date with a person's own columns is
+ * a view nobody chose.
+ *
+ * The inheritance is per table, not per setting. The whole record is *not* resolved
+ * as one value: a person who arranged the journal has said nothing about tasks, and
+ * a blanket override would silently opt them out of every default an administrator
+ * later sets. The API returns both the person's record and the organisation's, and
+ * they are merged a table at a time.
+ *
+ * Filters persist across logins here, which reverses what the browser session
+ * storage was chosen for ("a filter is part of what somebody is doing right now").
+ * Asked for explicitly, and it is the right call for a default somebody curates:
+ * this is the shape the table opens in, not a half-typed search.
+ */
+export const tableViewSchema = z.object({
+  /** Column ids that are hidden. Absent means the table's own default applies. */
+  hidden: z.array(z.string()).optional(),
+  /** A column id the API knows how to sort by. Null leaves the table's own order. */
+  sortBy: z.string().nullable().optional(),
+  sortDir: sortDirSchema.optional(),
+  filters: z.array(filterSchema).optional(),
+});
+export type TableView = z.infer<typeof tableViewSchema>;
+
+export const tableViewsSchema = z.record(z.string(), tableViewSchema);
+export type TableViews = z.infer<typeof tableViewsSchema>;
+
+export const TABLE_VIEWS: SettingDef<typeof tableViewsSchema> = {
+  namespace: "ui",
+  key: "tableViews",
+  schema: tableViewsSchema,
+  userOverridable: true,
+  description:
+    "Per table, how it opens: hidden columns, sorting and filters. An administrator's value is the default for anyone who has not arranged that table themselves",
 };
 
 export const TABLE_DEFAULTS: SettingDef<typeof tableDefaultsSchema> = {
@@ -927,6 +1029,16 @@ export const REPORT_ENTRY_SETTINGS: SettingDef<typeof reportEntrySettingsSchema>
   description: "The grace period for filing a report — how many days late an entry may be dated",
 };
 
+export const TASK_DUE_SETTINGS: SettingDef<typeof taskDueSettingsSchema> = {
+  namespace: "tasks",
+  key: "dueDates",
+  schema: taskDueSettingsSchema,
+  userOverridable: false,
+  companyOverridable: true,
+  description:
+    "How far ahead a task may be due, by priority — a due date is always required, and one beyond its priority's ceiling is refused",
+};
+
 export const POINTS_LOCK_SETTINGS: SettingDef<typeof pointsLockSettingsSchema> = {
   namespace: "reports",
   key: "lock",
@@ -968,6 +1080,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   PASSWORD_RESET,
   PLANNED_WORK,
   TASK_POINTS,
+  TASK_DUE_SETTINGS,
   TIMEZONE,
   TRANSACTIONAL_MESSAGES,
   INVITE_SETTINGS,
@@ -989,6 +1102,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   LOG_BUFFER,
   DEBUG_MODE,
   TABLE_COLUMNS,
+  TABLE_VIEWS,
   TABLE_DEFAULTS,
   UI_THEME,
   UI_TOASTS,

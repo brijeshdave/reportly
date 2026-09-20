@@ -7,6 +7,7 @@ import type {
   CreateTask,
   HandoverTask,
   Task,
+  TaskLimits,
   TaskPrefill,
   TaskRow,
   UpdateTask,
@@ -20,6 +21,10 @@ export const fetchTask = (id: string) => http.get<Task>(`/tasks/${id}`);
 export const fetchAssignedOpenTasks = () => http.get<TaskRow[]>("/tasks/assigned-open");
 
 export const createTask = (input: CreateTask) => http.post<Task>("/tasks", input);
+
+/** The rules a new task must satisfy — the due-date ceiling per priority, and what
+ *  a task may be worth. Read from the server so the form and the check agree. */
+export const fetchTaskLimits = () => http.get<TaskLimits>("/tasks/limits");
 
 export const updateTask = (id: string, input: UpdateTask) =>
   http.patch<Task>(`/tasks/${id}`, input);

@@ -204,12 +204,44 @@ because the people scoring it judge it so, not because a multiplier is applied.
 
 ### Entry grace period (`reports.entry`)
 
-How far back an entry may be dated, in days. An **issue** is judged by when it
-_occurred_, so a real issue reported a few days late is fine but an ancient one is
-refused; a **work log** is judged by its report date, which is when its points
-count. An entry past the grace period is refused, and a superadmin is exempt.
+How far back an entry may be dated, in days. An **issue** is judged by both the
+date it _occurred_ and its own entry date, so a real issue reported a few days late
+is fine but an ancient one is refused and cannot be backdated past the limit either;
+a **work log** is judged by its report date, which is when its points count. An
+entry past the grace period is refused.
 
 The default (3650 days) effectively disables the limit — lower it to enforce one.
+
+**Grace applies to superadmins** decides whether the account that can do anything is
+bound by the limit. Off by default: a superadmin is usually the person correcting a
+mistake, and locking them out makes the mistake permanent. Turn it on where the
+superadmin is also somebody filing their own entries — otherwise the rule never
+applies to the account you are testing with, which looks exactly like a rule that
+does not work.
+
+### Task due dates (`tasks.dueDates`)
+
+Every task must say when it is due — a task with no date is work nobody has
+committed to — and how far ahead that date may be depends on the priority:
+
+| Priority | Default ceiling |
+| -------- | --------------- |
+| Urgent   | 2 days          |
+| High     | 7 days          |
+| Normal   | 14 days         |
+| Low      | 30 days         |
+
+A date beyond the ceiling is refused when the task is saved, and the task form shows
+the limit as you pick a priority. The ceiling is re-checked when either half
+changes: raising an old low-priority task to urgent is refused if its date no longer
+fits, because otherwise a task could end up in a state neither creating nor editing
+would have accepted.
+
+**Limit applies to superadmins** works like the journal's grace period, and is off
+for the same reason.
+
+A date in the past is never refused by this rule — that is somebody catching up on
+work that was already due, not somebody dodging a deadline.
 
 ### Points lock (`reports.lock`)
 
@@ -474,6 +506,30 @@ users can set their own defaults in their preferences.
 The list of allowed page sizes is defined once and shared: the picker, the
 preference form and the API's validation all read the same list, so a size that
 appears in the UI is always one the API accepts.
+
+### How a table opens (`ui.tableViews`)
+
+Which columns a table hides, how it is sorted, and what it is filtered by — per
+table, saved against the account, so it survives a refresh, a new tab and a
+different machine.
+
+Anybody arranges their own tables simply by using them: tick columns in the
+**Columns** menu, click a header to sort, apply filters. Nothing needs saving.
+
+Somebody with `settings:manage` also gets a **View** menu on every table:
+
+- **Set as the default for everyone** — the table as it stands now becomes what
+  anybody who has not arranged that table themselves sees.
+- **Reset to the default** — drops your own arrangement of this table and follows
+  the organisation's again. Shown to anybody who has arranged the table.
+
+Inheritance is **per table**, not per person. Arranging the journal says nothing
+about the tasks table, which keeps following the organisation's default — including
+one set after you arranged the journal.
+
+This setting can be edited as raw JSON on the settings screen like any other, but
+the table's own **View** menu is the sane way to set it: it writes the columns, sort
+and filters you are looking at.
 
 ---
 

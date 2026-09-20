@@ -18,7 +18,10 @@ import {
   type TaskHandover,
   type TaskPrefill,
   TASK_CLOSED_STATES,
+  TASK_DUE_SETTINGS,
   TASK_POINTS,
+  dueDaysFor,
+  type TaskLimits,
   type TaskPriority,
   type TaskRow,
   type TaskState,
@@ -29,6 +32,8 @@ import {
 } from "@reportly/shared";
 
 import { AppError } from "@/core/errors.js";
+import { mayUseLocation, withLocationsNullable } from "@/core/db/scoped.js";
+import { tasks as tasksTable } from "@/core/db/schema.js";
 import { getEffectiveSetting } from "@/core/settings/service.js";
 import { notify } from "@/core/queue/notifications.js";
 import { clearTags, tagsFor, tagsForMany } from "@/features/vocabulary/repo.js";
@@ -87,6 +92,8 @@ function serializeRow(
     assignerName: row.assignerName ?? "(removed)",
     departmentId: row.departmentId,
     departmentName: row.departmentName,
+    locationId: row.locationId,
+    locationName: row.locationName,
     dueAt: row.dueAt?.toISOString() ?? null,
     // Postgres hands `numeric` back as a string; the cast alone would be an
     // assertion, which is the trap this codebase has fallen into twice.
@@ -116,6 +123,85 @@ async function assertWithinCeiling(points: number | undefined, companyId: string
     ERROR_CODES.VALIDATION_ERROR,
     `A task can be worth at most ${maxPoints} points. Ask an administrator to raise the limit if this job really is bigger.`,
   );
+}
+
+/** Whole days from today to `date`, by the calendar rather than by the clock: a
+ *  task due late tonight and one due early tomorrow are one day apart, not zero. */
+function daysAhead(date: Date): number {
+  const now = new Date();
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const then = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return Math.round((then - today) / 86_400_000);
+}
+
+/**
+ * How far ahead a task may be due, by its priority.
+ *
+ * Asked for from use: "due date should be within limit… for low priority to critical
+ * --> more days to less days". The point is not tidiness — an urgent job dated three
+ * months out is not urgent, and a priority that costs nothing to claim stops sorting
+ * anything.
+ *
+ * Refused on the way in rather than clamped, like the points ceiling above: a date
+ * silently moved is a date somebody will swear they set differently. A superadmin is
+ * exempt unless the setting says otherwise, matching the journal's grace period.
+ */
+async function assertDueWithinLimit(
+  dueAt: Date,
+  priority: TaskPriority,
+  companyId: string,
+  ctx: AuthContext,
+): Promise<void> {
+  const settings = await getEffectiveSetting(TASK_DUE_SETTINGS, { companyId });
+  if (ctx.isSuperadmin && !settings.limitAppliesToSuperadmins) return;
+  const limit = dueDaysFor(settings, priority);
+  const ahead = daysAhead(dueAt);
+  // A date in the past is somebody catching up on work that was already due, which
+  // is not what this limit is about; only the far future is refused.
+  if (ahead <= limit) return;
+  const days = `${limit} ${limit === 1 ? "day" : "days"}`;
+  throw new AppError(
+    400,
+    ERROR_CODES.VALIDATION_ERROR,
+    `A ${priority} task must be due within ${days}. Lower the priority, or ask an administrator to change the limit.`,
+  );
+}
+
+/**
+ * Raising work for a site you cannot reach is refused rather than filtered, the same
+ * way filing a report there is: a task nobody at that site can be shown is work
+ * planned into a place it cannot be done from.
+ */
+function assertMayRaiseAt(locationId: string | null, ctx: AuthContext): void {
+  if (!mayUseLocation(ctx, locationId)) {
+    throw new AppError(403, ERROR_CODES.FORBIDDEN, "You cannot raise a task at that location");
+  }
+}
+
+/**
+ * The limits the editor draws itself from: what a task may be worth, and how far
+ * ahead each priority may be due.
+ *
+ * `dueLimitApplies` says whether this caller is bound at all, so the form can drop
+ * the ceiling for somebody the setting exempts rather than showing a limit that
+ * would not have been enforced.
+ */
+export async function taskLimits(ctx: AuthContext): Promise<TaskLimits> {
+  const companyId = ctx.companyId ?? undefined;
+  const [points, due] = await Promise.all([
+    getEffectiveSetting(TASK_POINTS, { companyId }),
+    getEffectiveSetting(TASK_DUE_SETTINGS, { companyId }),
+  ]);
+  return {
+    maxPoints: points.maxPoints,
+    dueDays: {
+      low: due.lowDays,
+      normal: due.normalDays,
+      high: due.highDays,
+      urgent: due.urgentDays,
+    },
+    dueLimitApplies: !ctx.isSuperadmin || due.limitAppliesToSuperadmins,
+  };
 }
 
 /** Everyone the caller may hand work to: themselves plus their whole downline. */
@@ -166,6 +252,12 @@ async function assertVisible(row: TaskRowRaw, ctx: AuthContext): Promise<void> {
   if (!people.some((id) => below.has(id))) {
     throw new AppError(404, ERROR_CODES.NOT_FOUND, "Task not found");
   }
+  // The site narrows what the line admits, exactly as it does for an entry: managing
+  // somebody is not enough to read their work at a plant you cannot open. Checked
+  // after the two exemptions above, so a task you raised or are on is still yours.
+  if (!mayUseLocation(ctx, row.locationId)) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "Task not found");
+  }
 }
 
 export async function listTasks(
@@ -178,7 +270,18 @@ export async function listTasks(
     below.add(ctx.userId);
     visible = [...below];
   }
-  const { rows, total } = await listRows(query, ctx.userId, visible, ctx.companyId);
+  // Site narrows, it never widens — the rule journal entries follow. A task at a
+  // plant this person cannot open is not theirs to read, even where the reporting
+  // line would have shown it. The repo keeps the exception: work they raised or are
+  // on stays visible whatever its site, because a task assigned to somebody and then
+  // hidden from them is worse than any disclosure it prevents.
+  const { rows, total } = await listRows(
+    query,
+    ctx.userId,
+    visible,
+    ctx.companyId,
+    withLocationsNullable(ctx, tasksTable.locationId),
+  );
   // One query for every row's tags, and one for every row's people, rather than one
   // of each per row.
   const ids = rows.map((r) => r.id);
@@ -259,6 +362,10 @@ export async function createTask(input: CreateTask, ctx: AuthContext): Promise<T
   }
 
   await assertWithinCeiling(input.maxPoints, ctx.companyId);
+  assertMayRaiseAt(input.locationId ?? null, ctx);
+  // The date itself is required by the schema; this is how long it may be away for.
+  const dueAt = new Date(input.dueAt);
+  await assertDueWithinLimit(dueAt, input.priority, ctx.companyId, ctx);
 
   const values: NewTask = {
     companyId: ctx.companyId,
@@ -266,7 +373,8 @@ export async function createTask(input: CreateTask, ctx: AuthContext): Promise<T
     detail: input.detail ?? null,
     assignerId: ctx.userId,
     departmentId: input.departmentId ?? null,
-    dueAt: input.dueAt ? new Date(input.dueAt) : null,
+    locationId: input.locationId ?? null,
+    dueAt,
     maxPoints: String(input.maxPoints ?? 10),
     priority: input.priority,
   };
@@ -329,6 +437,7 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
     input.detail !== undefined ||
     input.assigneeIds !== undefined ||
     input.departmentId !== undefined ||
+    input.locationId !== undefined ||
     input.dueAt !== undefined ||
     input.maxPoints !== undefined ||
     input.priority !== undefined;
@@ -359,8 +468,20 @@ export async function updateTask(id: string, input: UpdateTask, ctx: AuthContext
   if (input.title !== undefined) fields.title = input.title;
   if (input.detail !== undefined) fields.detail = input.detail;
   if (input.departmentId !== undefined) fields.departmentId = input.departmentId;
-  if (input.dueAt !== undefined) fields.dueAt = input.dueAt ? new Date(input.dueAt) : null;
+  if (input.locationId !== undefined) {
+    assertMayRaiseAt(input.locationId, ctx);
+    fields.locationId = input.locationId;
+  }
+  if (input.dueAt !== undefined) fields.dueAt = new Date(input.dueAt);
   if (input.priority !== undefined) fields.priority = input.priority;
+  // The ceiling is judged on what the task will BE, not on what changed: raising an
+  // old task's priority to urgent has to re-ask whether its date still fits, and so
+  // does moving the date under an unchanged priority.
+  const nextDue = fields.dueAt ?? row.dueAt;
+  const nextPriority = input.priority ?? asPriority(row.priority);
+  if ((input.dueAt !== undefined || input.priority !== undefined) && nextDue) {
+    await assertDueWithinLimit(nextDue, nextPriority, row.companyId, ctx);
+  }
   if (input.maxPoints !== undefined) {
     // Guarded by `editsBeyondState` above, so only somebody who manages the task
     // reaches here: a person may say what their own new task is worth, and only

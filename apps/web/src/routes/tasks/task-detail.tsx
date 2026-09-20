@@ -15,6 +15,7 @@ import { CheckCircle2, FileText } from "lucide-react";
 import { useState } from "react";
 
 import { usePermission } from "@/components/can.js";
+import { PriorityBadge } from "@/components/report-badges.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { HistoryTab } from "@/components/history-tab.js";
 import { Input, Spinner } from "@/components/ui/form.js";
@@ -153,7 +154,9 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
             <dl className="grid grid-cols-2 gap-3 pt-2 text-sm sm:grid-cols-3">
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Priority</dt>
-                <dd>{t.priority}</dd>
+                <dd>
+                  <PriorityBadge priority={t.priority} />
+                </dd>
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Worth</dt>
@@ -207,6 +210,10 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Department</dt>
                 <dd>{t.departmentName ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase text-muted-foreground">Site</dt>
+                <dd>{t.locationName ?? "—"}</dd>
               </div>
             </dl>
           </Card>

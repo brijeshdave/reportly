@@ -40,6 +40,11 @@ const LOCATION_SCOPED_REPOS = [
   // sites the person had never been to. It was missing from this list for as long
   // as the module existed — which is the fault the next test exists to end.
   "parts/parts-repo.ts",
+  // A task carries the site the work is for, so a task list is a location-bearing
+  // read like any other. Its own work — raised by you, or assigned to you — is
+  // exempt from the narrowing inside the repo, which is the same exception the
+  // journal makes for the people named on an entry.
+  "tasks/repo.ts",
 ];
 
 /**
@@ -98,6 +103,7 @@ const LOCATION_SCOPED_SERVICES = [
   "devices/service.ts",
   "journal/service.ts",
   "downtime/service.ts",
+  "tasks/service.ts",
 ];
 
 describe("location scoping is actually wired up", () => {
@@ -156,6 +162,7 @@ describe("location scoping is actually wired up", () => {
       "downtimeEvents",
       "pointAwards",
       "parts",
+      "tasks",
       // Join tables: the location on them *is* the scope somebody else is
       // filtered by, and they are only ever read through the record they hang
       // off — a membership, a schedule entry.

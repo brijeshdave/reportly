@@ -61,6 +61,12 @@ const handlers = {
   onFiltersClear: vi.fn(),
   refetch: vi.fn(),
   onExport: vi.fn(),
+  // How the table is set up as opposed to what it shows. Stubs here: the View menu
+  // has its own tests in `column-memory`, where the saving is what is under test.
+  saveAsOrgDefault: vi.fn(async () => {}),
+  resetToOrgDefault: vi.fn(async () => {}),
+  hasOwnView: false,
+  maySetOrgDefault: false,
 };
 
 /**

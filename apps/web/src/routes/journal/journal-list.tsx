@@ -6,6 +6,7 @@ import {
   PERMISSIONS,
   type JournalEntryRow,
   formatDate,
+  formatDateTime,
   formatDurationMinutes,
 } from "@reportly/shared";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -20,7 +21,7 @@ import { DATE_RANGE_PRESETS } from "@/lib/date-ranges.js";
 import { Can } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
-import { KindBadge, StateBadge, StatusBadge } from "@/components/report-badges.js";
+import { KindBadge, SeverityBadge, StateBadge, StatusBadge } from "@/components/report-badges.js";
 import { TagList } from "@/components/tag-chip.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
@@ -53,6 +54,9 @@ const columns: TableColumn<JournalEntryRow>[] = [
     id: "title",
     accessorKey: "title",
     header: "Title",
+    // A sentence, not a token: this one may take a second line rather than
+    // making the column as wide as the longest entry anybody ever filed.
+    wrap: true,
     cell: ({ row }) => (
       <Link
         to="/journal/$reportId"
@@ -107,7 +111,9 @@ const columns: TableColumn<JournalEntryRow>[] = [
     id: "severityName",
     accessorKey: "severityName",
     header: "Severity",
-    cell: ({ row }) => row.original.severityName ?? "—",
+    // Coloured by where the severity sits in the ladder, so a table of entries shows
+    // what is serious without being read word by word.
+    cell: ({ row }) => <SeverityBadge name={row.original.severityName} />,
   },
   {
     id: "categoryName",
@@ -122,10 +128,13 @@ const columns: TableColumn<JournalEntryRow>[] = [
     cell: ({ row }) => row.original.departmentName ?? "—",
   },
   {
+    // Shown by default now: "in journal or task or any place need location or site
+    // to be shown in table column always".
     id: "locationName",
     accessorKey: "locationName",
-    header: "Location",
-    cell: ({ row }) => row.original.locationName ?? "—",
+    header: "Site",
+    cell: ({ row }) =>
+      row.original.locationName ?? <span className="text-muted-foreground">—</span>,
   },
   {
     id: "tags",
@@ -172,6 +181,9 @@ const columns: TableColumn<JournalEntryRow>[] = [
     id: "issueSummary",
     accessorKey: "issueSummary",
     header: "Description",
+    // A sentence, not a token: this one may take a second line rather than
+    // making the column as wide as the longest entry anybody ever filed.
+    wrap: true,
     enableSorting: false,
     cell: ({ row }) => clipped(row.original.issueSummary),
   },
@@ -179,6 +191,9 @@ const columns: TableColumn<JournalEntryRow>[] = [
     id: "workSummary",
     accessorKey: "workSummary",
     header: "Work done",
+    // A sentence, not a token: this one may take a second line rather than
+    // making the column as wide as the longest entry anybody ever filed.
+    wrap: true,
     enableSorting: false,
     cell: ({ row }) => clipped(row.original.workSummary),
   },
@@ -219,10 +234,20 @@ const columns: TableColumn<JournalEntryRow>[] = [
     cell: ({ row }) => dash(row.original.rejectedByName),
   },
   {
+    // When the entry was written, which is not the date it is about. Reported from
+    // use: "for journal entry there is no way to see when it was created or last
+    // updated as it only show issue date only" — the gap between the two is exactly
+    // what tells a same-day record from one written up a week later.
+    id: "createdAt",
+    accessorKey: "createdAt",
+    header: "Created",
+    cell: ({ row }) => formatDateTime(row.original.createdAt),
+  },
+  {
     id: "updatedAt",
     accessorKey: "updatedAt",
     header: "Updated",
-    cell: ({ row }) => formatDate(row.original.updatedAt),
+    cell: ({ row }) => formatDateTime(row.original.updatedAt),
   },
   {
     // The author's own split, which everybody on the entry may see.
@@ -266,6 +291,7 @@ const initialColumnVisibility = {
   taskTitle: false,
   submittedAt: false,
   rejectedByName: false,
+  createdAt: false,
   updatedAt: false,
   assigneeName: false,
   // Shown by default: how bad it was is part of reading the row, and hiding it
@@ -273,7 +299,6 @@ const initialColumnVisibility = {
   // all.
   categoryName: false,
   departmentName: false,
-  locationName: false,
   tags: false,
 };
 
@@ -448,6 +473,7 @@ export function JournalListPage({
       { field: "title", label: "Title", kind: "text" },
       { field: "occurredAt", label: "Occurred", kind: "daterange" },
       { field: "submittedAt", label: "Submitted", kind: "daterange" },
+      { field: "createdAt", label: "Created", kind: "daterange" },
       {
         // Issues somebody reported versus work somebody was asked to do. Offered
         // always, unlike Kind below: whether an entry came from a task is true

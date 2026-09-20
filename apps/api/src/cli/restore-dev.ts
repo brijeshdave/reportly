@@ -132,6 +132,7 @@ Restored and scrubbed.
 
   passwords set to ${DEV_PASSWORD}   ${report.passwordsReset}
   two-factor removed                 ${report.twoFactorRemoved}
+  two-factor no longer demanded by   ${report.twoFactorRequirementsLifted} group(s), and the installation
   sessions dropped                   ${report.sessionsDropped}
   emails moved to @dev.local         ${report.emailsRewritten}
   phone numbers and handles cleared  ${report.contactDetailsCleared}

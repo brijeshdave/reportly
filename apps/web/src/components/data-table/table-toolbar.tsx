@@ -6,7 +6,15 @@ import type { Filter, TableDensity } from "@reportly/shared";
 import type { RowData, Table } from "@tanstack/react-table";
 
 import type { tableFeaturesUsed } from "@/components/data-table/data-table.js";
-import { Columns3, Download, Filter as FilterIcon, Rows3, Search, X } from "lucide-react";
+import {
+  Columns3,
+  Download,
+  Filter as FilterIcon,
+  Rows3,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
@@ -232,6 +240,9 @@ export function TableToolbar<T extends RowData>({
   onDensityChange,
   onToggleColumn,
   onExport,
+  onSaveAsOrgDefault,
+  onResetToOrgDefault,
+  hasOwnView,
   busy,
 }: {
   table: Table<typeof tableFeaturesUsed, T>;
@@ -246,6 +257,11 @@ export function TableToolbar<T extends RowData>({
   onDensityChange: (density: TableDensity) => void;
   onToggleColumn: (id: string) => void;
   onExport?: (format: ExportFormat) => void;
+  /** Offered only to somebody who may set installation settings. */
+  onSaveAsOrgDefault?: () => void;
+  onResetToOrgDefault?: () => void;
+  /** Whether this person has arranged this table themselves. */
+  hasOwnView?: boolean;
   busy?: boolean;
 }) {
   const labelFor = (field: string) => filterDefs.find((def) => def.field === field)?.label ?? field;
@@ -350,6 +366,38 @@ export function TableToolbar<T extends RowData>({
             </>
           )}
         </Menu>
+
+        {/* How this table is set up, as opposed to what it is showing. Separate from
+            Columns because setting a default for everybody is a different kind of
+            act from ticking a box for yourself. */}
+        {onSaveAsOrgDefault || (hasOwnView && onResetToOrgDefault) ? (
+          <Menu label="View" icon={SlidersHorizontal}>
+            {(close) => (
+              <>
+                {onSaveAsOrgDefault ? (
+                  <MenuItem
+                    onClick={() => {
+                      onSaveAsOrgDefault();
+                      close();
+                    }}
+                  >
+                    Set as the default for everyone
+                  </MenuItem>
+                ) : null}
+                {hasOwnView && onResetToOrgDefault ? (
+                  <MenuItem
+                    onClick={() => {
+                      onResetToOrgDefault();
+                      close();
+                    }}
+                  >
+                    Reset to the default
+                  </MenuItem>
+                ) : null}
+              </>
+            )}
+          </Menu>
+        ) : null}
 
         {onExport ? (
           <Menu label="Export" icon={Download}>

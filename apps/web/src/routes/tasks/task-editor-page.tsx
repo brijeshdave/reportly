@@ -21,9 +21,18 @@ import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchDownline } from "@/services/departments.js";
-import { createTask, fetchTask, updateTask } from "@/services/tasks.js";
+import { fetchMyLocations } from "@/services/locations.js";
+import { createTask, fetchTask, fetchTaskLimits, updateTask } from "@/services/tasks.js";
 
 const PRIORITIES: TaskPriority[] = ["low", "normal", "high", "urgent"];
+
+/** The latest a task of this priority may be due, as `datetime-local` wants it. */
+function latestDue(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  d.setHours(23, 59, 0, 0);
+  return toLocalInput(d.toISOString());
+}
 
 /** `datetime-local` wants `YYYY-MM-DDTHH:mm`, not an ISO string with a zone. */
 function toLocalInput(iso: string | null): string {
@@ -48,6 +57,18 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [maxPoints, setMaxPoints] = useState("10");
   const [dueAt, setDueAt] = useState("");
+  const [locationId, setLocationId] = useState("");
+
+  // How far ahead this priority may be due. Read from the server, which checks the
+  // same numbers on save, so the form cannot offer a date the save will refuse — and
+  // the hint can say the number rather than "some limit applies".
+  const limits = useQuery({ queryKey: ["tasks", "limits"], queryFn: fetchTaskLimits });
+  const limitDays = limits.data ? limits.data.dueDays[priority] : null;
+  const limited = limits.data?.dueLimitApplies !== false && limitDays !== null;
+
+  // Sites this person may file at — the same list the journal editor offers, and the
+  // same one the server checks, so the picker cannot name a site the save refuses.
+  const locations = useQuery({ queryKey: ["locations", "mine"], queryFn: fetchMyLocations });
 
   // Who this person may hand work to: themselves, plus everyone below them.
   const downline = useQuery({
@@ -73,6 +94,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
     setPriority(existing.data.priority);
     setMaxPoints(String(existing.data.maxPoints));
     setDueAt(toLocalInput(existing.data.dueAt));
+    setLocationId(existing.data.locationId ?? "");
   }, [existing.data]);
 
   // Somebody who may only create their own work starts with themselves on it, since
@@ -93,15 +115,18 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
         assigneeIds,
         priority,
         maxPoints: Number(maxPoints) || 0,
+        dueAt: new Date(dueAt).toISOString(),
         ...(detail.trim() ? { detail: detail.trim() } : {}),
-        ...(dueAt ? { dueAt: new Date(dueAt).toISOString() } : {}),
+        ...(locationId ? { locationId } : {}),
       };
       return mode === "create"
         ? createTask(body)
         : updateTask(taskId!, {
             ...body,
             detail: detail.trim() || null,
-            dueAt: dueAt ? new Date(dueAt).toISOString() : null,
+            // Nullable on the way out, because clearing a site is a real answer —
+            // unlike clearing a due date, which the rule does not allow.
+            locationId: locationId || null,
           });
     },
     onSuccess: async (task) => {
@@ -232,20 +257,48 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
             )}
           </Field>
 
-          <Field label="Due" hint="Optional.">
+          <Field
+            label="Due"
+            hint={
+              limited
+                ? `Required. A ${priority} task must be due within ${limitDays} ${limitDays === 1 ? "day" : "days"}.`
+                : "Required."
+            }
+          >
             {(props) => (
               <Input
                 {...props}
                 type="datetime-local"
                 value={dueAt}
+                // The browser enforces the same ceiling the server does, so the
+                // limit is visible in the picker rather than discovered on save.
+                // Absent for somebody the rule exempts: a greyed-out date they are
+                // allowed to pick would be the form lying about the rule.
+                max={limited ? latestDue(limitDays) : undefined}
                 onChange={(e) => setDueAt(e.target.value)}
               />
+            )}
+          </Field>
+
+          <Field label="Site" hint="Where the work is. Leave it unset if it is not about one site.">
+            {(props) => (
+              <Select {...props} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+                <option value="">Not set</option>
+                {(locations.data ?? []).map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </Select>
             )}
           </Field>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button onClick={() => save.mutate()} disabled={!title.trim() || save.isPending}>
+          <Button
+            onClick={() => save.mutate()}
+            disabled={!title.trim() || !dueAt || save.isPending}
+          >
             {save.isPending ? <Spinner /> : null}
             {mode === "create" ? (assigneeIds.length > 0 ? "Assign" : "Save for later") : "Save"}
           </Button>

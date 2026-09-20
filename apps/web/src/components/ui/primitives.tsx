@@ -39,7 +39,10 @@ export function Button({ className, variant, size, ...props }: ButtonProps) {
 /* -------------------------------- Badge (pill) ------------------------------ */
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+  // `whitespace-nowrap`: a two-word status — "In progress" — broke across two lines
+  // in a narrow column and the pill wrapped around it, which is what was reported as
+  // the badge looking ugly. A pill is a label, so it is one line by definition.
+  "inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium",
   {
     variants: {
       tone: {

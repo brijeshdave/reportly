@@ -120,8 +120,9 @@ should be uncomfortable to look at.
 **Tasks** is the other half of reporting: a report is the record of work done, a task
 is the _request_ for work to be done.
 
-- **Someone assigns you a task** — a title, what needs doing, a priority, maybe a due
-  date. It appears under **Tasks**, which opens on open work, soonest deadline first.
+- **Someone assigns you a task** — a title, what needs doing, a priority, a site, and
+  a due date. It appears under **Tasks**, which opens on open work, soonest deadline
+  first.
 - **You can assign one too** — to yourself, or to anyone below you in the reporting
   line. The picker only offers those people, because those are the only ones the
   server will accept. Pick **several** if the job needs more than one person, or
@@ -136,6 +137,17 @@ That last step is the whole point: finishing a job and recording it are one acti
 the work reaches the appraisal loop instead of ending at a tick-box. The report and the
 task stay linked — the task shows the report filed against it, and the report says which
 task it came from.
+
+**Every task has a due date, and the priority decides how far ahead it may be.**
+Urgent means two days, high seven, normal fourteen, low thirty — the defaults, which
+an administrator can change per installation (Settings → Tasks → Due dates). A date
+beyond its priority's ceiling is refused, and raising an old task's priority is
+refused if the date it already has no longer fits. An urgent job dated three months
+out is not urgent, and a priority that costs nothing to claim sorts nothing.
+
+**A task can say which site it is for**, the same sites you file an entry against.
+The task list shows it as a column and filters by it, so "everything open at
+Kosamba" is one question rather than a read-through.
 
 **What a task is worth.** Every task carries a **points** number — what the whole
 job earns, split between whoever does it. Whoever raises the task sets it, and

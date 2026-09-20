@@ -3,13 +3,14 @@
 // assigner and department names in one join, so a list never needs a second round
 // trip; the people on a task come from `task_assignees` in one further query for
 // the whole page rather than one per row.
-import { type SQL, and, asc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { type SQL, and, asc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
 import {
   departments,
   journalEntries,
+  locations,
   taskAssignees,
   taskHandovers,
   tasks,
@@ -27,6 +28,8 @@ export interface TaskRowRaw {
   assignerName: string | null;
   departmentId: string | null;
   departmentName: string | null;
+  locationId: string | null;
+  locationName: string | null;
   dueAt: Date | null;
   /** `numeric` comes back from pg as a string; the serializer converts it. */
   maxPoints: string;
@@ -48,6 +51,8 @@ const cols = {
   assignerName: assigner.name,
   departmentId: tasks.departmentId,
   departmentName: departments.name,
+  locationId: tasks.locationId,
+  locationName: locations.name,
   dueAt: tasks.dueAt,
   maxPoints: tasks.maxPoints,
   priority: tasks.priority,
@@ -62,7 +67,8 @@ function selectTasks() {
     .select(cols)
     .from(tasks)
     .leftJoin(assigner, eq(assigner.id, tasks.assignerId))
-    .leftJoin(departments, eq(departments.id, tasks.departmentId));
+    .leftJoin(departments, eq(departments.id, tasks.departmentId))
+    .leftJoin(locations, eq(locations.id, tasks.locationId));
 }
 
 const listConfig: ListConfig = {
@@ -78,6 +84,10 @@ const listConfig: ListConfig = {
     assignerId: tasks.assignerId,
     maxPoints: tasks.maxPoints,
     departmentId: tasks.departmentId,
+    // The site the work is for. The id, not the joined name: a joined name in this
+    // config is what made the journal's severity filter a 500, because the count
+    // query does not carry the join the filter refers to.
+    locationId: tasks.locationId,
   },
   defaultSort: tasks.createdAt,
 };
@@ -120,6 +130,15 @@ export async function listTasks(
   callerId: string,
   visibleUserIds: string[] | null,
   companyId: string | null,
+  /**
+   * The caller's site scope, or undefined when every site is theirs.
+   *
+   * A task carries a site now, so a task list is a location-bearing read like any
+   * other — and this argument is how it says so. Passed in rather than computed
+   * here, which is what every other scoped repo in this codebase does: a helper the
+   * repo could forget to call is how SF-004 happened.
+   */
+  locationScope: SQL | undefined,
 ): Promise<{ rows: TaskRowRaw[]; total: number }> {
   // The assignee filter is membership of another table, not a column on this one,
   // so it is lifted out before the generic list builder sees a field it cannot map.
@@ -148,7 +167,13 @@ export async function listTasks(
     : undefined;
 
   const companyScope = companyId ? eq(tasks.companyId, companyId) : undefined;
-  const where = and(scope, companyScope, assigneeWhere, parts.where);
+  // Their own work is exempt from the site scope: a task somebody raised, or is on,
+  // is theirs to see wherever it is for. Hiding work from the person doing it is a
+  // worse fault than showing them the title of a job at a plant they cannot visit —
+  // and the journal draws the same line for the people named on an entry.
+  const ownWork = sql`(${tasks.assignerId} = ${callerId} OR ${heldByAny([callerId])})`;
+  const siteScope = locationScope ? or(locationScope, ownWork) : undefined;
+  const where = and(scope, companyScope, assigneeWhere, siteScope, parts.where);
 
   const rows = await selectTasks()
     .where(where)
@@ -214,6 +239,7 @@ export interface NewTask {
   detail: string | null;
   assignerId: string;
   departmentId: string | null;
+  locationId: string | null;
   dueAt: Date | null;
   maxPoints: string;
   priority: string;
@@ -228,6 +254,7 @@ export type TaskPatch = Partial<{
   title: string;
   detail: string | null;
   departmentId: string | null;
+  locationId: string | null;
   dueAt: Date | null;
   maxPoints: string;
   priority: string;

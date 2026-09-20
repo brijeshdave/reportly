@@ -360,6 +360,20 @@ export async function logWork(page: Page, summary = "Replaced the belt"): Promis
  * that drive the task form hit that as a thirty-second timeout on a visible,
  * enabled "Assign" button.
  */
+/**
+ * Fill the task form's Due date, which is required now.
+ *
+ * Tomorrow, because the ceiling is per priority and the tightest of them (urgent) is
+ * two days: a date the form would refuse is not a useful default for a spec about
+ * something else. `datetime-local` wants `YYYY-MM-DDTHH:mm`, not an ISO instant.
+ */
+export async function fillDueDate(page: Page): Promise<void> {
+  const d = new Date(Date.now() + 86_400_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`;
+  await page.getByLabel("Due").fill(value);
+}
+
 export async function pickPeople(page: Page, label: string, ...names: string[]): Promise<void> {
   const trigger = page.getByLabel(label, { exact: true });
   await trigger.click();

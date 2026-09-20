@@ -1,12 +1,14 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Binds list state to a server-side list endpoint: one hook per table. Owns the
 // query key, so changing a page or a filter refetches exactly that table.
+import { PERMISSIONS, can } from "@reportly/shared";
 import type {
   Filter,
   PageSize,
   PaginatedResult,
-  TableColumns,
   TableDensity,
+  TableView,
+  TableViews,
 } from "@reportly/shared";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,8 +23,8 @@ import {
   upsertFilter,
   type ListState,
 } from "@/lib/list-query.js";
-import { preferencesQuery } from "@/lib/queries.js";
-import { saveMyTableColumns, type MyPreferences } from "@/services/settings.js";
+import { preferencesQuery, sessionQuery } from "@/lib/queries.js";
+import { saveMyTableViews, saveOrgTableViews, type MyPreferences } from "@/services/settings.js";
 import { exportFilename, exportList, fetchList, type ExportFormat } from "@/services/list.js";
 
 export interface UseListResourceOptions {
@@ -59,6 +61,19 @@ export interface ListResource<T> {
   /** Remember a new choice. Saved against the account, so it survives a refresh,
    *  a new tab and a different machine. */
   onColumnsChange: (hidden: string[]) => void;
+
+  /**
+   * Make how this table looks right now the default for everyone who has not
+   * arranged it themselves. Needs `settings:manage`; the toolbar only offers it to
+   * somebody who holds that.
+   */
+  saveAsOrgDefault: () => Promise<void>;
+  /** Drop this person's own arrangement and follow the organisation's again. */
+  resetToOrgDefault: () => Promise<void>;
+  /** True when this person has arranged this table themselves. */
+  hasOwnView: boolean;
+  /** Whether this person may set the default everyone else gets. */
+  maySetOrgDefault: boolean;
 
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: PageSize) => void;
@@ -100,12 +115,52 @@ function remembered(resource: string, initial?: Partial<ListState>): ListState {
   }
 }
 
+/** Whether this session has already been on this table. */
+function hasMemory(resource: string): boolean {
+  try {
+    return sessionStorage.getItem(stateKey(resource)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Drop this session's memory of a table, so a saved view applies again. */
+function forget(resource: string): void {
+  try {
+    sessionStorage.removeItem(stateKey(resource));
+  } catch {
+    // Nothing to do.
+  }
+}
+
 function remember(resource: string, state: ListState): void {
   try {
     sessionStorage.setItem(stateKey(resource), JSON.stringify(state));
   } catch {
     // Nothing to do: the table works, it just forgets.
   }
+}
+
+/**
+ * How a table opens, for somebody who has not arranged it themselves.
+ *
+ * A table at a time: a person who chose the journal's columns has said nothing
+ * about tasks, so their record must not shadow the organisation's answer for every
+ * other table. Resolving the whole setting as one value — which is what every other
+ * user-overridable setting does — would opt them out of every default set later.
+ */
+function viewFor(tableKey: string, mine: TableViews, org: TableViews): TableView | undefined {
+  return mine[tableKey] ?? org[tableKey];
+}
+
+/** The part of a view that is list state, as overrides onto the table's own initial. */
+function stateFromView(view: TableView | undefined): Partial<ListState> {
+  if (!view) return {};
+  const next: Partial<ListState> = {};
+  if (view.sortBy) next.sortBy = view.sortBy;
+  if (view.sortDir) next.sortDir = view.sortDir;
+  if (view.filters) next.filters = view.filters;
+  return next;
 }
 
 export function useListResource<T>({
@@ -116,6 +171,13 @@ export function useListResource<T>({
   enabled = true,
 }: UseListResourceOptions): ListResource<T> {
   const [state, setState] = useState<ListState>(() => remembered(resource, initial));
+
+  // Whether this session had already been on this table when it was opened, noted
+  // during render because the effect that writes the memory runs first — asked
+  // afterwards, every table looks like one this session has already visited, and a
+  // saved view would never be applied at all.
+  const visited = useRef<Record<string, boolean>>({});
+  visited.current[resource] ??= hasMemory(resource);
 
   // A different resource is a different memory slot. The slot was read once, at
   // mount, so a page whose resource settles a beat later — a linked view that has to
@@ -136,6 +198,47 @@ export function useListResource<T>({
   }, [resource, state]);
   const { data: preferences } = useQuery(preferencesQuery);
 
+  // Columns belong to the table, not to a particular view of it. A link that opens
+  // the journal on one person — `journal:author:<id>` — keeps its own filters so it
+  // neither inherits nor overwrites the team view's, but it is still the journal,
+  // and the columns somebody chose for the journal must come with it. Keying them
+  // by the full resource made every such link open on the defaults.
+  const tableKey = resource.split(":")[0]!;
+
+  // The same permission that governs every other installation setting. Read here
+  // rather than in the table component, which would otherwise need a query client
+  // for one menu item.
+  const { data: session } = useQuery(sessionQuery);
+  const maySetOrgDefault = session
+    ? can(
+        { permissions: session.permissions, isSuperadmin: session.isSuperadmin },
+        PERMISSIONS.SETTINGS_MANAGE,
+      )
+    : false;
+
+  const mine = preferences?.tableViews ?? {};
+  const org = preferences?.orgTableViews ?? {};
+  const view = viewFor(tableKey, mine, org);
+
+  // Apply the saved view once the preferences arrive, unless this session has
+  // already been on this table — what somebody did a moment ago beats what they
+  // saved last week, or the table would snap back every time they came back from
+  // reading a row. A named view (`journal:view:mine-waiting`) carries its own
+  // filters in `initial`; those win too, because following a link that says
+  // "waiting for review" and landing on last month's filter is not the link working.
+  const applied = useRef<string | null>(null);
+  useEffect(() => {
+    if (!preferences || applied.current === resource) return;
+    applied.current = resource;
+    if (visited.current[resource]) return;
+    const overrides = stateFromView(view);
+    if (Object.keys(overrides).length === 0) return;
+    setState((current) => ({ ...current, ...overrides, ...initial, page: 1 }));
+    // `initial` is deliberately read without being a dependency: it is a fresh
+    // object every render, and this is a once-per-resource effect guarded by the
+    // ref above rather than one that should re-run when its caller re-renders.
+  }, [preferences, resource, view, initial]);
+
   const query = useQuery({
     queryKey: [resource, "list", state],
     queryFn: () => fetchList<T>(path, state),
@@ -147,41 +250,87 @@ export function useListResource<T>({
 
   const update = useCallback((next: (current: ListState) => ListState) => setState(next), []);
 
-  // Which columns this person hides, kept on the account rather than in the
-  // browser: the same person wants the same columns on the plant machine and on
-  // their laptop, and a shared machine must not hand one person's layout to the
-  // next. Written debounced — the Columns menu is a row of checkboxes and somebody
+  // How this person has arranged their tables, kept on the account rather than in
+  // the browser: the same person wants the same layout on the plant machine and on
+  // their laptop, and a shared machine must not hand one person's to the next.
+  // Written debounced — the Columns menu is a row of checkboxes, and somebody
   // ticking four of them should cost one request, not four.
-  // Columns belong to the table, not to a particular view of it. A link that opens
-  // the journal on one person — `journal:author:<id>` — keeps its own filters so it
-  // neither inherits nor overwrites the team view's, but it is still the journal,
-  // and the columns somebody chose for the journal must come with it. Keying them
-  // by the full resource made every such link open on the defaults.
-  const tableKey = resource.split(":")[0]!;
-
   const queryClient = useQueryClient();
-  const saveColumns = useMutation({
-    mutationFn: (all: TableColumns) => saveMyTableColumns(all),
+  const setCached = useCallback(
+    (views: TableViews) => {
+      queryClient.setQueryData(preferencesQuery.queryKey, (current: MyPreferences | undefined) =>
+        current ? { ...current, tableViews: views } : current,
+      );
+    },
+    [queryClient],
+  );
+
+  const saveViews = useMutation({
+    mutationFn: (all: TableViews) => saveMyTableViews(all),
+    onSuccess: setCached,
+  });
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Merge a change into this person's own entry for this table, and save it. */
+  const rememberView = useCallback(
+    (patch: TableView) => {
+      const all = { ...mine, [tableKey]: { ...mine[tableKey], ...patch } };
+      // Shown immediately, saved shortly: the checkbox must not wait on a round
+      // trip, and a failed save leaves the table working and simply forgetful.
+      setCached(all);
+      if (pending.current) clearTimeout(pending.current);
+      pending.current = setTimeout(() => saveViews.mutate(all), 500);
+    },
+    [mine, tableKey, setCached, saveViews],
+  );
+
+  const onColumnsChange = useCallback(
+    (hidden: string[]) => rememberView({ hidden }),
+    [rememberView],
+  );
+
+  // Sorting and filters are remembered too — asked for from use, and a reversal of
+  // why they lived in session storage ("a filter is part of what somebody is doing
+  // right now"). Both are true, which is why the session slot still exists: it keeps
+  // a named view's filters apart within a visit, while this is the shape the table
+  // opens in tomorrow.
+  const rememberQuery = useCallback(
+    (next: ListState) => {
+      rememberView({ sortBy: next.sortBy ?? null, sortDir: next.sortDir, filters: next.filters });
+    },
+    [rememberView],
+  );
+
+  const saveOrg = useMutation({
+    mutationFn: (all: TableViews) => saveOrgTableViews(all),
     onSuccess: (saved) => {
       queryClient.setQueryData(preferencesQuery.queryKey, (current: MyPreferences | undefined) =>
-        current ? { ...current, tableColumns: saved } : current,
+        current ? { ...current, orgTableViews: saved } : current,
       );
     },
   });
-  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onColumnsChange = useCallback(
-    (hidden: string[]) => {
-      const all = { ...(preferences?.tableColumns ?? {}), [tableKey]: hidden };
-      // Shown immediately, saved shortly: the checkbox must not wait on a round
-      // trip, and a failed save leaves the table working and simply forgetful.
-      queryClient.setQueryData(preferencesQuery.queryKey, (current: MyPreferences | undefined) =>
-        current ? { ...current, tableColumns: all } : current,
-      );
-      if (pending.current) clearTimeout(pending.current);
-      pending.current = setTimeout(() => saveColumns.mutate(all), 500);
-    },
-    [preferences, tableKey, queryClient, saveColumns],
-  );
+
+  const saveAsOrgDefault = useCallback(async () => {
+    const entry: TableView = {
+      hidden: view?.hidden ?? [],
+      sortBy: state.sortBy ?? null,
+      sortDir: state.sortDir,
+      filters: state.filters,
+    };
+    await saveOrg.mutateAsync({ ...org, [tableKey]: entry });
+  }, [org, saveOrg, state, tableKey, view]);
+
+  const resetToOrgDefault = useCallback(async () => {
+    const all = { ...mine };
+    delete all[tableKey];
+    setCached(all);
+    await saveViews.mutateAsync(all);
+    // Back to what everyone gets, right away rather than on the next visit: the
+    // person just asked to see the default, and leaving their own filters on screen
+    // would read as the reset having failed.
+    forget(resource);
+    setState({ ...initialListState, ...initial, ...stateFromView(org[tableKey]), page: 1 });
+  }, [mine, tableKey, setCached, saveViews, resource, initial, org]);
 
   return useMemo(
     () => ({
@@ -196,22 +345,66 @@ export function useListResource<T>({
       // to the user's stored preference.
       pageSize: query.data?.pageSize ?? state.pageSize ?? preferences?.tableDefaults.pageSize ?? 20,
       density: preferences?.tableDefaults.density ?? "comfortable",
-      // Optional-chained twice: a preferences object from before this setting
-      // existed has no `tableColumns` at all, and a missing preference must never be
-      // what breaks a table.
-      hiddenColumns: preferences?.tableColumns?.[tableKey] ?? null,
+      // Three fallbacks deep on purpose. `tableColumns` is where column choices
+      // were kept before a view held all three parts together; a person who chose
+      // columns under the old setting keeps them rather than being handed the
+      // defaults back by an upgrade. Null still means "never chosen", which is not
+      // the same as choosing to hide nothing, and is what lets a table's own
+      // default apply.
+      hiddenColumns: view?.hidden ?? preferences?.tableColumns?.[tableKey] ?? null,
       onColumnsChange,
+      saveAsOrgDefault,
+      resetToOrgDefault,
+      hasOwnView: Boolean(mine[tableKey]),
+      maySetOrgDefault,
 
       onPageChange: (page) => update((current) => setPage(current, page)),
       onPageSizeChange: (size) => update((current) => setPageSize(current, size)),
-      onSortChange: (column) => update((current) => toggleSort(current, column)),
-      onFilterChange: (filter) => update((current) => upsertFilter(current, filter)),
-      onFilterRemove: (field) => update((current) => removeFilter(current, field)),
-      onFiltersClear: () => update(clearFilters),
+      // Sorting and filtering are remembered against the account as well as in the
+      // session, so the table opens tomorrow the way it was left today.
+      onSortChange: (column) =>
+        update((current) => {
+          const next = toggleSort(current, column);
+          rememberQuery(next);
+          return next;
+        }),
+      onFilterChange: (filter) =>
+        update((current) => {
+          const next = upsertFilter(current, filter);
+          rememberQuery(next);
+          return next;
+        }),
+      onFilterRemove: (field) =>
+        update((current) => {
+          const next = removeFilter(current, field);
+          rememberQuery(next);
+          return next;
+        }),
+      onFiltersClear: () =>
+        update((current) => {
+          const next = clearFilters(current);
+          rememberQuery(next);
+          return next;
+        }),
       onExport: exportPath
         ? (format) => exportList(exportPath, state, format, exportFilename(resource, format))
         : undefined,
     }),
-    [state, query, preferences, update, exportPath, resource, onColumnsChange],
+    [
+      state,
+      query,
+      preferences,
+      update,
+      exportPath,
+      resource,
+      onColumnsChange,
+      rememberQuery,
+      maySetOrgDefault,
+      saveAsOrgDefault,
+      resetToOrgDefault,
+      mine,
+      tableKey,
+      view,
+    ],
   );
 }

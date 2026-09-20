@@ -39,6 +39,17 @@ const settingResponse = z.object({
   userOverridable: z.boolean(),
   description: z.string(),
   value: z.unknown(),
+  /**
+   * What this setting is for everyone who has not answered it themselves — the
+   * company's value, else the installation's.
+   *
+   * Sent beside the effective value, and only on `/settings/me`, because some
+   * settings are inherited a piece at a time rather than whole: a person who has
+   * arranged the journal's columns has said nothing about the tasks table, and
+   * resolving their record as one value would opt them out of every default an
+   * administrator sets afterwards. The merge needs both halves, so both are sent.
+   */
+  orgValue: z.unknown().optional(),
 });
 
 /**
@@ -303,6 +314,12 @@ export async function settingsRoutes(fastify: FastifyInstance): Promise<void> {
           userOverridable: def.userOverridable,
           description: def.description,
           value: await getEffectiveSetting(def, { userId: request.authUserId }),
+          // The same resolution with the caller's own row left out, which is what
+          // "the organisation's answer" means.
+          orgValue: await getEffectiveSetting(
+            { ...def, userOverridable: false },
+            { userId: request.authUserId, companyId: request.ctx?.companyId ?? null },
+          ),
         })),
       ),
   );

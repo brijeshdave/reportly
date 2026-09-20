@@ -217,6 +217,8 @@ describe("a reporting line that bridges two companies", () => {
     });
 
     const made = await inject("POST", "/tasks", junior.cookie, companyB.id, {
+      // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+      dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Company B internal task",
       assigneeId: junior.id,
     });

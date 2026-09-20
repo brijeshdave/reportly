@@ -26,6 +26,8 @@ export const DEV_PASSWORD = "Admin@123";
 export interface ScrubReport {
   passwordsReset: number;
   twoFactorRemoved: number;
+  /** Groups that demanded two-factor and no longer do, in this copy. */
+  twoFactorRequirementsLifted: number;
   sessionsDropped: number;
   emailsRewritten: number;
   contactDetailsCleared: number;
@@ -105,6 +107,31 @@ export async function scrubForDevelopment(): Promise<ScrubReport> {
       SELECT count(*)::int AS n FROM deleted
     `);
     await tx.execute(sql`UPDATE users SET two_factor_enabled = false WHERE two_factor_enabled`);
+
+    // Deleting the secrets is not enough on its own: the *requirement* survives the
+    // restore, so the first sign-in lands on "you must enrol" with no authenticator
+    // in the world holding the right seed. Reported from use — "in production data
+    // the superuser is member of a group that needs 2FA to be set [and] the system
+    // do not allow to proceed until I do that".
+    //
+    // All three sources are lifted, because they are ORed and any one of them blocks:
+    // the installation setting, each company's override, and the per-group flag. The
+    // rows are deleted rather than set to "optional" so the app falls back to its
+    // shipped default, the same reasoning as the secret settings below.
+    const twoFactorRequirementsLifted = await count(sql`
+      WITH updated AS (
+        UPDATE groups SET requires_two_factor = false, updated_at = now()
+         WHERE requires_two_factor
+        RETURNING 1
+      ) SELECT count(*)::int AS n FROM updated
+    `);
+    await tx.execute(sql`DELETE FROM settings WHERE namespace = 'auth' AND key = 'twoFactor'`);
+    // The per-person clock says when the requirement started applying to somebody. It
+    // is stamped again the moment one applies, so clearing it here cannot lose
+    // anything — and leaving it would date a deadline from before the restore.
+    await tx.execute(
+      sql`UPDATE users SET two_factor_required_since = NULL WHERE two_factor_required_since IS NOT NULL`,
+    );
 
     // Nobody stays signed in through a restore, and a pending verification is a
     // token somebody could still use.
@@ -193,6 +220,7 @@ export async function scrubForDevelopment(): Promise<ScrubReport> {
     return {
       passwordsReset,
       twoFactorRemoved,
+      twoFactorRequirementsLifted,
       sessionsDropped,
       emailsRewritten,
       contactDetailsCleared,

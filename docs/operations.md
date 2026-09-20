@@ -161,17 +161,28 @@ It refuses unless all of these hold: `NODE_ENV` is not `production`,
 `ALLOW_DEV_RESTORE=true`, `DATABASE_URL` points at a local database, and the
 confirmation phrase is typed. Then, in the same transaction as the restore:
 
-| Made safe                                               | Kept                       |
-| ------------------------------------------------------- | -------------------------- |
-| Every local password becomes `Admin@123`                | Journal entries            |
-| Two-factor removed, everyone signed out                 | Routines, rotas, shifts    |
-| Emails keep their name, lose the domain — `x@dev.local` | Assets, devices, parts     |
-| Phone numbers, Discord handles, provider tokens erased  | Departments and the line   |
-| Twilio/Telegram/Discord and OIDC secrets deleted        | Points and the audit trail |
-| Every channel but the in-app bell switched off          |                            |
+| Made safe                                                      | Kept                       |
+| -------------------------------------------------------------- | -------------------------- |
+| Every local password becomes `Admin@123`                       | Journal entries            |
+| Two-factor removed and no longer demanded, everyone signed out | Routines, rotas, shifts    |
+| Emails keep their name, lose the domain — `x@dev.local`        | Assets, devices, parts     |
+| Phone numbers, Discord handles, provider tokens erased         | Departments and the line   |
+| Twilio/Telegram/Discord and OIDC secrets deleted               | Points and the audit trail |
+| Every channel but the in-app bell switched off                 |                            |
 
 Add `--logs <dump>` to restore the log database too; without it your development
 logs are left alone.
+
+**Two-factor is switched off, not just emptied.** Deleting the enrolments is not
+enough on its own: the _requirement_ survives the restore, so the first sign-in lands
+on "you must enrol" with no authenticator anywhere holding the right seed. The scrub
+therefore also clears the per-group `requires_two_factor` flag, deletes the
+installation's `auth.twoFactor` setting and resets each person's enrolment clock.
+Nobody is forced to change their password either, since the password is written in
+this documentation.
+
+None of that touches production: it runs against the database `DATABASE_URL` names,
+which the guards above have already established is not production.
 
 ### Filling a copy with something to look at
 

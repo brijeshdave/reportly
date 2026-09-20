@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 
 import { usePermission } from "@/components/can.js";
-import { KindBadge } from "@/components/report-badges.js";
+import { KindBadge, SeverityBadge } from "@/components/report-badges.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Spinner } from "@/components/ui/form.js";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
@@ -137,7 +137,7 @@ export function ReviewPage() {
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     {entry.needsSelfScore ? <Badge tone="warning">your turn</Badge> : null}
-                    {entry.severityName ? <Badge tone="neutral">{entry.severityName}</Badge> : null}
+                    {entry.severityName ? <SeverityBadge name={entry.severityName} /> : null}
                     <KindBadge kind={entry.kind} />
                   </span>
                 </Link>
@@ -180,9 +180,7 @@ export function ReviewPage() {
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
-                      {entry.severityName ? (
-                        <Badge tone="neutral">{entry.severityName}</Badge>
-                      ) : null}
+                      {entry.severityName ? <SeverityBadge name={entry.severityName} /> : null}
                       <KindBadge kind={entry.kind} />
                     </span>
                   </Link>
@@ -225,9 +223,7 @@ export function ReviewPage() {
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
-                      {entry.severityName ? (
-                        <Badge tone="neutral">{entry.severityName}</Badge>
-                      ) : null}
+                      {entry.severityName ? <SeverityBadge name={entry.severityName} /> : null}
                       <KindBadge kind={entry.kind} />
                     </span>
                   </Link>

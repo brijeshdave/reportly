@@ -119,6 +119,9 @@ const columns: TableColumn<Part>[] = [
     id: "notes",
     accessorKey: "notes",
     header: "Notes",
+    // A sentence, not a token: this one may take a second line rather than
+    // making the column as wide as the longest entry anybody ever filed.
+    wrap: true,
     enableSorting: false,
     cell: ({ row }) =>
       row.original.notes ? (

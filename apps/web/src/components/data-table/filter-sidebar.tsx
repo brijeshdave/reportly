@@ -144,7 +144,13 @@ export function FilterSidebar({
         role="dialog"
         aria-modal="true"
         aria-label="Filters"
-        className="relative flex h-full w-full max-w-sm flex-col border-l border-border bg-card shadow-xl focus-visible:outline-none"
+        // Wide enough for two columns of filters on a desktop screen. Reported from
+        // use: "for resources where filters are many more, the filter sidebar needs
+        // to scrolled a lot so instead we can make it big horizontally". The journal
+        // has fourteen filters, which was a long scroll in a narrow column while
+        // most of the screen sat empty. It stays a side panel rather than a full
+        // page, because the table being narrowed is worth keeping in view.
+        className="relative flex h-full w-full flex-col border-l border-border bg-card shadow-xl focus-visible:outline-none sm:max-w-md lg:max-w-3xl"
       >
         <header className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold">Filters</h2>
@@ -153,7 +159,7 @@ export function FilterSidebar({
           </Button>
         </header>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        <div className="grid flex-1 content-start gap-4 overflow-y-auto px-4 py-4 lg:grid-cols-2">
           {defs.map((def) => {
             const current = draft.find((filter) => filter.field === def.field);
             // `String()` on a multi-select's array gives "a,b", which matches no

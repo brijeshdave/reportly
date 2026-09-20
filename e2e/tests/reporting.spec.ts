@@ -8,7 +8,15 @@
 // them, which is the part no amount of fastify.inject can tell you.
 import { expect, test, type Page } from "@playwright/test";
 
-import { addMember, logWork, pickPeople, submitIssue, superadminName, unique } from "./helpers.js";
+import {
+  addMember,
+  fillDueDate,
+  logWork,
+  pickPeople,
+  submitIssue,
+  superadminName,
+  unique,
+} from "./helpers.js";
 
 /**
  * Put the signed-in superadmin into a department, once for the file.
@@ -150,6 +158,8 @@ test("assigns a task, completes it, and the work lands as a linked report", asyn
   // later — so the picker starts empty and the button says "Save for later" until
   // somebody is chosen. This spec is about completing the work, so it takes it on.
   await pickPeople(page, "Assign to", superadminName());
+  // A task must say when it is due before it can be saved.
+  await fillDueDate(page);
   await page.getByRole("button", { name: "Assign", exact: true }).click();
   await expect(page).toHaveURL(/\/tasks\/[0-9a-f-]{36}$/);
   const taskUrl = page.url();

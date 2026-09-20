@@ -176,6 +176,8 @@ describe("the department workload report", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Grease the bearings",
         assigneeIds: [one.id],
       })
@@ -199,6 +201,8 @@ describe("the department workload report", () => {
     const { lead, one, two } = await team();
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Rewire the panel",
         assigneeIds: [one.id],
       })

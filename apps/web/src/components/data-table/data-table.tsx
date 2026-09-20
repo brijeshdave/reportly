@@ -58,6 +58,19 @@ export type TableColumn<T extends RowData> = ColumnDef<typeof tableFeaturesUsed,
    * one page of many.
    */
   enableSorting?: boolean;
+  /**
+   * Whether this cell's text may wrap onto a second line. **Ours, not the library's.**
+   *
+   * Off by default: reported from use as "dates are also does not look good. those
+   * all are being wrapped so looks ugly" — a date is one token, and a column narrow
+   * enough to break "20-09-2026 14:03" in half makes every row a different height
+   * for no gain. The table scrolls sideways, so a long row is a scroll, not a mess.
+   *
+   * Turn it on for the one or two columns that carry a sentence — a title, a
+   * description — where a single line would be a very wide column that pushes
+   * everything else off the screen.
+   */
+  wrap?: boolean;
 };
 
 const ROW_PADDING: Record<TableDensity, string> = {
@@ -218,6 +231,18 @@ export function DataTable<T extends RowData>({
             setColumnVisibility((prev) => ({ ...prev, [id]: !(prev[id] ?? true) }))
           }
           onExport={list.onExport ? (format) => void list.onExport?.(format) : undefined}
+          // Setting how a table opens for everybody is an installation setting, so
+          // it is gated on the permission that governs those rather than on a new
+          // one invented for tables.
+          // `maySetOrgDefault` is decided by the hook, which already has the
+          // session: asking for the permission here would make this presentational
+          // component need a query client, which is a lot of machinery for a menu
+          // item.
+          onSaveAsOrgDefault={
+            list.maySetOrgDefault ? () => void list.saveAsOrgDefault() : undefined
+          }
+          onResetToOrgDefault={() => void list.resetToOrgDefault()}
+          hasOwnView={list.hasOwnView}
           busy={list.isFetching}
         />
 
@@ -317,7 +342,17 @@ export function DataTable<T extends RowData>({
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className={ROW_PADDING[activeDensity]}>
+                        <td
+                          key={cell.id}
+                          className={cn(
+                            ROW_PADDING[activeDensity],
+                            // Cast for the same reason the sorting flag is: the flag
+                            // is this app's, not the library's.
+                            (cell.column.columnDef as TableColumn<T>).wrap
+                              ? "min-w-64"
+                              : "whitespace-nowrap",
+                          )}
+                        >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       ))}

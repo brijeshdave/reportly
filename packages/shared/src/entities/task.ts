@@ -88,6 +88,26 @@ export const taskSchema = z
     departmentId: uuidSchema.nullable(),
     departmentName: z.string().nullable(),
 
+    /**
+     * Where the work is. Asked for from use: "in journal or task or any place need
+     * location or site to be shown in table column always" — an entry has carried a
+     * site since location scoping, and a task, which is the *intent* of that same
+     * work, carried none, so "which site is this for" could not be asked of the
+     * thing being planned.
+     *
+     * Nullable because every task raised before this existed has no answer, and
+     * inventing one (the raiser's own site, say) would put a site on work that was
+     * never filed against one.
+     */
+    locationId: uuidSchema.nullable(),
+    locationName: z.string().nullable(),
+
+    /**
+     * When it must be finished. Required on a new task — "don't allow users to
+     * create tasks without due date" — and bounded by its priority's ceiling in
+     * settings. Still nullable here because tasks raised before the rule have none;
+     * editing one is where it is asked for.
+     */
     dueAt: z.string().datetime().nullable(),
     /**
      * What the task is worth — the ceiling of the entry filed against it, split
@@ -119,6 +139,28 @@ export type Task = z.infer<typeof taskSchema>;
 export const taskRowSchema = taskSchema.omit({ detail: true, reports: true, handovers: true });
 export type TaskRow = z.infer<typeof taskRowSchema>;
 
+/**
+ * The limits a task must satisfy, as the editor needs them.
+ *
+ * Sent to the browser rather than duplicated there: the ceilings are settings, and a
+ * form holding its own copy of a configurable rule is a form that is wrong the day
+ * somebody changes it.
+ */
+export const taskLimitsSchema = z.object({
+  /** The most a task may be worth, from the installation (or company) ceiling. */
+  maxPoints: z.number(),
+  /** How many days ahead a task of each priority may be due. */
+  dueDays: z.object({
+    low: z.number().int(),
+    normal: z.number().int(),
+    high: z.number().int(),
+    urgent: z.number().int(),
+  }),
+  /** False when the caller is exempt — a superadmin, where the setting allows it. */
+  dueLimitApplies: z.boolean(),
+});
+export type TaskLimits = z.infer<typeof taskLimitsSchema>;
+
 export const createTaskSchema = z.object({
   title: nameSchema,
   detail: detailText.optional(),
@@ -133,7 +175,14 @@ export const createTaskSchema = z.object({
    */
   assigneeIds: z.array(z.string().min(1)).default([]),
   departmentId: uuidSchema.optional(),
-  dueAt: z.string().datetime().optional(),
+  locationId: uuidSchema.optional(),
+  /**
+   * Required, unlike everywhere else a date appears: work handed to somebody with
+   * no date on it is what the complaint was about. How far ahead it may be is the
+   * priority's business, and the server checks it against the settings ceiling —
+   * here it only has to exist.
+   */
+  dueAt: z.string().datetime(),
   priority: taskPrioritySchema.default("normal"),
   /** In half points like every other number in the scoring model. The server
    *  refuses anything above the installation ceiling. */
@@ -148,7 +197,10 @@ export const updateTaskSchema = z.object({
   /** Replaced wholesale when sent; send [] to leave the task unassigned. */
   assigneeIds: z.array(z.string().min(1)).optional(),
   departmentId: uuidSchema.nullable().optional(),
-  dueAt: z.string().datetime().nullable().optional(),
+  locationId: uuidSchema.nullable().optional(),
+  /** Changeable, but not erasable: clearing a due date would be the way round the
+   *  rule that a task has one. */
+  dueAt: z.string().datetime().optional(),
   priority: taskPrioritySchema.optional(),
   /** Only somebody who manages the task may change this. */
   maxPoints: z.number().min(0).multipleOf(0.5).optional(),

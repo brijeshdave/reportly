@@ -692,6 +692,8 @@ describe("the source filter", () => {
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
+        // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Asked to do this",
         assigneeIds: [author.id],
       })

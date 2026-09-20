@@ -129,3 +129,40 @@ describe("rows-per-page resolution", () => {
     });
   });
 });
+
+describe("how a table opens", () => {
+  it("sends both the person's own arrangement and the organisation's", async () => {
+    const cookie = await superadmin();
+    await put("/settings/ui/tableViews", cookie, {
+      value: { journal: { hidden: ["severityName"] }, tasks: { sortBy: "dueAt" } },
+    });
+    await put("/settings/me/ui/tableViews", cookie, {
+      value: { journal: { hidden: ["title"] } },
+    });
+
+    const records = (await get("/settings/me", cookie)).json() as {
+      namespace: string;
+      key: string;
+      value: unknown;
+      orgValue: unknown;
+    }[];
+    const views = records.find((r) => r.namespace === "ui" && r.key === "tableViews")!;
+
+    // Both halves, because the inheritance is per table: this person has arranged
+    // the journal and said nothing about tasks, and resolving the record as one
+    // value would opt them out of the tasks default they never touched.
+    expect(views.value).toEqual({ journal: { hidden: ["title"] } });
+    expect(views.orgValue).toEqual({
+      journal: { hidden: ["severityName"] },
+      tasks: { sortBy: "dueAt" },
+    });
+  });
+
+  it("refuses a view that is not a table's worth of settings", async () => {
+    const cookie = await superadmin();
+    expect(
+      (await put("/settings/ui/tableViews", cookie, { value: { journal: { hidden: "title" } } }))
+        .statusCode,
+    ).toBe(400);
+  });
+});

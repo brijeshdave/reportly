@@ -172,6 +172,8 @@ describe("what an entry may be worth", () => {
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
+        // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Strip and rebuild the gearbox",
         assigneeIds: [author.id],
         maxPoints: 40,
@@ -192,6 +194,8 @@ describe("what an entry may be worth", () => {
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
+        // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Tighten the guard",
         assigneeIds: [author.id],
         maxPoints: 3,
@@ -220,6 +224,8 @@ describe("what an entry may be worth", () => {
     await setCompanySetting(TASK_POINTS, DEMO_COMPANY_ID, { maxPoints: 20 });
 
     const over = await inject("POST", "/tasks", manager.cookie, {
+      // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+      dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "A thousand points, please",
       assigneeIds: [author.id],
       maxPoints: 1000,
@@ -228,6 +234,8 @@ describe("what an entry may be worth", () => {
     expect(over.json().error.message).toContain("at most 20");
 
     const ok = await inject("POST", "/tasks", manager.cookie, {
+      // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
+      dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Twenty is fine",
       assigneeIds: [author.id],
       maxPoints: 20,

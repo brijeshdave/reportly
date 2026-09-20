@@ -73,6 +73,17 @@ async function plantProductionData(): Promise<void> {
     INSERT INTO notification_preferences (id, user_id, type, channel, enabled)
     VALUES (gen_random_uuid(), ${SUPERADMIN}, 'task.assigned', 'email', true)
   `);
+  // A group that demands two-factor, and an installation that does too — which is
+  // exactly what a real production database holds.
+  await db.execute(sql`UPDATE groups SET requires_two_factor = true`);
+  await db.execute(sql`
+    INSERT INTO settings (id, namespace, key, scope, value)
+    VALUES (gen_random_uuid(), 'auth', 'twoFactor', 'system', '{"mode":"required"}'::jsonb)
+    ON CONFLICT DO NOTHING
+  `);
+  await db.execute(sql`
+    UPDATE users SET two_factor_required_since = now() - interval '30 days' WHERE id = ${SUPERADMIN}
+  `);
   await db.execute(sql`
     UPDATE settings
        SET value = '{"telegramBotToken":"123:REAL","twilioAuthToken":"real-token"}'::jsonb
@@ -149,6 +160,31 @@ describe("scrubbing a production copy for development", () => {
     expect(secrets?.n).toBe(0);
     expect(report.settingsCleared).toContain("channels.providers");
     expect(report.settingsCleared).toContain("sso.google");
+  });
+
+  it("stops two-factor being demanded, so the copy can actually be signed into", async () => {
+    await plantProductionData();
+    const report = await scrubForDevelopment();
+
+    // Deleting the secrets was never enough on its own: the requirement survives the
+    // restore, so the first sign-in lands on "you must enrol" with no authenticator
+    // in the world holding the right seed. Reported from use — "in production data
+    // the superuser is member of a group that needs 2FA to be set [and] the system do
+    // not allow to proceed until I do that".
+    const groups = await one(sql`SELECT count(*)::int AS n FROM groups WHERE requires_two_factor`);
+    expect(Number(groups?.n)).toBe(0);
+    expect(report.twoFactorRequirementsLifted).toBeGreaterThan(0);
+
+    // All three sources are ORed, so lifting one would have left the block in place.
+    const setting = await one(
+      sql`SELECT count(*)::int AS n FROM settings WHERE namespace = 'auth' AND key = 'twoFactor'`,
+    );
+    expect(Number(setting?.n)).toBe(0);
+
+    const clock = await one(
+      sql`SELECT two_factor_required_since AS since FROM users WHERE id = ${SUPERADMIN}`,
+    );
+    expect(clock?.since).toBeNull();
   });
 
   it("lets you sign in as anybody with the development password", async () => {

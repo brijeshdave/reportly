@@ -991,6 +991,15 @@ export const tasks = pgTable(
     detail: text("detail"),
     assignerId: text("assigner_id").references(() => users.id, { onDelete: "set null" }),
     departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
+    /**
+     * Which site the work is for. An entry has carried one since location scoping;
+     * the task that asked for the work carried none, so the intent and the record
+     * of the same job could not be asked the same question.
+     *
+     * `set null` on a deleted location, like every other site column here: losing
+     * the site of a task is better than losing the task.
+     */
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "set null" }),
     dueAt: timestamp("due_at", { withTimezone: true }),
     priority: text("priority").notNull().default("normal"),
     /**
@@ -1006,7 +1015,11 @@ export const tasks = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index("tasks_state_idx").on(t.state), index("tasks_company_idx").on(t.companyId)],
+  (t) => [
+    index("tasks_state_idx").on(t.state),
+    index("tasks_company_idx").on(t.companyId),
+    index("tasks_location_idx").on(t.locationId),
+  ],
 );
 
 // Who is on a task. A task may have several people or nobody at all: work is

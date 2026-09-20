@@ -147,6 +147,13 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
         ? `${Math.floor(r.durationMinutes / 60)}h ${r.durationMinutes % 60}m`
         : null,
     ],
+    // When the record was written and last touched, which is a different question
+    // from the date it is about. Reported from use: "for journal entry there is no
+    // way to see when it was created or last updated as it only show issue date
+    // only" — and the gap between filed and created is what a backdated entry looks
+    // like, so it belongs where anybody reading the entry can see it.
+    ["Created", formatDateTime(r.createdAt)],
+    ["Last updated", formatDateTime(r.updatedAt)],
   ];
 
   return (

@@ -94,7 +94,13 @@ nobody is notified, and you hand it out when you are ready. Filter the list by
 
 **Raised by** tells your own work from the work handed to you: **Raised by → Me** is
 every task you wrote yourself. The task list also offers **Worth**, **Department**,
-**Raised** and **Completed** as columns, from the Columns menu.
+**Raised** and **Completed** as columns, from the Columns menu, and shows the
+**Site** the work is for.
+
+**A due date is required**, and how far ahead it may be depends on the priority —
+two days for urgent, seven for high, fourteen for normal, thirty for low, unless an
+administrator has changed them. The form says the limit under the Due field and the
+date picker stops at it.
 
 **Handing work over.** When a job outlasts a shift, the person holding it asks their
 manager, and the manager uses **Hand over** on the task page. The outgoing person is
@@ -392,17 +398,51 @@ anybody may override it for themselves.
 Every table carries the same paging controls above the rows and below them, so on a
 full page you do not have to scroll to the end to reach "next".
 
-### Your column choices are kept
+### When an entry was written
 
-**Columns** on any table lets you show or hide each column, and the choice is
-**remembered against your account, for that table** — a refresh, a new tab or a
-different computer all open the table the way you left it. It is kept per person
-rather than per browser because plant machines are shared: your layout does not
-become the next person's.
+The journal's **Created** and **Updated** columns (both in the Columns menu) and the
+**Created** and **Last updated** rows on an entry's own page say when the record was
+written and last touched — which is a different question from the date it is about.
+The gap between the two is what tells a same-day record from one written up a week
+later.
 
-Until you choose, a table opens on its own default, which usually hides the less
-common columns so the table stays readable. Everything the row carries is one tick
-away in the menu.
+### A table opens the way you left it
+
+**Columns** on any table lets you show or hide each column; clicking a header sorts;
+the **Filters** panel narrows. All three are **remembered against your account, for
+that table** — a refresh, a new tab or a different computer all open the table the
+way you left it. They are kept per person rather than per browser because plant
+machines are shared: your layout does not become the next person's.
+
+Until you arrange a table, it opens on the organisation's default, and until an
+administrator sets one, on the table's own — which usually hides the less common
+columns so the table stays readable. Everything the row carries is one tick away in
+the **Columns** menu.
+
+If you administer Reportly, the **View** menu on each table holds two more:
+
+- **Set as the default for everyone** — the table as it stands now is what anybody
+  who has not arranged that table themselves will see.
+- **Reset to the default** — throws away your own arrangement of this table and
+  follows the organisation's again.
+
+Arranging one table says nothing about the others: the journal you have set up your
+own way and the tasks table you have never touched both do the right thing, and a
+default set later still reaches the tables you have not arranged.
+
+### Severity and priority are colour-coded
+
+A severity badge takes its colour from where that severity sits in your own ladder —
+the mildest is green, the worst is red, whatever you have called them — so a table
+of entries shows what is serious without being read word by word. Task priorities
+are coloured the same way: urgent red, high amber, normal blue, low grey.
+
+### Filters open wide
+
+The **Filters** panel is a wide, two-column panel on a desktop screen. Tables like
+the journal have a dozen filters or more, and a narrow column meant scrolling
+through them while most of the screen sat empty. On a phone it is a single column,
+as before.
 
 ### How departments are shown when you pick one
 
