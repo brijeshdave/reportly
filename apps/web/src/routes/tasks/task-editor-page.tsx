@@ -261,7 +261,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
             label="Due"
             hint={
               limited
-                ? `Required. A ${priority} task must be due within ${limitDays} ${limitDays === 1 ? "day" : "days"}.`
+                ? `Required. ${priority === "urgent" ? "An" : "A"} ${priority} task must be due within ${limitDays} ${limitDays === 1 ? "day" : "days"}.`
                 : "Required."
             }
           >

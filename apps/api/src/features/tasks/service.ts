@@ -160,10 +160,13 @@ async function assertDueWithinLimit(
   // is not what this limit is about; only the far future is refused.
   if (ahead <= limit) return;
   const days = `${limit} ${limit === 1 ? "day" : "days"}`;
+  // "An urgent", "A high" — the only one of the four that takes the other article,
+  // and a message that reads as a typo is a message people trust less.
+  const article = priority === "urgent" ? "An" : "A";
   throw new AppError(
     400,
     ERROR_CODES.VALIDATION_ERROR,
-    `A ${priority} task must be due within ${days}. Lower the priority, or ask an administrator to change the limit.`,
+    `${article} ${priority} task must be due within ${days}. Lower the priority, or ask an administrator to change the limit.`,
   );
 }
 
