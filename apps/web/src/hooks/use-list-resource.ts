@@ -312,10 +312,14 @@ export function useListResource<T>({
 
   const saveAsOrgDefault = useCallback(async () => {
     const entry: TableView = {
-      hidden: view?.hidden ?? [],
       sortBy: state.sortBy ?? null,
       sortDir: state.sortDir,
       filters: state.filters,
+      // Only when somebody has actually chosen columns. Saving `[]` for an
+      // administrator who never opened the Columns menu would read as "hide
+      // nothing" and switch on every column the table hides by default — for
+      // everybody — which is not what "make it look like this" meant.
+      ...(view?.hidden ? { hidden: view.hidden } : {}),
     };
     await saveOrg.mutateAsync({ ...org, [tableKey]: entry });
   }, [org, saveOrg, state, tableKey, view]);

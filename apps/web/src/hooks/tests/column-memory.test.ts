@@ -184,6 +184,23 @@ describe("the organisation's default", () => {
     expect(savedOrg?.journal?.hidden).toEqual(["title"]);
   });
 
+  it("does not claim a column choice nobody made", async () => {
+    // An administrator who arranges the filters and sorting but never opens the
+    // Columns menu has said nothing about columns. Writing `hidden: []` for them
+    // would mean "hide nothing" and switch on every column the table hides by
+    // default, for everybody, which is the opposite of leaving it alone.
+    const journal = mount("journal");
+    await settle();
+    act(() => journal.result.current.onSortChange("reportDate"));
+    await settle();
+    await act(async () => {
+      await journal.result.current.saveAsOrgDefault();
+    });
+
+    expect(savedOrg?.journal?.sortBy).toBe("reportDate");
+    expect(savedOrg?.journal?.hidden).toBeUndefined();
+  });
+
   it("comes back when somebody resets their own arrangement", async () => {
     prefs = preferences(
       { journal: { hidden: ["title"] } },
