@@ -90,6 +90,7 @@ describe("visibleNavGroups", () => {
       "Downtime",
       "Analytics",
       "Insights",
+      "Management pack",
       "My routines",
       "Team routines",
       // Present for a superadmin here because this call passes no disabled list.

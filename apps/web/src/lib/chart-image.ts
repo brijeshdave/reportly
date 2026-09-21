@@ -1,0 +1,111 @@
+// Author: Brijesh Dave <https://github.com/brijeshdave>
+// Turning a chart that is on the screen into a picture that can go in a deck.
+//
+// Asked for from use: "All should be printable and exportable for my ppt." A chart
+// in a browser is an SVG built by recharts; PowerPoint wants a bitmap. This is the
+// bridge, and it is deliberately the *only* one: the pack's slides and its per-chart
+// download both come through here, so a picture in the deck is the picture on the
+// screen rather than a second rendering that might differ.
+//
+// Why not render the chart again server-side: it would mean a second chart engine,
+// on a machine with no fonts and no theme, producing something subtly unlike what
+// the person clicking "export" is looking at. The browser already drew it.
+
+/**
+ * Inline what CSS is saying, because a serialised SVG loses its stylesheet.
+ *
+ * Recharts sets most colours as attributes, which survive; anything wearing a class
+ * — axis labels, the grid — is styled by the page and would come out black on
+ * black in dark mode. Reading the computed style and writing it onto the clone is
+ * what keeps the exported picture looking like the chart.
+ */
+function inlineStyles(source: SVGSVGElement, clone: SVGSVGElement): void {
+  const sourceNodes = source.querySelectorAll("*");
+  const cloneNodes = clone.querySelectorAll("*");
+  for (let i = 0; i < sourceNodes.length; i += 1) {
+    const computed = window.getComputedStyle(sourceNodes[i]!);
+    const target = cloneNodes[i] as SVGElement | undefined;
+    if (!target) continue;
+    for (const property of [
+      "fill",
+      "stroke",
+      "stroke-width",
+      "font-family",
+      "font-size",
+      "opacity",
+    ]) {
+      const value = computed.getPropertyValue(property);
+      if (value) target.style.setProperty(property, value);
+    }
+  }
+}
+
+export interface ChartImage {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * Render the first SVG inside `element` as a PNG data URL.
+ *
+ * Drawn at twice the on-screen size: a slide is projected, and a chart captured at
+ * CSS pixels looks soft the moment it is on a wall. `background` is painted first
+ * because a PNG with a transparent background lands on a white slide with dark-mode
+ * text on it, which is unreadable.
+ */
+export async function chartToPng(
+  element: HTMLElement,
+  background = "#ffffff",
+  scale = 2,
+): Promise<ChartImage | null> {
+  const svg = element.querySelector("svg");
+  if (!svg) return null;
+
+  const rect = svg.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width));
+  const height = Math.max(1, Math.round(rect.height));
+
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  inlineStyles(svg, clone);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+
+  const xml = new XMLSerializer().serializeToString(clone);
+  // `encodeURIComponent` rather than `btoa`: a chart label can hold any character
+  // somebody typed into a category name, and btoa throws on the first one outside
+  // Latin-1 — which is a crash on export for exactly the installations that name
+  // things in their own language.
+  const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+
+  const image = new Image();
+  image.decoding = "sync";
+  const loaded = new Promise<boolean>((resolve) => {
+    image.onload = () => resolve(true);
+    image.onerror = () => resolve(false);
+  });
+  image.src = url;
+  if (!(await loaded)) return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  return { dataUrl: canvas.toDataURL("image/png"), width, height };
+}
+
+/** Save a data URL as a file, the same way the list exports do. */
+export function downloadDataUrl(dataUrl: string, filename: string): void {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}

@@ -872,6 +872,25 @@ const insightsRoute = createRoute({
   component: lazyRouteComponent(() => import("@/routes/insights/insights-page.js"), "InsightsPage"),
 });
 
+/**
+ * The management pack — the month somebody presents.
+ *
+ * Lazily loaded like Insights, and for a bigger version of the same reason: it
+ * carries the charting library *and* the deck builder, and neither belongs in the
+ * bundle of somebody who only files entries.
+ */
+const managementPackRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/pack",
+  // The same permission as Insights: the pack is the shape of the work drawn, which
+  // is what somebody puts in front of management.
+  beforeLoad: requirePermission(PERMISSIONS.INSIGHTS_VIEW),
+  component: lazyRouteComponent(
+    () => import("@/routes/reports/management-pack.js"),
+    "ManagementPackPage",
+  ),
+});
+
 const reportConfigRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/journal-config",
@@ -1064,6 +1083,7 @@ const routeTree = rootRoute.addChildren([
     downtimeRoute,
     analyticsRoute,
     insightsRoute,
+    managementPackRoute,
     organizationRoute,
     designationsRoute,
     designationCreateRoute,

@@ -12,6 +12,8 @@ import {
   analyticsWindowQuerySchema,
   analyticsWindowSchema,
   insightsSchema,
+  managementPackQuerySchema,
+  managementPackSchema,
   assetReliabilityReportSchema,
   recurringIssueSchema,
   recurringIssuesQuerySchema,
@@ -23,6 +25,7 @@ import { z } from "zod";
 import { ERROR_CODES } from "@reportly/shared";
 import { AppError } from "@/core/errors.js";
 import * as analytics from "@/features/analytics/service.js";
+import { managementPack } from "@/features/analytics/pack-service.js";
 
 // Kept as a plain string, not `z.guid()`, so an unknown asset is a 404
 // from the handler rather than a 400 from the schema — the documented convention
@@ -54,6 +57,27 @@ export async function analyticsRoutes(fastify: FastifyInstance): Promise<void> {
     app.companyContext,
     app.requirePermission(PERMISSIONS.INSIGHTS_VIEW),
   ];
+
+  // The management pack — a month of the plant as headline numbers and sections of
+  // charts, for the meeting and the slide deck.
+  //
+  // Gated on `insights:view` rather than `analytics:view`, for the reason the note
+  // above gives: the pack is the shape of the work, which is what somebody presents
+  // to management, and the reliability figures it borrows are already visible to
+  // anybody who can open Insights.
+  app.get(
+    "/insights/pack",
+    {
+      preHandler: insightsGuard,
+      schema: {
+        tags: ["Analytics"],
+        summary: "A month of the plant as indicators and charts, for a management pack",
+        querystring: managementPackQuerySchema,
+        response: { 200: managementPackSchema },
+      },
+    },
+    async (request) => managementPack(request.query, activeCompany(request.ctx!.companyId)),
+  );
 
   app.get(
     "/insights",

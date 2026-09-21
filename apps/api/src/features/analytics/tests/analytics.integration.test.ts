@@ -625,3 +625,139 @@ describe("insights charts", () => {
     expect((await inject("GET", "/insights", cookie)).statusCode).toBe(200);
   });
 });
+
+describe("the management pack", () => {
+  /**
+   * An issue filed on a given date, so a pack can be asked about a month that is
+   * over rather than about "now".
+   */
+  async function fileIssue(admin: string, reportDate: string, title: string): Promise<string> {
+    const res = await inject("POST", "/journal", admin, {
+      kind: "issue",
+      title,
+      state: "submitted",
+      severityId: await anySeverityId(),
+      issueSummary: "x",
+      reportDate,
+    });
+    expect(res.statusCode).toBe(201);
+    return res.json().id as string;
+  }
+
+  /** The month before this one, as YYYY-MM — what the pack opens on by default. */
+  function lastMonth(): string {
+    const now = new Date();
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15));
+    return d.toISOString().slice(0, 7);
+  }
+
+  it("counts a month, and compares it with the month before", async () => {
+    const admin = await superadmin();
+    const month = lastMonth();
+    const [year, m] = month.split("-").map(Number);
+    const before = new Date(Date.UTC(year!, m! - 2, 10)).toISOString();
+
+    await fileIssue(admin, new Date(Date.UTC(year!, m! - 1, 10)).toISOString(), "This month A");
+    await fileIssue(admin, new Date(Date.UTC(year!, m! - 1, 20)).toISOString(), "This month B");
+    await fileIssue(admin, before, "Previous month");
+
+    const res = await inject("GET", `/insights/pack?month=${month}`, admin);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    expect(body.periodLabel).toContain(String(year));
+    const issues = body.indicators.find((i: { key: string }) => i.key === "issues");
+    // Two this month against one last month: the same query over two windows, which
+    // is the whole design of the card.
+    expect(issues.value).toBe(2);
+    expect(issues.previous).toBe(1);
+    expect(issues.changePct).toBe(100);
+    // More issues is not good news, and a card that coloured it green would be
+    // read exactly once.
+    expect(issues.higherIsBetter).toBe(false);
+  });
+
+  it("counts only issues as resolved, not work logs that are born resolved", async () => {
+    const admin = await superadmin();
+    const month = lastMonth();
+    const [year, m] = month.split("-").map(Number);
+    const when = new Date(Date.UTC(year!, m! - 1, 12)).toISOString();
+
+    await fileIssue(admin, when, "A real issue, still open");
+    // A work log records work already done, so it starts at the resolved end. Counted
+    // as a resolution it would report the month's planned work as issues closed —
+    // and, worse, drag the median time-to-resolve to zero, because a work log is
+    // resolved the instant it is filed.
+    const work = await inject("POST", "/journal", admin, {
+      kind: "work",
+      title: "Greased the line",
+      state: "submitted",
+      severityId: await anySeverityId(),
+      workSummary: "x",
+      reportDate: when,
+    });
+    expect(work.statusCode).toBe(201);
+
+    const body = (await inject("GET", `/insights/pack?month=${month}`, admin)).json();
+    const resolved = body.indicators.find((i: { key: string }) => i.key === "resolved");
+    const time = body.indicators.find((i: { key: string }) => i.key === "timeToResolve");
+    expect(resolved.value).toBe(0);
+    expect(time.value).toBeNull();
+  });
+
+  it("reports an unmeasured figure as nothing, never as a confident zero", async () => {
+    const admin = await superadmin();
+    const month = lastMonth();
+    const [year, m] = month.split("-").map(Number);
+    await fileIssue(admin, new Date(Date.UTC(year!, m! - 1, 10)).toISOString(), "Never resolved");
+
+    const body = (await inject("GET", `/insights/pack?month=${month}`, admin)).json();
+    const time = body.indicators.find((i: { key: string }) => i.key === "timeToResolve");
+    // Nothing was resolved, so there is no median. Zero would tell a meeting that
+    // everything is closed instantly — the same trap the reliability figures avoid
+    // by refusing to report MTBF when nothing has failed.
+    expect(time.value).toBeNull();
+
+    const downtime = body.indicators.find((i: { key: string }) => i.key === "meanStoppage");
+    expect(downtime.value).toBeNull();
+  });
+
+  it("says nothing rather than a percentage when there is nothing to compare with", async () => {
+    const admin = await superadmin();
+    const month = lastMonth();
+    const [year, m] = month.split("-").map(Number);
+    await fileIssue(admin, new Date(Date.UTC(year!, m! - 1, 10)).toISOString(), "Only one");
+
+    const body = (await inject("GET", `/insights/pack?month=${month}`, admin)).json();
+    const issues = body.indicators.find((i: { key: string }) => i.key === "issues");
+    expect(issues.previous).toBe(0);
+    // "Up from nothing" is not a percentage. Printing ∞ — or a flat 100% — would be
+    // inventing a trend out of a first data point.
+    expect(issues.changePct).toBeNull();
+  });
+
+  it("builds only the sections asked for, so hiding one also makes the pack faster", async () => {
+    const admin = await superadmin();
+    const full = (await inject("GET", "/insights/pack", admin)).json();
+    expect(full.sections.map((s: { section: string }) => s.section)).toContain("activity");
+
+    const narrowed = (await inject("GET", "/insights/pack?sections=people", admin)).json();
+    expect(narrowed.sections.map((s: { section: string }) => s.section)).toEqual(["people"]);
+    // The headline cards are not a section anybody can lose: they are the pack's
+    // summary, and a pack with no numbers on the first slide is not one.
+    expect(narrowed.indicators.length).toBeGreaterThan(5);
+  });
+
+  it("is gated on insights:view, like the charts it draws from", async () => {
+    const admin = await superadmin();
+    const group = (await inject("POST", "/groups", admin, { name: "Pack readers" })).json();
+    const filters = encodeURIComponent(
+      JSON.stringify([{ field: "name", op: "eq", value: "Member" }]),
+    );
+    const role = (await inject("GET", `/roles?filters=${filters}`, admin)).json().data[0];
+    await inject("PUT", `/groups/${group.id}/roles`, admin, { ids: [role.id] });
+    const member = await makeUser(admin, "Pack Reader", "packreader", group.id);
+
+    expect((await inject("GET", "/insights/pack", member.cookie)).statusCode).toBe(403);
+  });
+});

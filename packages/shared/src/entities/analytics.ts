@@ -284,3 +284,118 @@ export const insightsSchema = z.object({
   entriesByStatus: z.array(chartPointSchema),
 });
 export type Insights = z.infer<typeof insightsSchema>;
+
+/* --------------------------- The management pack ---------------------------- */
+
+/**
+ * The sections a management pack is made of.
+ *
+ * Named, and shared with the client, because the pack is curated — an ordered set
+ * of sections somebody can switch off, asked for exactly that way: "make it like i
+ * can hide any section if i need. i.e. if i dont want to show cartridge related
+ * things, or points etc." A section that is off is not fetched, not drawn and not
+ * exported, so hiding one is also how a slow pack is made fast.
+ */
+export const PACK_SECTIONS = [
+  "headline",
+  "reliability",
+  "activity",
+  "people",
+  "compliance",
+  "cartridges",
+] as const;
+export type PackSection = (typeof PACK_SECTIONS)[number];
+export const packSectionSchema = z.enum(PACK_SECTIONS);
+
+/**
+ * One headline number, with what it was last period.
+ *
+ * `previous` and the change are computed on the server beside the figure itself.
+ * A card that worked out its own movement would be a second definition of every
+ * number in the pack, and the two would disagree the first time a query changed.
+ *
+ * `higherIsBetter` is what lets a card colour its movement without knowing what it
+ * is measuring: more points earned is good news, more downtime is not, and green
+ * for both is how a dashboard stops being read.
+ */
+export const packIndicatorSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  /**
+   * Null when the figure is *unmeasured*, which is not the same as zero.
+   *
+   * The reliability figures already draw this line — MTBF is null when nothing has
+   * failed rather than a confident zero — and a management pack is the worst place
+   * to blur it: "median time to resolve: 0 h" on a slide says the team closes
+   * everything instantly, when what happened is that nothing was closed at all.
+   */
+  value: z.number().nullable(),
+  /** "h", "min", "%", "pts" — blank for a plain count. */
+  unit: z.string(),
+  previous: z.number().nullable(),
+  /** Percentage change on the previous period. Null when there is nothing to
+   *  compare with, or when last period was zero — "up from nothing" is not a
+   *  percentage, and printing ∞ or 100% would be inventing one. */
+  changePct: z.number().nullable(),
+  higherIsBetter: z.boolean(),
+  /** One line saying what the number counts, for the reader who was not there. */
+  hint: z.string(),
+});
+export type PackIndicator = z.infer<typeof packIndicatorSchema>;
+
+/** A named series, so the client can draw and label it without a lookup table. */
+export const packSeriesSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  description: z.string(),
+  unit: z.string(),
+  points: z.array(chartPointSchema),
+});
+export type PackSeries = z.infer<typeof packSeriesSchema>;
+
+export const packSectionDataSchema = z.object({
+  section: packSectionSchema,
+  title: z.string(),
+  /** Series drawn as ranked bars or a composition, in the order they appear. */
+  series: z.array(packSeriesSchema),
+  /** The trend, where the section has one. Two counts on one axis. */
+  trend: z.array(chartTrendPointSchema).optional(),
+  trendTitle: z.string().optional(),
+  /** A ranked table, where a list says it better than a chart (recurring issues). */
+  table: z
+    .object({
+      title: z.string(),
+      columns: z.array(z.string()),
+      rows: z.array(z.array(z.string())),
+    })
+    .optional(),
+});
+export type PackSectionData = z.infer<typeof packSectionDataSchema>;
+
+export const managementPackSchema = z.object({
+  /** The window the pack covers, and the one every indicator is compared against. */
+  window: analyticsWindowSchema,
+  previousWindow: analyticsWindowSchema,
+  /** For the title slide and the printed header. */
+  companyName: z.string(),
+  periodLabel: z.string(),
+  indicators: z.array(packIndicatorSchema),
+  sections: z.array(packSectionDataSchema),
+});
+export type ManagementPack = z.infer<typeof managementPackSchema>;
+
+export const managementPackQuerySchema = z.object({
+  /** A month as YYYY-MM, or an explicit from/to. The month is what people ask for. */
+  month: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/)
+    .optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  /** Narrow to one site or one department, for a pack about one part of the plant. */
+  locationId: uuidSchema.optional(),
+  departmentId: uuidSchema.optional(),
+  /** Which sections to build. Omitted means every section the company has data for. */
+  sections: z.string().optional(),
+});
+export type ManagementPackQuery = z.infer<typeof managementPackQuerySchema>;

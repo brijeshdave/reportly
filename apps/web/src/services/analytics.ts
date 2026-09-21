@@ -6,6 +6,7 @@
 import type {
   AssetReliabilityReport,
   Insights,
+  ManagementPack,
   MyDay,
   RecurrenceLink,
   RecurringIssue,
@@ -81,4 +82,26 @@ export function fetchInsights(params: WindowParams = {}): Promise<Insights> {
   if (params.to) query.set("to", params.to);
   const suffix = query.toString();
   return http.get<Insights>(`/insights${suffix ? `?${suffix}` : ""}`);
+}
+
+/**
+ * The management pack: a month of the plant as indicators and sections of charts.
+ *
+ * The sections the caller wants travel with the request, because the server does
+ * not build what nobody is going to look at — hiding a section is how a slow pack
+ * is made fast, not just how it is made shorter.
+ */
+export function fetchManagementPack(params: {
+  month?: string;
+  locationId?: string;
+  departmentId?: string;
+  sections?: string[];
+}): Promise<ManagementPack> {
+  const query = new URLSearchParams();
+  if (params.month) query.set("month", params.month);
+  if (params.locationId) query.set("locationId", params.locationId);
+  if (params.departmentId) query.set("departmentId", params.departmentId);
+  if (params.sections?.length) query.set("sections", params.sections.join(","));
+  const suffix = query.toString();
+  return http.get<ManagementPack>(`/insights/pack${suffix ? `?${suffix}` : ""}`);
 }

@@ -262,6 +262,30 @@ Every chart has a **Table** button. The table is the same numbers the chart is
 drawn from, and it is there for the print case, the screen-reader case, and the
 "I want the actual figure" case.
 
+### Build the month's review pack
+
+**Management pack** is the page you open before a management meeting: one month of
+the plant as headline numbers — each with its movement on the month before — then the
+charts behind them, then the recurring issues.
+
+It opens on the last complete month and can be pointed at any month, narrowed to a
+site or a department, and **any section can be switched off**: untick Cartridges or
+People and points and they are neither drawn nor calculated.
+
+Three ways out of the app, because a monthly review is something you show other
+people:
+
+- **PowerPoint** — a real `.pptx` you can edit: a title slide, the numbers, a slide
+  per chart, a table of what keeps coming back.
+- **Print** — A4 landscape, which also saves as PDF.
+- **PNG** on any chart, for the one picture you want on its own.
+
+A figure that could not be measured shows a dash, never a zero: "median time to
+resolve: 0 h" in a month when nothing was resolved would be a claim, not a
+measurement.
+
+It uses the same `insights:view` permission as Insights.
+
 ### Score your team's work
 
 **Reviews** lists the entries awaiting your score. An entry is scored twice: the

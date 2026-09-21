@@ -26,6 +26,14 @@ interface ChartFrameProps {
   columns: string[];
   /** Shown instead of the chart when there is nothing to draw. */
   emptyMessage?: string;
+  /**
+   * An extra control for this chart — the management pack's "save as a picture".
+   *
+   * It goes in the frame's own control row rather than being positioned over the
+   * chart by the caller: floated on top, it landed squarely on the Table toggle,
+   * and two buttons in the same corner is one of them unreachable.
+   */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -36,6 +44,7 @@ export function ChartFrame({
   rows,
   columns,
   emptyMessage = "Nothing in this window.",
+  action,
   children,
 }: ChartFrameProps) {
   const [asTable, setAsTable] = useState(false);
@@ -54,22 +63,25 @@ export function ChartFrame({
             <p className="mt-0.5 text-xs text-muted-foreground">{windowLabel}</p>
           ) : null}
         </div>
-        {!isEmpty ? (
-          <button
-            type="button"
-            onClick={() => setAsTable((v) => !v)}
-            aria-pressed={asTable}
-            aria-controls={tableId}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            {asTable ? (
-              <TrendingUp className="h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <Table2 className="h-3.5 w-3.5" aria-hidden />
-            )}
-            {asTable ? "Chart" : "Table"}
-          </button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {action}
+          {!isEmpty ? (
+            <button
+              type="button"
+              onClick={() => setAsTable((v) => !v)}
+              aria-pressed={asTable}
+              aria-controls={tableId}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {asTable ? (
+                <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Table2 className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {asTable ? "Chart" : "Table"}
+            </button>
+          ) : null}
+        </div>
       </figcaption>
 
       {isEmpty ? (

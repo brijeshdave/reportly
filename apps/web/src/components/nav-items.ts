@@ -11,6 +11,7 @@ import {
 import {
   ArrowLeftRight,
   ChartColumn,
+  Presentation,
   Building2,
   CalendarDays,
   ClipboardCheck,
@@ -102,6 +103,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Insights",
         to: "/insights",
         icon: ChartColumn,
+        permission: PERMISSIONS.INSIGHTS_VIEW,
+      },
+      // The monthly review: the same facts, arranged as something to present.
+      {
+        label: "Management pack",
+        to: "/reports/pack",
+        icon: Presentation,
         permission: PERMISSIONS.INSIGHTS_VIEW,
       },
     ],

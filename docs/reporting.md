@@ -460,6 +460,54 @@ shows each status change, who made it, how long it took to be picked up, and how
 fix. If a report is part of a chain of repeats, a **Seen before** panel links the others
 you have access to.
 
+## The management pack — a month on one page
+
+**Management pack** is the monthly review: the plant's headline numbers for a month,
+each against the month before, followed by the charts behind them. It is the page you
+open before a management meeting, and it is built to leave the app — printed, or
+exported as slides.
+
+**Pick the month.** It opens on the last complete month, because the month in progress
+is the one figure nobody can act on yet — three days of work against a full month reads
+as a collapse. Any month can be chosen, and it is always compared with the month before
+it rather than with "thirty days earlier", so February is never flattered by being
+shorter than January.
+
+**Narrow it.** A site, a department, or both — for a pack about one plant rather than
+the company.
+
+**Choose the sections.** Every section can be switched off: if cartridges or points are
+not what this meeting is about, untick them and they are neither drawn nor calculated.
+The headline numbers stay, because that is what the pack is.
+
+| Section                  | What it shows                                                                                                                                                                                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The month in numbers     | Issues raised and resolved, resolution rate, median time to resolve, downtime and stoppages, work logged, people filing, tasks done and overdue, routines on time, points awarded, entries awaiting review — each with its movement on the previous month |
+| Reliability and downtime | Downtime by asset, downtime through the month, and the issues that keep coming back                                                                                                                                                                       |
+| What was filed           | Issues and work over time, and issues by category, department and severity, plus where entries stand                                                                                                                                                      |
+| People and points        | Points by person and department, and who is filing entries at all                                                                                                                                                                                         |
+| Routines and tasks       | Routine completions by department, and tasks completed by person                                                                                                                                                                                          |
+| Cartridges               | Cartridges fitted by site — only when the module is on and something was fitted                                                                                                                                                                           |
+
+**A dash is not a zero.** A figure that could not be measured — a median time to resolve
+in a month where nothing was resolved — shows "—". A zero there would tell a meeting
+that everything is closed instantly.
+
+**Getting it out.**
+
+- **PowerPoint** builds a real `.pptx`: a title slide, the numbers eight to a slide,
+  then one slide per chart with its title and description, and a table slide for the
+  recurring issues. Open it in PowerPoint and edit it like any other deck — drop a
+  slide, retitle another, paste one into a bigger deck.
+- **Print** gives an A4 landscape layout, which also saves as PDF.
+- **PNG** on any chart saves just that picture, for the one slide you are building by
+  hand.
+
+Everything exported is the chart you are looking at, captured from the screen — not a
+second rendering that might differ from it.
+
+It needs the same permission as Insights (`insights:view`).
+
 ## A note on the scoreboard
 
 Points are visible to you and to your managers — there is no company-wide leaderboard.

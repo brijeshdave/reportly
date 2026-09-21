@@ -96,6 +96,13 @@ const SHOTS: Shot[] = [
     ready: (page) => page.getByRole("heading", { name: "Insights", exact: true }).waitFor(),
   },
   {
+    name: "management-pack",
+    path: "/reports/pack",
+    // The cards are the point of the shot, and they arrive after the month's
+    // figures do — waiting on the heading alone captures an empty page.
+    ready: (page) => page.getByText("Issues raised", { exact: true }).first().waitFor(),
+  },
+  {
     name: "notifications-bell",
     path: "/",
     // The panel is the point, so it has to be open. Without the click this
