@@ -40,6 +40,36 @@ function inlineStyles(source: SVGSVGElement, clone: SVGSVGElement): void {
   }
 }
 
+/**
+ * The chart's own SVG, which is not the first one in the card.
+ *
+ * A chart card carries icons — the Table toggle, the PNG button — and every one of
+ * them is a 12×12 `<svg>` that comes *before* the chart in document order. Taking
+ * the first match exported a stroke-only chevron with `stroke="currentColor"`,
+ * which rasterised to the browser's broken-image glyph: every chart in the first
+ * exported deck was a 1 KB placeholder. Found by opening the deck, not by a test
+ * that counted the images.
+ *
+ * The biggest one is the chart, by a wide margin, so area is the test rather than a
+ * class name the charting library is free to rename.
+ */
+function chartSurface(element: HTMLElement): SVGSVGElement | null {
+  let best: SVGSVGElement | null = null;
+  let bestArea = 0;
+  for (const svg of element.querySelectorAll("svg")) {
+    const rect = svg.getBoundingClientRect();
+    const area = rect.width * rect.height;
+    if (area > bestArea) {
+      best = svg as SVGSVGElement;
+      bestArea = area;
+    }
+  }
+  // An icon is a few hundred square pixels; a chart is tens of thousands. Below
+  // that floor there is no chart on this card, and exporting an icon as though it
+  // were one is worse than exporting nothing.
+  return bestArea >= 5000 ? best : null;
+}
+
 export interface ChartImage {
   dataUrl: string;
   width: number;
@@ -59,7 +89,7 @@ export async function chartToPng(
   background = "#ffffff",
   scale = 2,
 ): Promise<ChartImage | null> {
-  const svg = element.querySelector("svg");
+  const svg = chartSurface(element);
   if (!svg) return null;
 
   const rect = svg.getBoundingClientRect();

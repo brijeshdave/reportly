@@ -223,13 +223,16 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
     pack.taskTotals(scope, from, to),
     pack.taskTotals(scope, previousFrom, previousTo),
   ]);
-  const [routinesNow, routinesWas, pointsNow, pointsWas, waiting] = await Promise.all([
-    pack.routineTotals(scope, from, to),
-    pack.routineTotals(scope, previousFrom, previousTo),
-    pack.pointsTotal(scope, from, to),
-    pack.pointsTotal(scope, previousFrom, previousTo),
-    pack.awaitingReview(scope, from, to),
-  ]);
+  const [routinesNow, routinesWas, pointsNow, pointsWas, waiting, cartridgesNow, cartridgesWas] =
+    await Promise.all([
+      pack.routineTotals(scope, from, to),
+      pack.routineTotals(scope, previousFrom, previousTo),
+      pack.pointsTotal(scope, from, to),
+      pack.pointsTotal(scope, previousFrom, previousTo),
+      pack.awaitingReview(scope, from, to),
+      pack.cartridgeServiceCount(scope, from, to),
+      pack.cartridgeServiceCount(scope, previousFrom, previousTo),
+    ]);
 
   const indicators: PackIndicator[] = [
     indicator("issues", "Issues raised", journalNow.issues, journalWas.issues, {
@@ -301,11 +304,22 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
     }),
   ];
 
+  // Only where the module is used at all. A card reading "Cartridges serviced: 0" on
+  // a company that does not refill anything is a slide saying nothing, every month.
+  if (cartridgesNow > 0 || cartridgesWas > 0) {
+    indicators.push(
+      indicator("cartridges", "Cartridges serviced", cartridgesNow, cartridgesWas, {
+        hint: "Refills, repairs and every other service recorded in the period.",
+      }),
+    );
+  }
+
   const built: PackSectionData[] = [];
 
   if (sections.includes("reliability")) {
-    const [byAsset, downTrend, recurring] = await Promise.all([
+    const [byAsset, byLocation, downTrend, recurring] = await Promise.all([
       pack.downtimeByAssetScoped(scope, from, to),
+      pack.downtimeByLocation(scope, from, to),
       pack.downtimeOverTime(scope, from, to),
       recurringIssues(companyId, from, to),
     ]);
@@ -319,6 +333,13 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
           description: "Where the hours went. Closed stoppages only.",
           unit: "min",
           points: byAsset,
+        },
+        {
+          key: "downtimeByLocation",
+          title: "Downtime by site",
+          description: "Which plant lost the hours.",
+          unit: "min",
+          points: byLocation,
         },
         {
           key: "downtimeOverTime",
@@ -346,10 +367,11 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
   }
 
   if (sections.includes("activity")) {
-    const [trend, byCategory, byDepartment, bySeverity, byStatus] = await Promise.all([
+    const [trend, byCategory, byDepartment, byLocation, bySeverity, byStatus] = await Promise.all([
       insights.issuesOverTime(companyId, from, to),
       insights.issuesByCategory(companyId, from, to),
       pack.issuesByDepartment(scope, from, to),
+      pack.issuesByLocation(scope, from, to),
       pack.issuesBySeverity(scope, from, to),
       insights.entriesByStatus(companyId, from, to),
     ]);
@@ -365,6 +387,13 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
           description: "What kind of thing keeps going wrong.",
           unit: "issues",
           points: byCategory,
+        },
+        {
+          key: "issuesByLocation",
+          title: "Issues by site",
+          description: "Which plant is generating the work.",
+          unit: "issues",
+          points: byLocation,
         },
         {
           key: "issuesByDepartment",
@@ -454,26 +483,45 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
   }
 
   if (sections.includes("cartridges")) {
-    const fitted = await pack.cartridgesFitted(scope, from, to);
-    // Only when there is something to say. The module is optional, and a section of
-    // empty charts on a slide in front of management reads as a broken system rather
-    // than as a module this company does not use.
-    if (fitted.length > 0) {
+    const [byKind, byLocation] = await Promise.all([
+      pack.cartridgeServicesByKind(scope, from, to),
+      pack.cartridgeServicesByLocation(scope, from, to),
+    ]);
+    // Services, not installations. Reported from use: "in current details cartidges
+    // install are shown which is not that important. the important is how many
+    // cartridges refilled and repaired." Fitting a cartridge is a delivery; the work
+    // is the refill and the repair, and that is what a workshop is judged on.
+    //
+    // Only when there is something to say: the module is optional, and a section of
+    // empty charts in front of management reads as a broken system rather than as a
+    // module this company does not use.
+    if (byKind.length > 0) {
       built.push({
         section: "cartridges",
         title: "Cartridges",
         series: [
           {
-            key: "cartridgesFitted",
-            title: "Cartridges fitted by site",
-            description: "Installations recorded in the period.",
-            unit: "fitted",
-            points: fitted,
+            key: "cartridgeServicesByKind",
+            title: "Cartridge services by kind",
+            description: "Refills, repairs and the rest — as this company names them.",
+            unit: "services",
+            points: byKind,
+          },
+          {
+            key: "cartridgeServicesByLocation",
+            title: "Cartridge services by site",
+            description: "Where the workshop time went.",
+            unit: "services",
+            points: byLocation,
           },
         ],
       });
     }
   }
+
+  // The site table is skipped when the pack is already narrowed to one site: a
+  // one-row "by site" table under a heading that says the site is furniture.
+  const sites = query.locationId ? [] : await pack.siteSummary(scope, from, to);
 
   return {
     window: windowOf(from, to),
@@ -482,5 +530,12 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
     periodLabel: windows.label,
     indicators,
     sections: built,
+    sites: sites.map((row) => ({
+      site: row.site,
+      issues: row.issues,
+      resolved: row.resolved,
+      open: row.open,
+      downtimeHours: Math.round((row.downtimeMinutes / 60) * 10) / 10,
+    })),
   };
 }

@@ -748,6 +748,42 @@ describe("the management pack", () => {
     expect(narrowed.indicators.length).toBeGreaterThan(5);
   });
 
+  it("breaks the month down by site, because that is what the meeting asks first", async () => {
+    const admin = await superadmin();
+    const month = lastMonth();
+    const [year, m] = month.split("-").map(Number);
+    const when = new Date(Date.UTC(year!, m! - 1, 9)).toISOString();
+    const sites = (await inject("GET", "/locations", admin)).json() as {
+      id: string;
+      name: string;
+    }[];
+
+    for (let i = 0; i < 3; i += 1) {
+      await inject("POST", "/journal", admin, {
+        kind: "issue",
+        title: `At the first site ${i}`,
+        state: "submitted",
+        severityId: await anySeverityId(),
+        issueSummary: "x",
+        locationId: sites[0]!.id,
+        reportDate: when,
+      });
+    }
+
+    const body = (await inject("GET", `/insights/pack?month=${month}`, admin)).json();
+    const row = (body.sites as { site: string; issues: number }[]).find(
+      (s) => s.site === sites[0]!.name,
+    );
+    expect(row?.issues).toBe(3);
+
+    // Narrowed to one site, the table is furniture: a one-row "by site" breakdown
+    // under a heading that already names the site says nothing.
+    const narrowed = (
+      await inject("GET", `/insights/pack?month=${month}&locationId=${sites[0]!.id}`, admin)
+    ).json();
+    expect(narrowed.sites).toEqual([]);
+  });
+
   it("is gated on insights:view, like the charts it draws from", async () => {
     const admin = await superadmin();
     const group = (await inject("POST", "/groups", admin, { name: "Pack readers" })).json();

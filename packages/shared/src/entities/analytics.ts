@@ -372,6 +372,20 @@ export const packSectionDataSchema = z.object({
 });
 export type PackSectionData = z.infer<typeof packSectionDataSchema>;
 
+/**
+ * A site's month in one row — what the "by site" table on the pack reads across.
+ *
+ * Asked for from use: "i need location wise data to be shown in presentation."
+ */
+export const packSiteRowSchema = z.object({
+  site: z.string(),
+  issues: z.number().int(),
+  resolved: z.number().int(),
+  open: z.number().int(),
+  downtimeHours: z.number(),
+});
+export type PackSiteRow = z.infer<typeof packSiteRowSchema>;
+
 export const managementPackSchema = z.object({
   /** The window the pack covers, and the one every indicator is compared against. */
   window: analyticsWindowSchema,
@@ -381,6 +395,8 @@ export const managementPackSchema = z.object({
   periodLabel: z.string(),
   indicators: z.array(packIndicatorSchema),
   sections: z.array(packSectionDataSchema),
+  /** Every site that saw work in the period, busiest first. Empty when narrowed to one. */
+  sites: z.array(packSiteRowSchema),
 });
 export type ManagementPack = z.infer<typeof managementPackSchema>;
 

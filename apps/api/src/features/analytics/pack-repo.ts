@@ -23,11 +23,14 @@ import {
   departments,
   downtimeEntries,
   journalEntries,
+  locations,
   parts,
   pointAwards,
   routineAssignees,
   routineCompletions,
   routines,
+  serviceEvents,
+  serviceKinds,
   taskAssignees,
   tasks,
   users,
@@ -486,4 +489,182 @@ export async function downtimeByAssetScoped(
     .orderBy(desc(minutes))
     .limit(limit);
   return rows.map((r) => ({ label: r.label, value: Math.round(Number(r.value)) }));
+}
+
+/**
+ * Issues per site.
+ *
+ * Asked for from use: "i need location wise data to be shown in presentation". A
+ * company with four plants meets about four plants, and a single company-wide bar
+ * answers none of the questions that meeting asks.
+ */
+export async function issuesByLocation(scope: PackScope, from: Date, to: Date): Promise<Point[]> {
+  const rows = await db
+    .select({
+      label: sql<string>`coalesce(${locations.name}, 'No site')`,
+      value: count(),
+    })
+    .from(journalEntries)
+    .leftJoin(locations, eq(locations.id, journalEntries.locationId))
+    .where(and(journalScope(scope, from, to), eq(journalEntries.kind, "issue")))
+    .groupBy(sql`1`)
+    .orderBy(desc(count()));
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/** Downtime minutes per site, taken from where the asset that stopped lives. */
+export async function downtimeByLocation(scope: PackScope, from: Date, to: Date): Promise<Point[]> {
+  const minutes = sql<number>`sum(extract(epoch from (${downtimeEntries.endedAt} - ${downtimeEntries.startedAt})) / 60)`;
+  const rows = await db
+    .select({ label: sql<string>`coalesce(${locations.name}, 'No site')`, value: minutes })
+    .from(downtimeEntries)
+    .innerJoin(
+      assets,
+      and(
+        eq(assets.id, sql`${downtimeEntries.targetId}::uuid`),
+        eq(assets.companyId, scope.companyId),
+      ),
+    )
+    .leftJoin(locations, eq(locations.id, assets.locationId))
+    .where(
+      and(
+        eq(downtimeEntries.companyId, scope.companyId),
+        eq(downtimeEntries.targetKind, "asset"),
+        isNotNull(downtimeEntries.endedAt),
+        gte(downtimeEntries.startedAt, from),
+        lte(downtimeEntries.startedAt, to),
+        scope.locationId ? eq(assets.locationId, scope.locationId) : undefined,
+      ),
+    )
+    .groupBy(sql`1`)
+    .orderBy(desc(minutes));
+  return rows.map((r) => ({ label: r.label, value: Math.round(Number(r.value)) }));
+}
+
+export interface SiteRow {
+  site: string;
+  issues: number;
+  resolved: number;
+  open: number;
+  downtimeMinutes: number;
+}
+
+/**
+ * One row per site: what was raised there, what was closed, what is still open, and
+ * how long it was down.
+ *
+ * A table rather than a fifth chart, because this is the slide somebody reads across
+ * — "which plant is the problem" is a comparison of four numbers per site, and four
+ * bar charts side by side make the reader do the joining themselves.
+ *
+ * Sites with nothing at all are left out: an operations review is about where the
+ * work was, and a row of zeroes for a site with no equipment is noise.
+ */
+export async function siteSummary(scope: PackScope, from: Date, to: Date): Promise<SiteRow[]> {
+  const resolvedAt = sql`(
+    SELECT min(e.changed_at) FROM journal_status_events e
+    JOIN journal_statuses st ON st.id = e.to_status_id
+    WHERE e.report_id = ${journalEntries.id} AND st."group" = 'resolved'
+  )`;
+  const entries = await db
+    .select({
+      site: sql<string>`coalesce(${locations.name}, 'No site')`,
+      issues: sql<number>`count(*) filter (where ${journalEntries.kind} = 'issue')::int`,
+      resolved: sql<number>`count(*) filter (where ${journalEntries.kind} = 'issue' and ${resolvedAt} is not null)::int`,
+    })
+    .from(journalEntries)
+    .leftJoin(locations, eq(locations.id, journalEntries.locationId))
+    .where(journalScope(scope, from, to))
+    .groupBy(sql`1`);
+
+  const downtime = await downtimeByLocation(scope, from, to);
+  const byName = new Map(downtime.map((d) => [d.label, d.value]));
+
+  return entries
+    .map((row) => ({
+      site: row.site,
+      issues: Number(row.issues),
+      resolved: Number(row.resolved),
+      open: Number(row.issues) - Number(row.resolved),
+      downtimeMinutes: byName.get(row.site) ?? 0,
+    }))
+    .filter((row) => row.issues > 0 || row.downtimeMinutes > 0)
+    .sort((a, b) => b.issues - a.issues);
+}
+
+/**
+ * Cartridge services by kind — refills, repairs, whatever this company calls them.
+ *
+ * Reported from use: "in current details cartidges install are shown which is not
+ * that important. the important is how many cartridges refilled and repaired."
+ *
+ * Grouped by the **service kind's own name** rather than by a pair of hard-coded
+ * words: the kinds are an installation's vocabulary, and a query looking for
+ * "refill" would report nothing at the first site that calls it something else.
+ */
+export async function cartridgeServicesByKind(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+): Promise<Point[]> {
+  const rows = await db
+    .select({ label: serviceKinds.name, value: sql<number>`count(*)::int` })
+    .from(serviceEvents)
+    .innerJoin(serviceKinds, eq(serviceKinds.id, serviceEvents.serviceKindId))
+    .where(
+      and(
+        eq(serviceEvents.companyId, scope.companyId),
+        gte(serviceEvents.performedAt, from),
+        lte(serviceEvents.performedAt, to),
+      ),
+    )
+    .groupBy(serviceKinds.name)
+    .orderBy(desc(sql`count(*)`));
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/** Cartridge services per site — where the workshop time went. */
+export async function cartridgeServicesByLocation(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+): Promise<Point[]> {
+  const rows = await db
+    .select({
+      label: sql<string>`coalesce(${locations.name}, 'No site')`,
+      value: sql<number>`count(*)::int`,
+    })
+    .from(serviceEvents)
+    .innerJoin(parts, eq(parts.id, serviceEvents.partId))
+    .leftJoin(locations, eq(locations.id, parts.locationId))
+    .where(
+      and(
+        eq(serviceEvents.companyId, scope.companyId),
+        gte(serviceEvents.performedAt, from),
+        lte(serviceEvents.performedAt, to),
+        scope.locationId ? eq(parts.locationId, scope.locationId) : undefined,
+      ),
+    )
+    .groupBy(sql`1`)
+    .orderBy(desc(sql`count(*)`));
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/** How many cartridge services happened at all — the headline figure. */
+export async function cartridgeServiceCount(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(serviceEvents)
+    .where(
+      and(
+        eq(serviceEvents.companyId, scope.companyId),
+        gte(serviceEvents.performedAt, from),
+        lte(serviceEvents.performedAt, to),
+      ),
+    );
+  return Number(row?.n ?? 0);
 }

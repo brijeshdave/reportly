@@ -476,6 +476,11 @@ shorter than January.
 **Narrow it.** A site, a department, or both — for a pack about one plant rather than
 the company.
 
+**Every table and chart can be read by site.** The pack carries a **By site** table —
+issues, resolved, still open and downtime hours per site — and the charts include
+issues by site and downtime by site. Narrow the whole pack to one site with the Site
+picker when a meeting is about one plant.
+
 **Choose the sections.** Every section can be switched off: if cartridges or points are
 not what this meeting is about, untick them and they are neither drawn nor calculated.
 The headline numbers stay, because that is what the pack is.
@@ -495,10 +500,12 @@ that everything is closed instantly.
 
 **Getting it out.**
 
-- **PowerPoint** builds a real `.pptx`: a title slide, the numbers eight to a slide,
-  then one slide per chart with its title and description, and a table slide for the
-  recurring issues. Open it in PowerPoint and edit it like any other deck — drop a
-  slide, retitle another, paste one into a bigger deck.
+- **PowerPoint** builds a real `.pptx` of **three dense slides**: the month at a
+  glance (every headline number plus the by-site table), where the work is (four
+  charts), and who/what keeps breaking (charts plus the recurring list). With every
+  section switched on there are more charts than three slides hold, so a fourth
+  "Also this month" slide catches the remainder — switch a section off and the deck
+  is three. Open it in PowerPoint and edit it like any other deck.
 - **Print** gives an A4 landscape layout, which also saves as PDF.
 - **PNG** on any chart saves just that picture, for the one slide you are building by
   hand.

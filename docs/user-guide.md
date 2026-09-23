@@ -269,14 +269,15 @@ the plant as headline numbers — each with its movement on the month before —
 charts behind them, then the recurring issues.
 
 It opens on the last complete month and can be pointed at any month, narrowed to a
-site or a department, and **any section can be switched off**: untick Cartridges or
+site or a department, and carries a **by-site breakdown** — issues, resolved, open
+and downtime hours per site. **Any section can be switched off**: untick Cartridges or
 People and points and they are neither drawn nor calculated.
 
 Three ways out of the app, because a monthly review is something you show other
 people:
 
-- **PowerPoint** — a real `.pptx` you can edit: a title slide, the numbers, a slide
-  per chart, a table of what keeps coming back.
+- **PowerPoint** — a real `.pptx` you can edit, three dense slides: the numbers and
+  the by-site table, the charts, then what keeps coming back.
 - **Print** — A4 landscape, which also saves as PDF.
 - **PNG** on any chart, for the one picture you want on its own.
 

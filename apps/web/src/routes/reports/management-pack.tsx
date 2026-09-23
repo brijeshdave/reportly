@@ -240,7 +240,10 @@ export function ManagementPackPage() {
           if (image) {
             built.charts.push({
               title: section.trendTitle ?? section.title,
-              description: "Through the period",
+              // The legend does not survive the export: recharts draws it as HTML
+              // beside the chart, not inside the SVG, so a two-line chart would
+              // reach a slide with nothing saying which line is which.
+              description: "Issues in blue, work logged in orange — per day",
               image,
             });
           }
@@ -373,6 +376,43 @@ export function ManagementPackPage() {
               ))}
             </div>
           </section>
+
+          {/* Location-wise, asked for directly: "i need location wise data to be
+              shown in presentation". Above the sections, because "which plant" is
+              the first question a management meeting asks. */}
+          {data.sites.length > 0 ? (
+            <section className="break-inside-avoid">
+              <h2 className="mb-3 text-sm font-semibold text-foreground">By site</h2>
+              <div className="overflow-hidden rounded-2xl border border-border bg-card">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="px-4 py-2 font-medium">Site</th>
+                      <th className="px-4 py-2 font-medium">Issues</th>
+                      <th className="px-4 py-2 font-medium">Resolved</th>
+                      <th className="px-4 py-2 font-medium">Open</th>
+                      <th className="px-4 py-2 font-medium">Downtime (h)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.sites.map((site) => (
+                      <tr key={site.site} className="border-b border-border last:border-0">
+                        <td className="whitespace-nowrap px-4 py-2">{site.site}</td>
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums">{site.issues}</td>
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums">
+                          {site.resolved}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums">{site.open}</td>
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums">
+                          {site.downtimeHours.toFixed(1)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
 
           {data.sections.map((section: PackSectionData) => (
             <section key={section.section} className="break-inside-avoid">

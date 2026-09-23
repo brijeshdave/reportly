@@ -12,10 +12,12 @@ import { withLocationsNullable } from "@/core/db/scoped.js";
 import {
   assets,
   categories,
+  departments,
   devices,
   downtimeEntries,
   journalTargets,
   journalEntries,
+  users,
 } from "@/core/db/schema.js";
 
 /** Raw downtime facts for one set of targets over one window. */
@@ -226,7 +228,16 @@ export async function recurringIssues(
       // Resolved per kind, falling back to the raw id: a target whose asset or
       // device has since been deleted still counts as a recurrence — it happened —
       // and dropping the row would quietly shrink the count.
-      targetLabel: sql<string>`coalesce(max(${assets.name}), max(${devices.name}), max(${journalTargets.targetId}))`,
+      // Every kind a target can be, not just the two with equipment: a scope may
+      // also name a **person** or a **department**, and those fell through to the
+      // raw id — which is how a management slide came out listing
+      // "22222222-2222-…" as the thing that keeps breaking. The id stays as the last
+      // resort, because a target whose record has since been deleted still counts as
+      // a recurrence and dropping the row would quietly shrink the count.
+      targetLabel: sql<string>`coalesce(
+        max(${assets.name}), max(${devices.name}), max(${users.name}), max(${departments.name}),
+        max(${journalTargets.targetId})
+      )`,
       categoryId: journalEntries.categoryId,
       categoryName: sql<string | null>`max(${categories.name})`,
       count: sql<number>`count(distinct ${journalEntries.id})::int`,
@@ -248,6 +259,14 @@ export async function recurringIssues(
     .leftJoin(
       devices,
       sql`${journalTargets.targetKind} = 'device' and ${devices.id}::text = ${journalTargets.targetId}`,
+    )
+    .leftJoin(
+      users,
+      sql`${journalTargets.targetKind} = 'user' and ${users.id} = ${journalTargets.targetId}`,
+    )
+    .leftJoin(
+      departments,
+      sql`${journalTargets.targetKind} = 'department' and ${departments.id}::text = ${journalTargets.targetId}`,
     )
     .where(
       and(
