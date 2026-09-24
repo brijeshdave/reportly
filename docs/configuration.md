@@ -212,6 +212,13 @@ entry past the grace period is refused.
 
 The default (3650 days) effectively disables the limit — lower it to enforce one.
 
+**Require work done on an issue** makes an issue impossible to submit without saying
+what was done about it. Off by default, because raising a breakdown at the machine
+and writing it up later is the right flow — an issue reported beats a tidy one not
+reported. Turn it on where the work is in fact always finished before anybody types:
+the editor then stops offering "I already did the work" and the server refuses an
+empty submit. A **draft** is exempt, since a draft is for something unfinished.
+
 **Grace applies to superadmins** decides whether the account that can do anything is
 bound by the limit. Off by default: a superadmin is usually the person correcting a
 mistake, and locking them out makes the mistake permanent. Turn it on where the

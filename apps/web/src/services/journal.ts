@@ -4,6 +4,7 @@
 // filtered for the caller — the review, and the official figure, are hidden from
 // anyone at or below the worker being scored.
 import type {
+  JournalEntryRules,
   AwaitingReview,
   CreateJournalEntry,
   CreateWorkLog,
@@ -116,3 +117,9 @@ export function fetchAwaitingReview(): Promise<AwaitingReview[]> {
 export function fetchMyPoints(): Promise<PointsSummary> {
   return http.get<PointsSummary>("/journal/points");
 }
+
+/**
+ * The rules an entry must satisfy — the grace period, and whether an issue has to
+ * say what was done. Read from the server so the editor and the check agree.
+ */
+export const fetchEntryRules = () => http.get<JournalEntryRules>("/journal/entry-rules");

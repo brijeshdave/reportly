@@ -1,13 +1,14 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Data access for routine definitions and their assignees. Completions live in their
 // own repo alongside this one (added with the completion flow).
-import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import {
   companies,
   departmentUserLocations,
   departments,
+  locations,
   routineAssignees,
   routines,
   users,
@@ -22,6 +23,8 @@ export interface RoutineRow {
   companyId: string;
   departmentId: string | null;
   departmentName: string | null;
+  locationId: string | null;
+  locationName: string | null;
   title: string;
   description: string | null;
   cadence: string;
@@ -42,6 +45,8 @@ const cols = {
   companyId: routines.companyId,
   departmentId: routines.departmentId,
   departmentName: departments.name,
+  locationId: routines.locationId,
+  locationName: locations.name,
   title: routines.title,
   description: routines.description,
   cadence: routines.cadence,
@@ -58,7 +63,11 @@ const cols = {
 };
 
 const base = () =>
-  db.select(cols).from(routines).leftJoin(departments, eq(departments.id, routines.departmentId));
+  db
+    .select(cols)
+    .from(routines)
+    .leftJoin(departments, eq(departments.id, routines.departmentId))
+    .leftJoin(locations, eq(locations.id, routines.locationId));
 
 export async function getRoutine(id: string, companyId: string): Promise<RoutineRow | null> {
   const [row] = await base().where(and(eq(routines.id, id), eq(routines.companyId, companyId)));
@@ -76,12 +85,16 @@ export async function managedBy(companyId: string, userId: string): Promise<Rout
  * The managed list as a real list resource: filtered, sorted and paged by the
  * server like every other table in the app.
  *
- * Two of its filters are not columns. A routine has no assignee and no site — it
- * belongs to a *department*, and departments span plants. `assigneeId` and
- * `locationId` therefore narrow by **who does it**: the routine is kept when
- * somebody assigned to it is that person, or works at that site. That is the
- * question a manager is actually asking ("what does the Kim team do?"), and it
- * composes with the department filter rather than duplicating it.
+ * `assigneeId` is not a column: a routine has no assignee, it has a list of them,
+ * so the filter keeps a routine when somebody assigned to it is that person. That
+ * is the question a manager is actually asking ("what does the Kim team do?"), and
+ * it composes with the department filter rather than duplicating it.
+ *
+ * `locationId` is now a real column, but the filter still answers the older
+ * question for the routines that predate it: a routine **stated** at that site
+ * matches, and so does one with no site of its own whose people work there. A
+ * routine written before sites existed would otherwise vanish from every site
+ * filter, which reads as data loss rather than as a missing field.
  *
  * They are pulled out of `filters` here rather than being passed separately,
  * because `buildListParts` ignores a field it does not know: left in, they would
@@ -96,6 +109,7 @@ const listConfig: ListConfig = {
     startDate: routines.startDate,
     departmentId: routines.departmentId,
     createdAt: routines.createdAt,
+    graceDays: routines.graceDays,
   },
   defaultSort: routines.title,
 };
@@ -104,21 +118,25 @@ const listConfig: ListConfig = {
 const VIRTUAL_FIELDS = new Set(["assigneeId", "locationId"]);
 
 function assigneeSubquery(field: string, values: string[]): SQL {
-  const routineIds =
-    field === "assigneeId"
-      ? db
-          .select({ id: routineAssignees.routineId })
-          .from(routineAssignees)
-          .where(inArray(routineAssignees.userId, values))
-      : db
-          .select({ id: routineAssignees.routineId })
-          .from(routineAssignees)
-          .innerJoin(
-            departmentUserLocations,
-            eq(departmentUserLocations.userId, routineAssignees.userId),
-          )
-          .where(inArray(departmentUserLocations.locationId, values));
-  return inArray(routines.id, routineIds);
+  if (field === "assigneeId") {
+    const byPerson = db
+      .select({ id: routineAssignees.routineId })
+      .from(routineAssignees)
+      .where(inArray(routineAssignees.userId, values));
+    return inArray(routines.id, byPerson);
+  }
+
+  // The site filter: stated site first, then the legacy reading for routines that
+  // have none. See the note on `listConfig` above.
+  const byPeopleAtSite = db
+    .select({ id: routineAssignees.routineId })
+    .from(routineAssignees)
+    .innerJoin(departmentUserLocations, eq(departmentUserLocations.userId, routineAssignees.userId))
+    .where(inArray(departmentUserLocations.locationId, values));
+  return or(
+    inArray(routines.locationId, values),
+    and(isNull(routines.locationId), inArray(routines.id, byPeopleAtSite)),
+  )!;
 }
 
 export async function listManagedRoutines(
@@ -218,6 +236,7 @@ export async function assigneeIdsOf(routineId: string): Promise<string[]> {
 export interface NewRoutine {
   companyId: string;
   departmentId: string | null;
+  locationId: string | null;
   title: string;
   description: string | null;
   cadence: string;

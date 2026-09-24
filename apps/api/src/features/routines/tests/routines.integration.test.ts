@@ -506,3 +506,57 @@ describe("routines", () => {
     expect((await inject("GET", "/routines/managed", other.cookie)).json().total).toBe(0);
   });
 });
+
+describe("a routine's site", () => {
+  it("is stated on the routine, shown back, and filters the list", async () => {
+    const admin = await superadmin();
+    const { boss, dept } = await fixture(admin);
+    const sites = (await inject("GET", "/locations", admin)).json() as {
+      id: string;
+      name: string;
+    }[];
+    const site = sites[0]!;
+
+    // Asked for from use: "but routines also need sites in config" — the same rounds
+    // at two plants are two routines, and a monthly review has to say which plant
+    // kept up.
+    const created = await inject("POST", "/routines", boss.cookie, {
+      departmentId: dept.id,
+      locationId: site.id,
+      title: "Daily walk-round",
+      cadence: "daily",
+      points: 1,
+      startDate: "2026-01-01",
+      assigneeIds: [boss.id],
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().locationName).toBe(site.name);
+
+    const elsewhere = await inject("POST", "/routines", boss.cookie, {
+      departmentId: dept.id,
+      title: "Not about one site",
+      cadence: "weekly",
+      anchorWeekday: 1,
+      points: 1,
+      startDate: "2026-01-01",
+      assigneeIds: [boss.id],
+    });
+    expect(elsewhere.statusCode).toBe(201);
+    expect(elsewhere.json().locationId).toBeNull();
+
+    const q = encodeURIComponent(
+      JSON.stringify([{ field: "locationId", op: "eq", value: site.id }]),
+    );
+    const listed = await inject("GET", `/routines/managed?filters=${q}`, boss.cookie);
+    expect(listed.statusCode).toBe(200);
+    const titles = (listed.json().data as { title: string }[]).map((r) => r.title);
+    expect(titles).toContain("Daily walk-round");
+
+    // Clearing it is a real answer — a duty that turns out not to be about one site.
+    const cleared = await inject("PATCH", `/routines/${created.json().id}`, boss.cookie, {
+      locationId: null,
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().locationId).toBeNull();
+  });
+});

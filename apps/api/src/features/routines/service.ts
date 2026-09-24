@@ -27,6 +27,7 @@ import { AppError } from "@/core/errors.js";
 import { todayFor } from "@/core/timezone.js";
 import { notify } from "@/core/queue/notifications.js";
 import { getDepartment } from "@/features/departments/repo.js";
+import { mayUseLocation } from "@/core/db/scoped.js";
 import { downlineUserIds } from "@/features/journal/hierarchy.js";
 import * as completions from "@/features/routines/completion-repo.js";
 import type { AwardableRow, CompletionRow } from "@/features/routines/completion-repo.js";
@@ -42,6 +43,8 @@ function serialize(row: RoutineRow, assignees: { userId: string; name: string }[
     id: row.id,
     departmentId: row.departmentId,
     departmentName: row.departmentName,
+    locationId: row.locationId,
+    locationName: row.locationName,
     title: row.title,
     description: row.description,
     cadence: asCadence(row.cadence),
@@ -142,20 +145,33 @@ function anchorsFor(input: {
   };
 }
 
+/**
+ * Writing a routine into a site the caller cannot reach is refused rather than
+ * filtered, the same way filing an entry or raising a task there is: a duty placed
+ * at a plant they can never open again is a record lost on purpose.
+ */
+function assertMaySiteAt(locationId: string | null, ctx: AuthContext): void {
+  if (!mayUseLocation(ctx, locationId)) {
+    throw new AppError(403, ERROR_CODES.FORBIDDEN, "You cannot put a routine at that site");
+  }
+}
+
 export async function createRoutine(
   companyId: string,
-  userId: string,
-  isSuperadmin: boolean,
+  ctx: AuthContext,
   input: CreateRoutine,
 ): Promise<Routine> {
+  const { userId, isSuperadmin } = ctx;
   await assertAssignable(userId, isSuperadmin, input.assigneeIds);
   if (!(await getDepartment(input.departmentId, companyId))) {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "Pick a department for this routine");
   }
+  assertMaySiteAt(input.locationId ?? null, ctx);
   const id = await repo.insertRoutine(
     {
       companyId,
       departmentId: input.departmentId,
+      locationId: input.locationId ?? null,
       title: input.title,
       description: input.description ?? null,
       cadence: input.cadence,
@@ -174,10 +190,10 @@ export async function createRoutine(
 export async function updateRoutine(
   id: string,
   companyId: string,
-  userId: string,
-  isSuperadmin: boolean,
+  ctx: AuthContext,
   input: UpdateRoutine,
 ): Promise<Routine> {
+  const { userId, isSuperadmin } = ctx;
   const before = await repo.getRoutine(id, companyId);
   if (!before) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Routine not found");
   if (!isSuperadmin && before.createdBy !== userId) {
@@ -187,6 +203,7 @@ export async function updateRoutine(
   if (input.departmentId && !(await getDepartment(input.departmentId, companyId))) {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "That department is not in this company");
   }
+  if (input.locationId !== undefined) assertMaySiteAt(input.locationId, ctx);
 
   const cadence = input.cadence ?? asCadence(before.cadence);
   await repo.updateRoutineRow(
@@ -194,6 +211,7 @@ export async function updateRoutine(
     companyId,
     {
       ...(input.departmentId !== undefined ? { departmentId: input.departmentId } : {}),
+      ...(input.locationId !== undefined ? { locationId: input.locationId } : {}),
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.cadence !== undefined ? { cadence: input.cadence } : {}),

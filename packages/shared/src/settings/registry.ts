@@ -218,6 +218,21 @@ export const reportEntrySettingsSchema = z.object({
    * either reading is available and neither is assumed.
    */
   graceAppliesToSuperadmins: z.boolean().default(false),
+  /**
+   * Whether an issue must carry what was done about it before it can be submitted.
+   *
+   * Reported from use: "in journal entry usesr are skikking work done entry because
+   * they have option for I already did the work. i need a setting that i can use to
+   * disable this to make workdone mendatory."
+   *
+   * The editor offers "I already did the work" so a breakdown can be raised now and
+   * written up later, which is the right default — an issue reported at the machine
+   * beats a tidy one reported at a desk. But where the work is in fact always done
+   * before anybody types, that option is just a way of skipping the record, so this
+   * switch removes it: the section stays open and a submit without a summary is
+   * refused. A **draft** is exempt, because a draft is for something unfinished.
+   */
+  requireWorkOnIssue: z.boolean().default(false),
 });
 
 export type ReportEntrySettings = z.infer<typeof reportEntrySettingsSchema>;

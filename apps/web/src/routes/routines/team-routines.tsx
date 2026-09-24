@@ -71,6 +71,17 @@ const columns: TableColumn<Routine>[] = [
       row.original.departmentName ?? <span className="text-muted-foreground">—</span>,
   },
   {
+    // The site the duty belongs to. Shown by default, like the journal's and the
+    // task list's: "in journal or task or any place need location or site to be
+    // shown in table column always".
+    id: "locationName",
+    accessorKey: "locationName",
+    header: "Site",
+    enableSorting: false,
+    cell: ({ row }) =>
+      row.original.locationName ?? <span className="text-muted-foreground">—</span>,
+  },
+  {
     id: "assignees",
     accessorKey: "assignees",
     header: "Who does it",
@@ -220,10 +231,11 @@ export function TeamRoutinesPage() {
         ),
       },
       {
-        // Also not a column: a routine has no site. This keeps the routines whose
-        // people work at that one.
+        // A routine carries its own site now. The filter keeps the ones stated at
+        // that site, and — for routines written before the field existed — the ones
+        // whose people work there, so an older duty does not vanish from the filter.
         field: "locationId",
-        label: "Site (of whoever does it)",
+        label: "Site",
         kind: "combobox",
         options: (myLocations.data ?? []).map((l) => ({ value: l.id, label: l.name })),
       },

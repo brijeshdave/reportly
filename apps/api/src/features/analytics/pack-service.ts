@@ -312,6 +312,28 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
         hint: "Refills, repairs and every other service recorded in the period.",
       }),
     );
+
+    // A card per kind as well — asked for as "in first slide need cartridge refill
+    // and repaire counts". The kinds are named by the installation, so the cards are
+    // named after them rather than after the two words this sentence happens to use.
+    const [kindsNow, kindsWas] = await Promise.all([
+      pack.cartridgeServicesByKind(scope, from, to),
+      pack.cartridgeServicesByKind(scope, previousFrom, previousTo),
+    ]);
+    const wasByKind = new Map(kindsWas.map((k) => [k.label, k.value]));
+    for (const kind of kindsNow) {
+      indicators.push(
+        indicator(
+          `cartridge:${kind.label}`,
+          kind.label,
+          kind.value,
+          wasByKind.get(kind.label) ?? 0,
+          {
+            hint: `Cartridge ${kind.label.toLowerCase()} jobs recorded in the period.`,
+          },
+        ),
+      );
+    }
   }
 
   const built: PackSectionData[] = [];
@@ -421,14 +443,20 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
   }
 
   if (sections.includes("people")) {
-    const [byPerson, byDept, entries] = await Promise.all([
+    // Everything here is **per person**, because that is what the people slide was
+    // asked to be: "in 4th slide need only points by person, entries filled for
+    // person, routines by person and task completed by person, cartridges refilled
+    // and repaired by person. dont need any other details."
+    const [byPerson, entries, routinesPerson, tasksPerson, cartridgesPerson] = await Promise.all([
       insights.pointsByPerson(companyId, from, to),
-      insights.pointsByDepartment(companyId, from, to),
       pack.entriesByPerson(scope, from, to),
+      pack.routineCompletionsByPerson(scope, from, to),
+      pack.tasksCompletedByPerson(scope, from, to),
+      pack.cartridgeServicesByPerson(scope, from, to),
     ]);
     built.push({
       section: "people",
-      title: "People and points",
+      title: "People",
       series: [
         {
           key: "pointsByPerson",
@@ -438,27 +466,50 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
           points: byPerson,
         },
         {
-          key: "pointsByDepartment",
-          title: "Points by department",
-          description: "Where the work is happening, not who did it.",
-          unit: "pts",
-          points: byDept,
-        },
-        {
           key: "entriesByPerson",
           title: "Entries filed by person",
           description: "Who is writing things down at all.",
           unit: "entries",
           points: entries,
         },
+        {
+          key: "routinesByPerson",
+          title: "Routines by person",
+          description: "Occurrences signed off in the period.",
+          unit: "completions",
+          points: routinesPerson,
+        },
+        {
+          key: "tasksByPerson",
+          title: "Tasks completed by person",
+          description: "Work handed out and cleared.",
+          unit: "tasks",
+          points: tasksPerson,
+        },
+        // Only where the module is used: an empty chart on a slide reads as a broken
+        // system rather than as a module this company does not have.
+        ...(cartridgesPerson.length > 0
+          ? [
+              {
+                key: "cartridgesByPerson",
+                title: "Cartridges serviced by person",
+                description: "Refills and repairs, by whoever did them.",
+                unit: "services",
+                points: cartridgesPerson,
+              },
+            ]
+          : []),
       ],
     });
   }
 
   if (sections.includes("compliance")) {
-    const [routinesByDept, tasksByPerson] = await Promise.all([
+    // Department and site, not person: the per-person cut belongs to the people
+    // section, and one chart drawn twice in a deck is a chart nobody trusts.
+    const [routinesByDept, routinesBySite, pointsByDept] = await Promise.all([
       pack.routinesByDepartment(scope, from, to),
-      pack.tasksCompletedByPerson(scope, from, to),
+      pack.routineCompletionsByLocation(scope, from, to),
+      insights.pointsByDepartment(companyId, from, to),
     ]);
     built.push({
       section: "compliance",
@@ -472,11 +523,18 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
           points: routinesByDept,
         },
         {
-          key: "tasksByPerson",
-          title: "Tasks completed by person",
-          description: "Who is clearing the work that was handed out.",
-          unit: "tasks",
-          points: tasksByPerson,
+          key: "routinesBySite",
+          title: "Routine completions by site",
+          description: "The duty's own site, or the site of whoever signed it off.",
+          unit: "completions",
+          points: routinesBySite,
+        },
+        {
+          key: "pointsByDepartment",
+          title: "Points by department",
+          description: "Where the work is happening, not who did it.",
+          unit: "pts",
+          points: pointsByDept,
         },
       ],
     });
@@ -536,6 +594,12 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
       resolved: row.resolved,
       open: row.open,
       downtimeHours: Math.round((row.downtimeMinutes / 60) * 10) / 10,
+      tasks: row.tasks,
+      routines: row.routines,
+      services: row.services,
     })),
+    // The kinds actually seen, so the table draws a column per kind rather than
+    // guessing which two words this installation uses.
+    serviceKinds: [...new Set(sites.flatMap((row) => Object.keys(row.services)))].sort(),
   };
 }

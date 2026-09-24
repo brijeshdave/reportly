@@ -20,6 +20,7 @@ import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchDownline, fetchMyDepartments } from "@/services/departments.js";
+import { fetchMyLocations } from "@/services/locations.js";
 import { createRoutine, fetchRoutine, updateRoutine } from "@/services/routines.js";
 import { dayOffset } from "@/routes/routines/util.js";
 
@@ -63,6 +64,11 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
   );
 
   const [departmentId, setDepartmentId] = useState(routine?.departmentId ?? "");
+  const [locationId, setLocationId] = useState(routine?.locationId ?? "");
+  // The sites this person may file at — the same list the journal and task editors
+  // offer, and the one the server checks, so the picker cannot name a site the save
+  // would refuse.
+  const sites = useQuery({ queryKey: ["locations", "mine"], queryFn: fetchMyLocations });
   const effectiveDept = departmentId || departments[0]?.departmentId || "";
   const [title, setTitle] = useState(routine?.title ?? "");
   const [description, setDescription] = useState(routine?.description ?? "");
@@ -97,6 +103,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
     mutationFn: () => {
       const input: CreateRoutine = {
         departmentId: effectiveDept,
+        ...(locationId ? { locationId } : {}),
         title: title.trim(),
         description: description.trim() || undefined,
         cadence,
@@ -109,7 +116,11 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
         status: active ? "active" : "paused",
         assigneeIds,
       };
-      return mode === "edit" ? updateRoutine(routine!.id, input) : createRoutine(input);
+      // On an edit the site is sent even when blank, because clearing it is a real
+      // answer: a duty that turns out not to be about one plant.
+      return mode === "edit"
+        ? updateRoutine(routine!.id, { ...input, locationId: locationId || null })
+        : createRoutine(input);
     },
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({ queryKey: ["routines"] });
@@ -184,6 +195,22 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
                 />
               )
             }
+          </Field>
+
+          <Field
+            label="Site"
+            hint="where the duty is done; leave it unset if it is not about one site"
+          >
+            {(props) => (
+              <Select {...props} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+                <option value="">Not set</option>
+                {(sites.data ?? []).map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </Select>
+            )}
           </Field>
 
           <div className="flex flex-wrap gap-4">

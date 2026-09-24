@@ -323,3 +323,24 @@ export type UpdateJournalEntry = z.infer<typeof updateJournalEntrySchema>;
  */
 export const changeStatusSchema = z.object({ statusId: uuidSchema.nullable() });
 export type ChangeStatus = z.infer<typeof changeStatusSchema>;
+
+/**
+ * The rules an entry must satisfy, as the editor needs them.
+ *
+ * Sent to the browser rather than duplicated there, for the reason `taskLimitsSchema`
+ * gives: these are settings, and a form holding its own copy of a configurable rule
+ * is a form that is wrong the day somebody changes it.
+ */
+export const journalEntryRulesSchema = z.object({
+  /** How far back an entry may be dated. The default (3650) is effectively no limit. */
+  graceDays: z.number().int(),
+  /** Whether the grace period binds this caller — a superadmin may be exempt. */
+  graceApplies: z.boolean(),
+  /**
+   * Whether an issue must say what was done before it can be submitted. When true the
+   * editor stops offering "I already did the work" and the server refuses a submit
+   * with nothing in it.
+   */
+  requireWorkOnIssue: z.boolean(),
+});
+export type JournalEntryRules = z.infer<typeof journalEntryRulesSchema>;

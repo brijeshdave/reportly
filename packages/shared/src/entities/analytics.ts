@@ -383,6 +383,16 @@ export const packSiteRowSchema = z.object({
   resolved: z.number().int(),
   open: z.number().int(),
   downtimeHours: z.number(),
+  tasks: z.number().int(),
+  routines: z.number().int(),
+  /**
+   * Cartridge services at that site, keyed by the service kind's own name.
+   *
+   * A record rather than "refills" and "repairs" columns: the kinds are an
+   * installation's own vocabulary, and two hard-coded English words would report
+   * nothing at the first site that calls them something else.
+   */
+  services: z.record(z.string(), z.number()),
 });
 export type PackSiteRow = z.infer<typeof packSiteRowSchema>;
 
@@ -397,6 +407,8 @@ export const managementPackSchema = z.object({
   sections: z.array(packSectionDataSchema),
   /** Every site that saw work in the period, busiest first. Empty when narrowed to one. */
   sites: z.array(packSiteRowSchema),
+  /** The service kinds seen this period, in order — the site table's own columns. */
+  serviceKinds: z.array(z.string()),
 });
 export type ManagementPack = z.infer<typeof managementPackSchema>;
 

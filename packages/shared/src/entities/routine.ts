@@ -148,6 +148,15 @@ export const routineSchema = z
     id: uuidSchema,
     departmentId: uuidSchema.nullable(),
     departmentName: z.string().nullable(),
+    /**
+     * Which site the duty belongs to. Asked for from use: "but routines also need
+     * sites in config" — the same rounds at two plants are two routines, and a
+     * monthly review has to be able to say which plant kept up.
+     *
+     * Nullable because routines written before the field have no answer.
+     */
+    locationId: uuidSchema.nullable(),
+    locationName: z.string().nullable(),
     title: nameSchema,
     description: z.string().nullable(),
     cadence: routineCadenceSchema,
@@ -207,6 +216,8 @@ export const createRoutineSchema = z
   .object({
     /** The department its points are credited to — the creator picks one of theirs. */
     departmentId: uuidSchema,
+    /** The site the duty is done at. Optional: not every duty is about one site. */
+    locationId: uuidSchema.optional(),
     title: nameSchema,
     description: z.string().trim().max(2000).optional(),
     cadence: routineCadenceSchema,
@@ -272,6 +283,8 @@ export type FinishOccurrence = z.infer<typeof finishOccurrenceSchema>;
 export const updateRoutineSchema = z
   .object({
     departmentId: uuidSchema.optional(),
+    /** Null clears it — a duty that turns out not to be about one site. */
+    locationId: uuidSchema.nullable().optional(),
     title: nameSchema.optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     cadence: routineCadenceSchema.optional(),

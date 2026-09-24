@@ -25,12 +25,19 @@ import {
   type PackSeries,
 } from "@reportly/shared";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { Building2, Download, FileDown, Image as ImageIcon, Printer } from "lucide-react";
+import {
+  Building2,
+  Download,
+  FileDown,
+  Image as ImageIcon,
+  Printer,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useRef, useState } from "react";
 
 import { ChartFrame } from "@/components/charts/chart-frame.js";
 import { CompositionChart, RankedBarChart, TrendChart } from "@/components/charts/charts.js";
-import { withOther } from "@/components/charts/palette.js";
+import { seriesColor, withOther } from "@/components/charts/palette.js";
 import { Select, Spinner } from "@/components/ui/form.js";
 import { Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import { chartToPng, downloadDataUrl } from "@/lib/chart-image.js";
@@ -89,34 +96,45 @@ const formatValue = (indicator: PackIndicator): string => {
  * up is red and points up is green, and a dashboard that paints both the same way
  * teaches people to stop reading the colour.
  */
-function IndicatorCard({ indicator }: { indicator: PackIndicator }) {
+function IndicatorCard({ indicator, accent }: { indicator: PackIndicator; accent: string }) {
   const change = indicator.changePct;
   const better = change === null ? null : change > 0 === indicator.higherIsBetter;
-  const tone =
+  // Reported from use: "on web page also every tile looks very minimilistic no
+  // proper weighte fonts, colors used". A card now carries a coloured rule, a
+  // heavy figure at a size that reads across a desk, and its movement as a tinted
+  // chip rather than a grey sentence.
+  const chip =
     change === null || change === 0
-      ? "text-muted-foreground"
+      ? "bg-muted text-muted-foreground"
       : better
-        ? "text-success"
-        : "text-destructive";
+        ? "bg-success/10 text-success"
+        : "bg-destructive/10 text-destructive";
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <span
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-1"
+        style={{ backgroundColor: accent }}
+      />
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {indicator.label}
       </p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+      <p className="mt-1.5 text-3xl font-bold leading-none tabular-nums text-foreground">
         {formatValue(indicator)}
       </p>
-      <p className={`mt-1 text-xs ${tone}`}>
+      <span
+        className={`mt-2.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip}`}
+      >
         {indicator.value === null
-          ? "Not measured this period"
+          ? "Not measured"
           : change === null
             ? indicator.previous === null
               ? "No comparison"
               : `Was ${indicator.previous}${indicator.unit === "%" ? "%" : indicator.unit ? ` ${indicator.unit}` : ""}`
             : `${change > 0 ? "▲" : change < 0 ? "▼" : "•"} ${Math.abs(change)}% vs previous`}
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">{indicator.hint}</p>
+      </span>
+      <p className="mt-2 text-xs leading-snug text-muted-foreground">{indicator.hint}</p>
     </div>
   );
 }
@@ -126,10 +144,15 @@ function PackChart({
   series,
   window: windowLabel,
   registerRef,
+  colorIndex,
 }: {
   series: PackSeries;
   window: string;
   registerRef: (key: string, element: HTMLDivElement | null) => void;
+  /** Reported from use: "thos echarts are having same color and looks same for all
+   *  charts". One hue per chart, so a reader can tell two panels apart at a glance
+   *  and a chart keeps its colour between the screen and the slide. */
+  colorIndex: number;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -171,7 +194,11 @@ function PackChart({
         {series.key === "entriesByStatus" ? (
           <CompositionChart data={withOther(series.points)} />
         ) : (
-          <RankedBarChart data={withOther(series.points)} unit={series.unit} />
+          <RankedBarChart
+            data={withOther(series.points)}
+            unit={series.unit}
+            colorIndex={colorIndex}
+          />
         )}
       </ChartFrame>
     </div>
@@ -184,6 +211,12 @@ export function ManagementPackPage() {
   const [locationId, setLocationId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [hidden, setHidden] = useState<PackSection[]>([]);
+  // Which indicators go on the deck's first slide. Asked for as "i want to control
+  // what indicators to be shown in ppt" — the page keeps showing every number,
+  // because reading them all is what the page is for. Null means "not chosen yet",
+  // which is every indicator; an empty array is a deliberate none.
+  const [deckKeys, setDeckKeys] = useState<string[] | null>(null);
+  const [pickingIndicators, setPickingIndicators] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   // Every chart on the page, by key, so the deck can find the drawn SVG rather than
@@ -262,7 +295,9 @@ export function ManagementPackPage() {
       // who never exports should not be made to download.
       const { downloadPackDeck } = await import("@/lib/pack-deck.js");
       const name = `${pack.companyName || "Reportly"} ${pack.periodLabel}`.replace(/[^\w -]/g, "");
-      await downloadPackDeck(pack, sections, `${name}.pptx`);
+      await downloadPackDeck(pack, sections, `${name}.pptx`, {
+        indicatorKeys: deckKeys ?? undefined,
+      });
     } finally {
       setExporting(false);
     }
@@ -343,7 +378,63 @@ export function ManagementPackPage() {
             ))}
           </div>
         </div>
+        {/* Which numbers reach the deck. The page keeps them all — this only
+            decides what slide 1 carries. */}
+        {data ? (
+          <div className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Indicators on the deck</span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setPickingIndicators((open) => !open)}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                {deckKeys === null
+                  ? `All ${data.indicators.length}`
+                  : `${deckKeys.length} of ${data.indicators.length}`}
+              </Button>
+              {deckKeys !== null ? (
+                <Button size="sm" variant="ghost" onClick={() => setDeckKeys(null)}>
+                  Reset
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </Card>
+
+      {data && pickingIndicators ? (
+        <Card className="no-print mt-3 p-4">
+          <p className="mb-2 text-sm font-medium">
+            Tick the numbers that go on the deck&apos;s first slide
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {data.indicators.map((indicator) => {
+              const on = deckKeys === null || deckKeys.includes(indicator.key);
+              return (
+                <label key={indicator.key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() =>
+                      setDeckKeys((current) => {
+                        // The first tick turns "all" into a real list, so unticking
+                        // one indicator does not silently mean "only that one".
+                        const base = current ?? data.indicators.map((i) => i.key);
+                        return on
+                          ? base.filter((key) => key !== indicator.key)
+                          : [...base, indicator.key];
+                      })
+                    }
+                  />
+                  {indicator.label}
+                </label>
+              );
+            })}
+          </div>
+        </Card>
+      ) : null}
 
       {isPending ? (
         <div className="pt-8">
@@ -371,8 +462,12 @@ export function ManagementPackPage() {
               {SECTION_LABELS.headline} · {data.periodLabel}
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {data.indicators.map((indicator) => (
-                <IndicatorCard key={indicator.key} indicator={indicator} />
+              {data.indicators.map((indicator, index) => (
+                <IndicatorCard
+                  key={indicator.key}
+                  indicator={indicator}
+                  accent={seriesColor(index % 6)}
+                />
               ))}
             </div>
           </section>
@@ -389,22 +484,37 @@ export function ManagementPackPage() {
                     <tr className="border-b border-border text-left text-muted-foreground">
                       <th className="px-4 py-2 font-medium">Site</th>
                       <th className="px-4 py-2 font-medium">Issues</th>
-                      <th className="px-4 py-2 font-medium">Resolved</th>
                       <th className="px-4 py-2 font-medium">Open</th>
                       <th className="px-4 py-2 font-medium">Downtime (h)</th>
+                      {/* A column per service kind this company actually records —
+                          "include issues, cartridge refill, repair, tasks and
+                          routines" — named as the installation names them. */}
+                      {data.serviceKinds.map((kind) => (
+                        <th key={kind} className="px-4 py-2 font-medium">
+                          {kind}
+                        </th>
+                      ))}
+                      <th className="px-4 py-2 font-medium">Tasks</th>
+                      <th className="px-4 py-2 font-medium">Routines</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.sites.map((site) => (
                       <tr key={site.site} className="border-b border-border last:border-0">
-                        <td className="whitespace-nowrap px-4 py-2">{site.site}</td>
+                        <td className="whitespace-nowrap px-4 py-2 font-medium">{site.site}</td>
                         <td className="whitespace-nowrap px-4 py-2 tabular-nums">{site.issues}</td>
-                        <td className="whitespace-nowrap px-4 py-2 tabular-nums">
-                          {site.resolved}
-                        </td>
                         <td className="whitespace-nowrap px-4 py-2 tabular-nums">{site.open}</td>
                         <td className="whitespace-nowrap px-4 py-2 tabular-nums">
                           {site.downtimeHours.toFixed(1)}
+                        </td>
+                        {data.serviceKinds.map((kind) => (
+                          <td key={kind} className="whitespace-nowrap px-4 py-2 tabular-nums">
+                            {site.services[kind] ?? 0}
+                          </td>
+                        ))}
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums">{site.tasks}</td>
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums">
+                          {site.routines}
                         </td>
                       </tr>
                     ))}
@@ -441,12 +551,13 @@ export function ManagementPackPage() {
                   </div>
                 ) : null}
 
-                {section.series.map((series) => (
+                {section.series.map((series, index) => (
                   <PackChart
                     key={series.key}
                     series={series}
                     window={windowLabel}
                     registerRef={registerRef}
+                    colorIndex={index}
                   />
                 ))}
               </div>
@@ -485,14 +596,44 @@ export function ManagementPackPage() {
         </div>
       )}
 
-      {/* Print rules live with the page they print, as the report workspace's do.
-          A4 landscape: the pack is charts side by side, and portrait would either
-          stack them into a scroll or shrink them past reading. */}
+      {/*
+        Print rules live with the page they print, as the report workspace's do —
+        and they fix the same two faults reported here: "when i click print, it
+        opens a preview but it has only visible page not full data. also all that
+        shows black and white."
+
+        The clipping is the app shell: it is `h-screen overflow-hidden` with a
+        scrolling `main`, so the printer is handed one screenful. Lifting the sheet
+        out with `position: absolute` and forcing every ancestor's overflow visible
+        is what the journal's printable report already does.
+
+        The greyscale is the browser's own economy: it drops backgrounds unless a
+        page insists. `print-color-adjust: exact` is that insistence — a dashboard
+        whose red and green carry the meaning cannot be printed without them.
+      */}
       <style>{`
         @media print {
-          @page { size: A4 landscape; margin: 12mm; }
+          @page { size: A4 landscape; margin: 8mm; }
+          html, body { height: auto !important; overflow: visible !important; }
+          body * { visibility: hidden !important; }
+          .pack-sheet, .pack-sheet * { visibility: visible !important; }
+          .pack-sheet {
+            position: absolute;
+            inset: 0;
+            margin: 0;
+            width: 100%;
+            overflow: visible !important;
+          }
+          /* Every scroll container between the sheet and the page, released. */
+          .pack-page, .pack-page * { overflow: visible !important; max-height: none !important; }
           .no-print { display: none !important; }
+          /* Colour is the meaning here, not decoration. */
+          .pack-sheet, .pack-sheet * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           .pack-sheet section { break-inside: avoid; }
+          .pack-sheet figure, .pack-sheet table { break-inside: avoid; }
         }
       `}</style>
     </div>

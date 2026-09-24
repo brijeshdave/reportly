@@ -213,12 +213,7 @@ export async function routinesRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const companyId = activeCompany(request.ctx!.companyId);
-      const routine = await routines.createRoutine(
-        companyId,
-        request.ctx!.userId,
-        request.ctx!.isSuperadmin,
-        request.body,
-      );
+      const routine = await routines.createRoutine(companyId, request.ctx!, request.body);
       await recordAudit(request, request.ctx!, { action: "routine.create", after: routine });
       reply.status(201);
       return routine;
@@ -243,8 +238,7 @@ export async function routinesRoutes(fastify: FastifyInstance): Promise<void> {
       const routine = await routines.updateRoutine(
         request.params.id,
         companyId,
-        request.ctx!.userId,
-        request.ctx!.isSuperadmin,
+        request.ctx!,
         request.body,
       );
       await recordAudit(request, request.ctx!, {

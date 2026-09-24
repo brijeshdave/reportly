@@ -21,6 +21,7 @@ import {
   EXCLUDING_SCOPES,
   TEAM_SCOPE_DEPTH,
   civilDay,
+  type JournalEntryRules,
   type JournalTeamScope,
   type ScoreEvent,
   type AuthContext,
@@ -1146,6 +1147,7 @@ export async function createReport(
   // entries were arriving with no severity at all. A draft may still be incomplete,
   // which is what a draft is for.
   assertSeverityOnSubmit(input.state, input.severityId ?? null, input.kind);
+  await assertWorkOnSubmit(input.state, input.kind, input.workSummary ?? null);
 
   const defaultStatus =
     input.statusId ?? (await firstStatusInGroup(isWorkLog ? "resolved" : "open"))?.id ?? null;
@@ -1366,6 +1368,12 @@ export async function updateReport(
       (input.severityId as string | null | undefined) ?? row.severityId,
       row.kind,
     );
+    // The edit that submits a draft is the other door into the same rule.
+    await assertWorkOnSubmit(
+      "submitted",
+      row.kind,
+      (input.workSummary as string | null | undefined) ?? row.workSummary,
+    );
     patch.state = "submitted";
     patch.submittedAt = new Date();
   } else if (input.state === "draft") {
@@ -1526,6 +1534,52 @@ function assertSeverityOnSubmit(
     400,
     ERROR_CODES.VALIDATION_ERROR,
     "Choose a severity before submitting — it decides what the entry is worth.",
+  );
+}
+
+/**
+ * The entry rules this caller is subject to — what the editor draws itself from.
+ *
+ * Its own read rather than the settings API, because reading settings needs
+ * `settings:read` and everybody who files an entry is subject to these. A form that
+ * cannot see the rule it is about to break can only discover it on save.
+ */
+export async function journalEntryRules(ctx: AuthContext): Promise<JournalEntryRules> {
+  const { graceDays, graceAppliesToSuperadmins, requireWorkOnIssue } =
+    await getSystemSetting(REPORT_ENTRY_SETTINGS);
+  return {
+    graceDays,
+    graceApplies: !ctx.isSuperadmin || graceAppliesToSuperadmins,
+    requireWorkOnIssue,
+  };
+}
+
+/**
+ * Where the installation demands it, an issue may not be submitted with nothing
+ * said about what was done.
+ *
+ * Reported from use: "in journal entry usesr are skikking work done entry because
+ * they have option for I already did the work. i need a setting that i can use to
+ * disable this to make workdone mendatory."
+ *
+ * Off by default, because raising a breakdown now and writing it up later is the
+ * right flow for a plant — an issue reported at the machine beats a tidy one
+ * reported at a desk. On, the shortcut is gone and this is the gate behind it. A
+ * **draft** is exempt: a draft is for something unfinished.
+ */
+async function assertWorkOnSubmit(
+  state: string | undefined,
+  kind: string,
+  workSummary: string | null,
+): Promise<void> {
+  if (state !== "submitted" || kind !== "issue") return;
+  const { requireWorkOnIssue } = await getSystemSetting(REPORT_ENTRY_SETTINGS);
+  if (!requireWorkOnIssue) return;
+  if (workSummary && workSummary.trim() !== "") return;
+  throw new AppError(
+    400,
+    ERROR_CODES.VALIDATION_ERROR,
+    "Say what was done about it before submitting — work done is required on this installation.",
   );
 }
 

@@ -1612,6 +1612,17 @@ export const routines = pgTable(
     // The department the routine's points are credited to on the leaderboard — chosen
     // at creation from the creator's departments.
     departmentId: uuid("department_id").references(() => departments.id, { onDelete: "set null" }),
+    /**
+     * Which site the duty belongs to.
+     *
+     * Asked for from use: "but routines also need sites in config". A checklist is
+     * done *somewhere* — the same rounds at two plants are two routines, and a
+     * monthly review that cannot say which plant kept up is not reporting on either.
+     *
+     * Nullable, like the task column it follows: a routine written before this
+     * existed has no answer, and the alternative is inventing one.
+     */
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "set null" }),
     title: text("title").notNull(),
     description: text("description"),
     cadence: text("cadence").notNull(), // daily | weekly | monthly | quarterly
@@ -1626,7 +1637,10 @@ export const routines = pgTable(
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     ...timestamps,
   },
-  (t) => [index("routines_company_idx").on(t.companyId)],
+  (t) => [
+    index("routines_company_idx").on(t.companyId),
+    index("routines_location_idx").on(t.locationId),
+  ],
 );
 
 /** The people a routine is assigned to — any of them may complete each occurrence. */

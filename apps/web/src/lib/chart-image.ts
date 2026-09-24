@@ -70,6 +70,24 @@ function chartSurface(element: HTMLElement): SVGSVGElement | null {
   return bestArea >= 5000 ? best : null;
 }
 
+/**
+ * Grow every text node's font size, and darken it.
+ *
+ * The axis labels wear a muted grey that reads well beside a chart on screen and
+ * disappears in a projected slide, so the exported copy takes a stronger ink.
+ */
+function growText(clone: SVGSVGElement, factor: number): void {
+  for (const node of clone.querySelectorAll("text, tspan")) {
+    const element = node as SVGElement;
+    const current = Number.parseFloat(element.style.fontSize || "11");
+    if (Number.isFinite(current)) {
+      element.style.setProperty("font-size", `${Math.round(current * factor)}px`);
+    }
+    element.style.setProperty("font-weight", "600");
+    element.style.setProperty("fill", "#1f2933");
+  }
+}
+
 export interface ChartImage {
   dataUrl: string;
   width: number;
@@ -87,7 +105,22 @@ export interface ChartImage {
 export async function chartToPng(
   element: HTMLElement,
   background = "#ffffff",
-  scale = 2,
+  scale = 3,
+  /**
+   * How much to grow the chart's text before rasterising.
+   *
+   * Reported from use: "in all charts any fonts are not readable only chart being
+   * seen". A chart on screen is ~900px wide with 11px labels; the same picture in a
+   * six-inch slide panel is a third of that, so the labels land at about 4px. They
+   * are scaled here rather than on screen, because the screen is fine — it is the
+   * picture that is read from across a room.
+   *
+   * Modest on purpose. The first attempt at 1.9× made the labels legible and then
+   * made them collide: text is grown *after* the chart has laid its ticks out, so
+   * the library has already decided how many will fit at the original size. 1.35
+   * clears the readability problem without running the dates into each other.
+   */
+  textScale = 1.35,
 ): Promise<ChartImage | null> {
   const svg = chartSurface(element);
   if (!svg) return null;
@@ -98,6 +131,7 @@ export async function chartToPng(
 
   const clone = svg.cloneNode(true) as SVGSVGElement;
   inlineStyles(svg, clone);
+  growText(clone, textScale);
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("width", String(width));
   clone.setAttribute("height", String(height));

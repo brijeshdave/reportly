@@ -547,6 +547,10 @@ export interface SiteRow {
   resolved: number;
   open: number;
   downtimeMinutes: number;
+  tasks: number;
+  routines: number;
+  /** Cartridge services at that site, keyed by the kind's own name. */
+  services: Record<string, number>;
 }
 
 /**
@@ -577,19 +581,213 @@ export async function siteSummary(scope: PackScope, from: Date, to: Date): Promi
     .where(journalScope(scope, from, to))
     .groupBy(sql`1`);
 
-  const downtime = await downtimeByLocation(scope, from, to);
-  const byName = new Map(downtime.map((d) => [d.label, d.value]));
+  // One read per figure the row carries, then joined by site name here rather than
+  // in one query with five outer joins — each of those would multiply the others'
+  // rows, which is the fan-out trap the journal's count query already taught.
+  const [downtime, tasksDone, routinesDone, services] = await Promise.all([
+    downtimeByLocation(scope, from, to),
+    tasksCompletedByLocation(scope, from, to),
+    routineCompletionsByLocation(scope, from, to),
+    cartridgeServicesBySiteAndKind(scope, from, to),
+  ]);
+  const downBySite = new Map(downtime.map((d) => [d.label, d.value]));
+  const tasksBySite = new Map(tasksDone.map((d) => [d.label, d.value]));
+  const routinesBySite = new Map(routinesDone.map((d) => [d.label, d.value]));
+  const servicesBySite = new Map<string, Record<string, number>>();
+  for (const row of services) {
+    const current = servicesBySite.get(row.site) ?? {};
+    current[row.kind] = (current[row.kind] ?? 0) + row.count;
+    servicesBySite.set(row.site, current);
+  }
 
-  return entries
-    .map((row) => ({
-      site: row.site,
-      issues: Number(row.issues),
-      resolved: Number(row.resolved),
-      open: Number(row.issues) - Number(row.resolved),
-      downtimeMinutes: byName.get(row.site) ?? 0,
-    }))
-    .filter((row) => row.issues > 0 || row.downtimeMinutes > 0)
-    .sort((a, b) => b.issues - a.issues);
+  // Every site that saw *any* of it, not only the ones with journal entries: a plant
+  // that filed nothing but refilled forty cartridges belongs in the table.
+  const names = new Set<string>([
+    ...entries.map((row) => row.site),
+    ...downBySite.keys(),
+    ...tasksBySite.keys(),
+    ...routinesBySite.keys(),
+    ...servicesBySite.keys(),
+  ]);
+  const byName = new Map(entries.map((row) => [row.site, row]));
+
+  return [...names]
+    .map((site) => {
+      const row = byName.get(site);
+      const issues = Number(row?.issues ?? 0);
+      const resolved = Number(row?.resolved ?? 0);
+      return {
+        site,
+        issues,
+        resolved,
+        open: issues - resolved,
+        downtimeMinutes: downBySite.get(site) ?? 0,
+        tasks: tasksBySite.get(site) ?? 0,
+        routines: routinesBySite.get(site) ?? 0,
+        services: servicesBySite.get(site) ?? {},
+      };
+    })
+    .filter(
+      (row) =>
+        row.issues > 0 ||
+        row.downtimeMinutes > 0 ||
+        row.tasks > 0 ||
+        row.routines > 0 ||
+        Object.keys(row.services).length > 0,
+    )
+    .sort((a, b) => b.issues - a.issues || b.tasks - a.tasks);
+}
+
+/**
+ * Routine completions per site.
+ *
+ * The routine's **own** site when it has one — asked for as "but routines also need
+ * sites in config". A routine written before that field falls back to the site of
+ * whoever completed the occurrence, through their department membership: old duties
+ * keep reporting somewhere sensible instead of collapsing into "No site", and the
+ * fallback disappears on its own as routines are edited.
+ */
+export async function routineCompletionsByLocation(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+): Promise<Point[]> {
+  const personSite = sql`(
+    SELECT l.name FROM department_user_locations dul
+    JOIN locations l ON l.id = dul.location_id
+    WHERE dul.user_id = ${routineCompletions.userId}
+      AND dul.department_id = ${routines.departmentId}
+    LIMIT 1
+  )`;
+  const rows = await db
+    .select({
+      label: sql<string>`coalesce(${locations.name}, ${personSite}, 'No site')`,
+      value: sql<number>`count(*)::int`,
+    })
+    .from(routineCompletions)
+    .innerJoin(routines, eq(routines.id, routineCompletions.routineId))
+    .leftJoin(locations, eq(locations.id, routines.locationId))
+    .where(
+      and(
+        eq(routines.companyId, scope.companyId),
+        eq(routineCompletions.status, "completed"),
+        gte(routineCompletions.finishedAt, from),
+        lte(routineCompletions.finishedAt, to),
+      ),
+    )
+    .groupBy(sql`1`)
+    .orderBy(desc(sql`2`));
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/** Routine completions per person — who actually keeps up with the checks. */
+export async function routineCompletionsByPerson(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+  limit = 10,
+): Promise<Point[]> {
+  const rows = await db
+    .select({ label: users.name, value: sql<number>`count(*)::int` })
+    .from(routineCompletions)
+    .innerJoin(routines, eq(routines.id, routineCompletions.routineId))
+    .innerJoin(users, eq(users.id, routineCompletions.userId))
+    .where(
+      and(
+        eq(routines.companyId, scope.companyId),
+        eq(routineCompletions.status, "completed"),
+        gte(routineCompletions.finishedAt, from),
+        lte(routineCompletions.finishedAt, to),
+        scope.locationId ? eq(routines.locationId, scope.locationId) : undefined,
+      ),
+    )
+    .groupBy(users.name)
+    .orderBy(desc(sql`count(*)`))
+    .limit(limit);
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/** Cartridge services per person, split by kind — refills and repairs, by whoever did them. */
+export async function cartridgeServicesByPerson(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+  limit = 10,
+): Promise<Point[]> {
+  const rows = await db
+    .select({ label: users.name, value: sql<number>`count(*)::int` })
+    .from(serviceEvents)
+    .innerJoin(users, eq(users.id, serviceEvents.performedBy))
+    .where(
+      and(
+        eq(serviceEvents.companyId, scope.companyId),
+        gte(serviceEvents.performedAt, from),
+        lte(serviceEvents.performedAt, to),
+      ),
+    )
+    .groupBy(users.name)
+    .orderBy(desc(sql`count(*)`))
+    .limit(limit);
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/** Tasks completed per site. */
+export async function tasksCompletedByLocation(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+): Promise<Point[]> {
+  const rows = await db
+    .select({
+      label: sql<string>`coalesce(${locations.name}, 'No site')`,
+      value: sql<number>`count(*)::int`,
+    })
+    .from(tasks)
+    .leftJoin(locations, eq(locations.id, tasks.locationId))
+    .where(
+      and(
+        eq(tasks.companyId, scope.companyId),
+        eq(tasks.state, "done"),
+        gte(tasks.completedAt, from),
+        lte(tasks.completedAt, to),
+      ),
+    )
+    .groupBy(sql`1`)
+    .orderBy(desc(sql`2`));
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/**
+ * Cartridge services per site AND per kind, for the by-site table's own columns.
+ *
+ * Reported from use: the site table should carry "issues, cartridge refill, repair,
+ * tasks and routines". The kinds are this installation's own words, so they are
+ * returned as they are named rather than folded into two hard-coded English ones.
+ */
+export async function cartridgeServicesBySiteAndKind(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+): Promise<{ site: string; kind: string; count: number }[]> {
+  const rows = await db
+    .select({
+      site: sql<string>`coalesce(${locations.name}, 'No site')`,
+      kind: serviceKinds.name,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(serviceEvents)
+    .innerJoin(serviceKinds, eq(serviceKinds.id, serviceEvents.serviceKindId))
+    .innerJoin(parts, eq(parts.id, serviceEvents.partId))
+    .leftJoin(locations, eq(locations.id, parts.locationId))
+    .where(
+      and(
+        eq(serviceEvents.companyId, scope.companyId),
+        gte(serviceEvents.performedAt, from),
+        lte(serviceEvents.performedAt, to),
+      ),
+    )
+    .groupBy(sql`1`, serviceKinds.name);
+  return rows.map((r) => ({ site: r.site, kind: r.kind, count: Number(r.count) }));
 }
 
 /**

@@ -25,7 +25,7 @@ import { sessionQuery } from "@/lib/queries.js";
 import { fetchMyDepartments } from "@/services/departments.js";
 import { fetchMyLocations } from "@/services/locations.js";
 import { fetchCategories, fetchSeverities, fetchStatuses } from "@/services/journal-config.js";
-import { createReport, fetchReport, updateReport } from "@/services/journal.js";
+import { createReport, fetchEntryRules, fetchReport, updateReport } from "@/services/journal.js";
 import { fetchTaskPrefill } from "@/services/tasks.js";
 import { TagPicker } from "@/components/tag-picker.js";
 import { ScopePicker, type ScopeTarget } from "@/routes/journal/scope-picker.js";
@@ -269,7 +269,14 @@ function Editor({
   // job worked over two shifts is several items, and a form cannot hold that. They
   // stay here only for a **work log**, whose whole content is what was done, and for
   // an issue being filed by somebody who has already finished the job.
-  const collapsible = isIssue && mode === "create";
+  // The shortcut — "I already did the work" — exists so a breakdown can be raised at
+  // the machine and written up later. Where the installation has made work
+  // mandatory, it is not offered: reported from use as the way people were skipping
+  // the record entirely. The server refuses such a submit either way; this is what
+  // stops somebody being refused by a form that offered them the choice.
+  const rules = useQuery({ queryKey: ["journal", "entry-rules"], queryFn: fetchEntryRules });
+  const workRequired = rules.data?.requireWorkOnIssue ?? false;
+  const collapsible = isIssue && mode === "create" && !workRequired;
   const [workOpen, setWorkOpen] = useState(false);
   const activeSeverities = (severities.data ?? []).filter((s: Severity) => s.status === "active");
   const activeStatuses = (statuses.data ?? []).filter((s: JournalStatus) => s.status === "active");
@@ -530,7 +537,14 @@ function Editor({
         ) : (
           <Card className="flex flex-col gap-4 p-6">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold">Work done</h2>
+              <h2 className="text-sm font-semibold">
+                Work done
+                {workRequired && isIssue ? (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    required on this installation
+                  </span>
+                ) : null}
+              </h2>
               {collapsible ? (
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <input

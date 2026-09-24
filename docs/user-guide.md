@@ -276,8 +276,10 @@ People and points and they are neither drawn nor calculated.
 Three ways out of the app, because a monthly review is something you show other
 people:
 
-- **PowerPoint** — a real `.pptx` you can edit, three dense slides: the numbers and
-  the by-site table, the charts, then what keeps coming back.
+- **PowerPoint** — a real `.pptx` you can edit, laid out like a dashboard: the
+  numbers and the by-site table, the charts by site and category, reliability, then a
+  slide of per-person figures. **Indicators on the deck** chooses which numbers reach
+  the first slide; the page still shows them all.
 - **Print** — A4 landscape, which also saves as PDF.
 - **PNG** on any chart, for the one picture you want on its own.
 
@@ -286,6 +288,18 @@ resolve: 0 h" in a month when nothing was resolved would be a claim, not a
 measurement.
 
 It uses the same `insights:view` permission as Insights.
+
+### Routines belong to a site
+
+A routine now carries the **site** its duty is done at, chosen when you write it.
+The same rounds at two plants are two routines, and the monthly pack can only say
+which plant kept up if each duty says where it belongs. It is optional — leave it
+unset for a duty that is not about one site — and the routines table shows it as a
+column and filters by it.
+
+A routine written before this existed has no site. The pack falls back to the site of
+whoever signed the occurrence off, so old duties still report somewhere sensible
+until you edit them.
 
 ### Score your team's work
 

@@ -163,6 +163,13 @@ describe("location scoping is actually wired up", () => {
       "pointAwards",
       "parts",
       "tasks",
+      // A routine carries the site its duty belongs to, but that column is not a new
+      // boundary. Reads are already narrowed by **who does it** — `withPersonLocations`
+      // in `routines/repo.ts`, checked above — and the managed list only ever returns
+      // routines the caller created. Writing one into an unreachable site is refused
+      // by `assertMaySiteAt` in the service, so a site nobody may see cannot be
+      // reached through a routine either.
+      "routines",
       // Join tables: the location on them *is* the scope somebody else is
       // filtered by, and they are only ever read through the record they hang
       // off — a membership, a schedule entry.

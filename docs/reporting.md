@@ -477,8 +477,9 @@ shorter than January.
 the company.
 
 **Every table and chart can be read by site.** The pack carries a **By site** table —
-issues, resolved, still open and downtime hours per site — and the charts include
-issues by site and downtime by site. Narrow the whole pack to one site with the Site
+issues, still open, downtime hours, a column per cartridge service kind, tasks
+completed and routine completions, per site — and the charts include issues by site,
+downtime by site and routine completions by site. Narrow the whole pack to one site with the Site
 picker when a meeting is about one plant.
 
 **Choose the sections.** Every section can be switched off: if cartridges or points are
@@ -500,12 +501,20 @@ that everything is closed instantly.
 
 **Getting it out.**
 
-- **PowerPoint** builds a real `.pptx` of **three dense slides**: the month at a
-  glance (every headline number plus the by-site table), where the work is (four
-  charts), and who/what keeps breaking (charts plus the recurring list). With every
-  section switched on there are more charts than three slides hold, so a fourth
-  "Also this month" slide catches the remainder — switch a section off and the deck
-  is three. Open it in PowerPoint and edit it like any other deck.
+- **PowerPoint** builds a real `.pptx` laid out like a dashboard — a dark title band
+  on every slide, KPI cards with a coloured rule, charts in panels, tables with a
+  dark header:
+  1. **The month at a glance** — the headline numbers, then the by-site table.
+  2. **Where the work is** — the trend and the breakdowns by site, category and
+     severity.
+  3. **Reliability** — the worst assets and what keeps coming back.
+  4. **People** — points, entries, routines, tasks and cartridge services, each per
+     person.
+
+  A slide with nothing to put on it is left out rather than printed empty. Use
+  **Indicators on the deck** to choose which numbers reach slide 1 — the page keeps
+  showing them all. Open the file in PowerPoint and edit it like any other deck.
+
 - **Print** gives an A4 landscape layout, which also saves as PDF.
 - **PNG** on any chart saves just that picture, for the one slide you are building by
   hand.

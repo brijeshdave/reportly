@@ -174,13 +174,13 @@ describe("TeamRoutinesPage", () => {
     );
   });
 
-  it("sends the site filter to the server, where the assignees' sites are known", async () => {
+  it("sends the site filter to the server, which reads the routine's own site", async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findAllByText("Boiler check");
 
     await user.click(screen.getByRole("button", { name: /filters/i }));
-    await user.click(await screen.findByLabelText(/site \(of whoever does it\)/i));
+    await user.click(await screen.findByLabelText(/^site$/i));
     await user.click(await screen.findByRole("option", { name: /kim/i }));
     await user.click(screen.getByRole("button", { name: /apply filters/i }));
 

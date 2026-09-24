@@ -12,6 +12,7 @@ import {
   assignJournalEntrySchema,
   changeStatusSchema,
   awaitingReviewSchema,
+  journalEntryRulesSchema,
   pendingAppraisalSchema,
   pointsSummarySchema,
   journalHandoverSchema,
@@ -79,6 +80,22 @@ export async function journalRoutes(fastify: FastifyInstance): Promise<void> {
   ];
 
   // Registered before /journal/:id so "pending"/"points" are not read as ids.
+  // Registered before /journal/:id so the word is not read as an id. What the editor
+  // needs to draw its own rules: how far back an entry may be dated, and whether it
+  // must say what was done.
+  app.get(
+    "/journal/entry-rules",
+    {
+      preHandler: guard(PERMISSIONS.JOURNAL_READ),
+      schema: {
+        tags: ["Journal"],
+        summary: "The rules an entry must satisfy: the grace period, and whether work is required",
+        response: { 200: journalEntryRulesSchema },
+      },
+    },
+    async (request) => journal.journalEntryRules(request.ctx!),
+  );
+
   app.get(
     "/journal/pending",
     {

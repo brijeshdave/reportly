@@ -698,6 +698,49 @@ describe("reports and scoring", () => {
     expect(moved.statusCode).toBe(400);
   });
 
+  it("can make work done mandatory on an issue, and says so in the entry rules", async () => {
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const raise = (workSummary?: string) =>
+      inject("POST", "/journal", author.cookie, {
+        kind: "issue",
+        title: "Belt seized",
+        state: "submitted",
+        severityId: critical.id,
+        issueSummary: "x",
+        ...(workSummary ? { workSummary } : {}),
+      });
+
+    // Off by default: raising a breakdown now and writing it up later is the right
+    // flow for a plant, and the editor offers exactly that.
+    expect((await raise()).statusCode).toBe(201);
+
+    await inject("PUT", "/settings/reports/entry", admin, {
+      value: { requireWorkOnIssue: true },
+    });
+
+    // Reported from use: "usesr are skikking work done entry because they have
+    // option for I already did the work". With the switch on, an empty submit is
+    // refused and the editor stops offering the shortcut — which it learns from the
+    // same endpoint asserted below, so the form cannot offer a choice the save
+    // refuses.
+    expect((await raise()).statusCode).toBe(400);
+    expect((await raise("Swapped the belt and re-tensioned it")).statusCode).toBe(201);
+
+    const rules = (await inject("GET", "/journal/entry-rules", author.cookie)).json();
+    expect(rules.requireWorkOnIssue).toBe(true);
+
+    // A draft is exempt: a draft is for something unfinished.
+    const draft = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Still writing this",
+      state: "draft",
+      severityId: critical.id,
+      issueSummary: "x",
+    });
+    expect(draft.statusCode).toBe(201);
+  });
+
   it("can hold a superadmin to the grace period as well", async () => {
     const admin = await superadmin();
     const { critical } = await buildChain(admin);
