@@ -186,7 +186,15 @@ test("a cartridge goes out, comes back faulty, and the points are taken back", a
 
   // Said at the moment it happens. A reversal somebody discovers on a leaderboard
   // next week is one they will not believe.
-  await expect(page.getByRole("heading", { name: "Points taken back" })).toBeVisible();
+  //
+  // A longer wait than the project default, and only here: booking a faulty part in
+  // reverses a points award and writes a compensating ledger entry before the dialog
+  // can say so. On a busy machine that took 19s against the 10s default and failed a
+  // suite in which nothing was broken — a test that only fails when the box is loaded
+  // will lie again, so the wait matches the work rather than the average.
+  await expect(page.getByRole("heading", { name: "Points taken back" })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.getByRole("button", { name: "Understood" }).click();
 
   // Both entries survive on the part: the award and its reversal side by side,
