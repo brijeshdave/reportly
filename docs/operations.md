@@ -29,7 +29,8 @@ not the container name.
 | `cli seed:activity`     | Fills a date range with demo work on top of the master data already here. Development only. |
 
 ```bash
-pnpm --filter @reportly/api cli migrate
+pnpm db:migrate                         # from the repository root
+pnpm --filter @reportly/api cli migrate # the same thing, the long way
 ```
 
 Run `migrate` before starting a new version. In Kubernetes, run it as a `Job` —

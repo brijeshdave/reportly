@@ -347,7 +347,8 @@ path resolver. Then write the migration **by hand**:
    (the filename without `.sql`) and a `when` larger than the entry before it.
    The migrator reads that journal, not the directory listing, so a file with no
    entry is silently never applied.
-3. `pnpm --filter @reportly/api db:migrate` to apply it.
+3. `pnpm db:migrate` from the root (or `pnpm --filter @reportly/api db:migrate`)
+   to apply it.
 
 `db:generate` is left in `package.json` but is not used here: drizzle-kit cannot
 round-trip this schema, and hand-written SQL is also what lets a migration carry

@@ -14,6 +14,8 @@
     "app": "bash scripts/dev.sh",
     "app:infra": "bash scripts/dev.sh --infra",
     "build": "turbo run build",
+    "db:migrate": "pnpm --filter @reportly/api cli migrate",
+    "db:seed": "pnpm --filter @reportly/api cli seed",
     "dev": "turbo run dev",
     "docs:build": "pnpm --filter @reportly/docs docs:build",
     "docs:dev": "pnpm --filter @reportly/docs docs:dev",
