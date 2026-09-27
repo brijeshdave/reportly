@@ -2,7 +2,7 @@
 // The single HTTP entry point to the Reportly API. Every service module goes
 // through here; components never call `fetch` directly. Attaches credentials,
 // the active company, and a request id so one id traces browser -> API -> jobs.
-import { PAGE_SIZE_OPTIONS, type ErrorEnvelope } from "@reportly/shared";
+import { PAGE_SIZE_OPTIONS, type ErrorEnvelope, type FieldErrors } from "@reportly/shared";
 
 import { deviceHeaderValue } from "@/lib/device-info.js";
 
@@ -23,6 +23,14 @@ export class ApiError extends Error {
   readonly code: string;
   readonly details?: unknown;
   readonly requestId: string | null;
+  /**
+   * The fields the API blamed, keyed as the shared contract keys them.
+   *
+   * A form merges these into its own errors so a refusal the browser did not
+   * anticipate still lands under the input it is about. Empty for everything that has
+   * no field — a permission, a conflict, a row that is not there.
+   */
+  readonly fields: FieldErrors;
 
   constructor(status: number, envelope: ErrorEnvelope, requestId: string | null) {
     super(envelope.error.message);
@@ -30,6 +38,7 @@ export class ApiError extends Error {
     this.status = status;
     this.code = envelope.error.code;
     this.details = envelope.error.details;
+    this.fields = envelope.error.fields ?? {};
     this.requestId = requestId;
   }
 }
