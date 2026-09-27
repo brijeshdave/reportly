@@ -80,20 +80,36 @@ export const workLogSchema = z.object({
 });
 export type WorkLog = z.infer<typeof workLogSchema>;
 
+/**
+ * One piece of work as somebody writes it down.
+ *
+ * Everything is required, which is a deliberate tightening. The times were optional
+ * "but worth filling in", and what that produced was a timeline of items with no
+ * *when* — which is the one thing the timeline exists to carry, and the thing a single
+ * text column could not hold. An item with no hours cannot be read as a shift, cannot
+ * be ordered against a colleague's, and gives the points split nothing to weigh.
+ */
 export const createWorkLogSchema = z
   .object({
-    summary: z.string().min(1).max(300),
-    detail: z.string().max(5000).optional(),
-    startedAt: z.string().datetime().optional(),
-    finishedAt: z.string().datetime().optional(),
+    summary: z.string().trim().min(1, "Say what you did, in a line.").max(300),
+    detail: z
+      .string()
+      .trim()
+      .min(1, "Describe what you did — this is the record somebody reads later.")
+      .max(5000),
+    startedAt: z.string().datetime("Say when you started."),
+    finishedAt: z.string().datetime("Say when you finished."),
   })
-  .refine(
-    (value) => !(value.startedAt && value.finishedAt) || value.finishedAt >= value.startedAt,
-    {
-      message: "Finished before it started",
-      path: ["finishedAt"],
-    },
-  );
+  .refine((value) => value.finishedAt >= value.startedAt, {
+    message: "Finished before it started",
+    path: ["finishedAt"],
+  })
+  // Work that has not happened yet is not a record of work. A minute of tolerance,
+  // because a clock a few seconds ahead should not refuse somebody's honest entry.
+  .refine((value) => new Date(value.finishedAt).getTime() <= Date.now() + 60_000, {
+    message: "That is in the future — say when you actually finished.",
+    path: ["finishedAt"],
+  });
 export type CreateWorkLog = z.infer<typeof createWorkLogSchema>;
 
 export const updateWorkLogSchema = createWorkLogSchema;

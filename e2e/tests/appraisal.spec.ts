@@ -20,6 +20,7 @@ import {
   signIn,
   signInAs,
   signOut,
+  resolveEntry,
   submitIssue,
   superadmin,
   unique,
@@ -84,8 +85,7 @@ test("a junior's work is split, reviewed by their manager, and lands as points",
   // And it is the junior's own work log, because only somebody on the entry may
   // write one and an entry cannot be resolved with none.
   await logWork(page);
-  await page.getByLabel("Status").selectOption({ label: "Resolved" });
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await resolveEntry(page);
 
   await page.getByLabel(`Points for ${juniorName}`).fill("6");
   await page.getByRole("button", { name: "Save points", exact: true }).click();

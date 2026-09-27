@@ -148,6 +148,9 @@ async function setup(admin: string) {
   const report = (
     await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Belt seized",
       state: "submitted",
@@ -170,6 +173,9 @@ async function finish(cookie: string, reportId: string): Promise<void> {
   // An entry cannot be resolved with an empty work log — the record is what the
   // points are scored against — and only somebody on it may write one.
   const logged = await inject("POST", `/journal/${reportId}/work`, cookie, {
+    detail: "Checked it over and ran it up.",
+    startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+    finishedAt: new Date().toISOString(),
     summary: "Replaced the belt",
   });
   expect(logged.statusCode).toBe(201);
@@ -178,6 +184,11 @@ async function finish(cookie: string, reportId: string): Promise<void> {
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
   const res = await inject("PATCH", `/journal/${reportId}/status`, cookie, {
     statusId: resolved.id,
+    // Resolving an issue says why it happened and what stops it happening
+    // again. Supplied here so the tests that merely need a finished entry
+    // keep working; the rule itself is tested on its own.
+    rootCause: "The tensioner had backed off.",
+    preventiveMeasures: "Added it to the weekly round.",
   });
   expect(res.statusCode).toBe(200);
 }

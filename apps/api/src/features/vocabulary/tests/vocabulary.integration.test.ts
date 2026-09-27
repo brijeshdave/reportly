@@ -162,6 +162,8 @@ describe("tags", () => {
     const report = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Coolant on the floor",
         state: "submitted",
@@ -197,6 +199,8 @@ describe("tags", () => {
     const tagged = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Guard missing",
         state: "submitted",
@@ -207,6 +211,8 @@ describe("tags", () => {
     ).json();
     await inject("POST", "/journal", admin, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Unrelated",
       state: "submitted",
@@ -237,6 +243,9 @@ describe("tags", () => {
       title: "Wrong department's label",
       state: "submitted",
       workSummary: "Done",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       departmentId: engineering.id,
       tagIds: [salesTag.id],
     });
@@ -257,6 +266,9 @@ describe("tags", () => {
         title: "Tagged before retirement",
         state: "submitted",
         workSummary: "Done",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
         departmentId: engineering.id,
         tagIds: [tag.id],
       })
@@ -274,6 +286,9 @@ describe("tags", () => {
       title: "New work",
       state: "submitted",
       workSummary: "Done",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       departmentId: engineering.id,
       tagIds: [tag.id],
     });
@@ -316,6 +331,9 @@ describe("tags", () => {
       title: "Carries the tag",
       state: "submitted",
       workSummary: "Done",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       departmentId: engineering.id,
       tagIds: [tag.id],
     });

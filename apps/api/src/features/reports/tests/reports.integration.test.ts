@@ -170,6 +170,7 @@ function fileEntry(cookie: string, title: string, locationId: string, minutes: n
     kind: "work",
     title,
     workSummary: "did the thing",
+    workDetail: "Checked it over and ran it up.",
     state: "submitted",
     locationId,
     reportDate: FIXED_DATE,
@@ -329,6 +330,9 @@ describe("reports", () => {
     const openIssue = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Open one",
         state: "submitted",
@@ -338,6 +342,9 @@ describe("reports", () => {
     ).json();
     await inject("POST", "/journal", lead.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Resolved one",
       state: "submitted",
@@ -366,6 +373,9 @@ describe("reports", () => {
     // A recurrence of the open one, and the recurring filter keeps only it.
     await inject("POST", "/journal", lead.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "It happened again",
       state: "submitted",
@@ -491,6 +501,9 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
@@ -528,6 +541,9 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
@@ -565,6 +581,9 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
@@ -572,10 +591,19 @@ describe("reports", () => {
         reportDate: FIXED_DATE,
       })
     ).json();
-    await inject("POST", `/journal/${report.id}/work`, lead.cookie, { summary: "Fixed it" });
+    await inject("POST", `/journal/${report.id}/work`, lead.cookie, {
+      summary: "Fixed it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", lead.cookie)).json();
     const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
-    await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, { statusId: resolved.id });
+    await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, {
+      statusId: resolved.id,
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
+    });
     await inject("PUT", `/journal/${report.id}/scores`, lead.cookie, {
       scores: [{ userId: lead.id, points: 8 }],
     });
@@ -614,6 +642,9 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
@@ -621,10 +652,19 @@ describe("reports", () => {
         reportDate: FIXED_DATE,
       })
     ).json();
-    await inject("POST", `/journal/${report.id}/work`, lead.cookie, { summary: "Fixed it" });
+    await inject("POST", `/journal/${report.id}/work`, lead.cookie, {
+      summary: "Fixed it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", lead.cookie)).json();
     const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
-    await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, { statusId: resolved.id });
+    await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, {
+      statusId: resolved.id,
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
+    });
     await inject("PUT", `/journal/${report.id}/scores`, lead.cookie, {
       scores: [{ userId: lead.id, points: 8 }],
     });
@@ -653,6 +693,9 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
@@ -660,10 +703,19 @@ describe("reports", () => {
         reportDate: FIXED_DATE, // 15 May 2026
       })
     ).json();
-    await inject("POST", `/journal/${report.id}/work`, lead.cookie, { summary: "Fixed it" });
+    await inject("POST", `/journal/${report.id}/work`, lead.cookie, {
+      summary: "Fixed it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", lead.cookie)).json();
     const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
-    await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, { statusId: resolved.id });
+    await inject("PATCH", `/journal/${report.id}/status`, lead.cookie, {
+      statusId: resolved.id,
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
+    });
     await inject("PUT", `/journal/${report.id}/scores`, lead.cookie, {
       scores: [{ userId: lead.id, points: 8 }],
     });
@@ -690,6 +742,9 @@ describe("reports", () => {
     // One entry about the device, one about nothing.
     await inject("POST", "/journal", lead.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Sensor fault",
       state: "submitted",
@@ -722,6 +777,9 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Sensor down",
         state: "submitted",
@@ -756,6 +814,9 @@ describe("reports", () => {
     const report = (
       await inject("POST", "/journal", lead.cookie, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Belt down",
         state: "submitted",
@@ -823,6 +884,9 @@ describe("reports", () => {
       const report = (
         await inject("POST", "/journal", who.cookie, {
           kind: "issue",
+          issueSummary: "Belt seized",
+          issueDetail: "Found it sheared on the drive side.",
+          occurredAt: new Date().toISOString(),
           severityId: await anySeverityId(),
           title: `Work at ${locationId}`,
           state: "submitted",
@@ -830,10 +894,19 @@ describe("reports", () => {
           reportDate: FIXED_DATE,
         })
       ).json();
-      await inject("POST", `/journal/${report.id}/work`, who.cookie, { summary: "Fixed it" });
+      await inject("POST", `/journal/${report.id}/work`, who.cookie, {
+        summary: "Fixed it",
+        detail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        finishedAt: new Date().toISOString(),
+      });
       const statuses = (await inject("GET", "/journal-statuses", admin)).json();
       const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
-      await inject("PATCH", `/journal/${report.id}/status`, admin, { statusId: resolved.id });
+      await inject("PATCH", `/journal/${report.id}/status`, admin, {
+        statusId: resolved.id,
+        rootCause: "The tensioner had backed off.",
+        preventiveMeasures: "Added it to the weekly round.",
+      });
       await inject("PUT", `/journal/${report.id}/scores`, admin, {
         scores: [{ userId: who.id, points }],
       });
@@ -890,6 +963,9 @@ describe("reports", () => {
       const report = (
         await inject("POST", "/journal", operator.cookie, {
           kind: "issue",
+          issueSummary: "Belt seized",
+          issueDetail: "Found it sheared on the drive side.",
+          occurredAt: new Date().toISOString(),
           severityId: await anySeverityId(),
           title,
           state: "submitted",
@@ -897,10 +973,19 @@ describe("reports", () => {
           reportDate: FIXED_DATE,
         })
       ).json();
-      await inject("POST", `/journal/${report.id}/work`, operator.cookie, { summary: "Fixed it" });
+      await inject("POST", `/journal/${report.id}/work`, operator.cookie, {
+        summary: "Fixed it",
+        detail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        finishedAt: new Date().toISOString(),
+      });
       const statuses = (await inject("GET", "/journal-statuses", admin)).json();
       const resolved = statuses.find((st: { name: string }) => st.name === "Resolved");
-      await inject("PATCH", `/journal/${report.id}/status`, admin, { statusId: resolved.id });
+      await inject("PATCH", `/journal/${report.id}/status`, admin, {
+        statusId: resolved.id,
+        rootCause: "The tensioner had backed off.",
+        preventiveMeasures: "Added it to the weekly round.",
+      });
       await inject("PUT", `/journal/${report.id}/scores`, admin, {
         scores: [{ userId: operator.id, points }],
       });

@@ -7,7 +7,13 @@
 // You score a report from here too, in real points (0.5 steps). Which column you
 // may fill follows from who you are, decided by the server (myScoreTier). The first
 // score locks the report's content; re-opening it clears every score.
-import { PERMISSIONS, TARGET_KIND_LABELS, formatDate, formatDateTime } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  TARGET_KIND_LABELS,
+  createWorkLogSchema,
+  formatDate,
+  formatDateTime,
+} from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Ban, Lock, Wrench } from "lucide-react";
@@ -21,6 +27,7 @@ import { PointsHistoryTab } from "@/routes/journal/points-history-tab.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import {
   deleteReport,
@@ -582,7 +589,13 @@ function workWhen(item: WorkLog): string {
   return `${start} – ${formatDateTime(item.finishedAt).split(" ").slice(-1)[0]}`;
 }
 
-/** One work item being written or corrected. Times are optional but asked for. */
+/**
+ * One work item being written or corrected.
+ *
+ * Everything on it is required, including the hours. They used to be "optional but
+ * asked for", and what that produced was a timeline of items with no *when* — which
+ * is the one thing a timeline carries that a single text column could not.
+ */
 function WorkForm({
   initial,
   save,
@@ -594,79 +607,65 @@ function WorkForm({
   onSaved: () => Promise<void> | void;
   onCancel: () => void;
 }) {
-  const [summary, setSummary] = useState(initial?.summary ?? "");
-  const [detail, setDetail] = useState(initial?.detail ?? "");
-  const [startedAt, setStartedAt] = useState(toLocalInput(initial?.startedAt));
-  const [finishedAt, setFinishedAt] = useState(toLocalInput(initial?.finishedAt));
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      save({
-        summary: summary.trim(),
-        detail: detail.trim() || undefined,
-        startedAt: fromLocalInput(startedAt),
-        finishedAt: fromLocalInput(finishedAt),
-      }),
+  const form = useForm({
+    schema: createWorkLogSchema,
+    initial: {
+      summary: initial?.summary ?? "",
+      detail: initial?.detail ?? "",
+      startedAt: toLocalInput(initial?.startedAt),
+      finishedAt: toLocalInput(initial?.finishedAt),
+    },
+    // The inputs hold `datetime-local` text in the reader's own timezone; the schema
+    // and the API speak ISO instants. Converting here means one place knows that.
+    toPayload: (values) => ({
+      summary: values.summary.trim(),
+      detail: values.detail.trim(),
+      startedAt: fromLocalInput(values.startedAt),
+      finishedAt: fromLocalInput(values.finishedAt),
+    }),
+    submit: (payload) => save(payload as CreateWorkLog),
     onSuccess: onSaved,
   });
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border p-4">
-      {mutation.error ? <ErrorAlert error={mutation.error} /> : null}
-      <Field label="What you did">
+    <form
+      ref={form.formRef}
+      onSubmit={form.handleSubmit}
+      className="flex flex-col gap-3 rounded-xl border border-border p-4"
+    >
+      {form.formError ? <ErrorAlert error={form.formError} /> : null}
+      <Field label="What you did" required error={form.errorFor("summary")}>
         {(props) => (
           <Input
             {...props}
-            value={summary}
-            onChange={(event) => setSummary(event.target.value)}
+            {...form.register("summary")}
             placeholder="e.g. Fitted the replacement belt"
           />
         )}
       </Field>
-      <Field label="Details">
-        {(props) => (
-          <Textarea
-            {...props}
-            value={detail}
-            onChange={(event) => setDetail(event.target.value)}
-            rows={3}
-          />
-        )}
+      <Field label="Details" required error={form.errorFor("detail")}>
+        {(props) => <Textarea {...props} {...form.register("detail")} rows={3} />}
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Started</span>
-          <Input
-            type="datetime-local"
-            value={startedAt}
-            onChange={(event) => setStartedAt(event.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Finished</span>
-          <Input
-            type="datetime-local"
-            value={finishedAt}
-            onChange={(event) => setFinishedAt(event.target.value)}
-          />
-        </label>
+        <Field label="Started" required error={form.errorFor("startedAt")}>
+          {(props) => <Input {...props} type="datetime-local" {...form.register("startedAt")} />}
+        </Field>
+        <Field label="Finished" required error={form.errorFor("finishedAt")}>
+          {(props) => <Input {...props} type="datetime-local" {...form.register("finishedAt")} />}
+        </Field>
       </div>
       <div className="flex justify-end gap-2">
-        <Button size="sm" variant="secondary" onClick={onCancel}>
+        <Button size="sm" variant="secondary" type="button" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          size="sm"
-          disabled={mutation.isPending || summary.trim() === ""}
-          onClick={() => mutation.mutate()}
-        >
+        <Button size="sm" type="submit" disabled={form.submitting}>
           {/* Not just "Save": the status panel above has a Save of its own, so a
               screen reader announced two identical buttons on one screen with
               nothing to tell them apart. */}
           Save work
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -679,6 +678,8 @@ function toLocalInput(iso: string | null | undefined): string {
 }
 
 function fromLocalInput(value: string): string | undefined {
+  // Undefined rather than "" for an empty box: the schema's message for a missing
+  // time reads better than its message for an unparseable one.
   return value ? new Date(value).toISOString() : undefined;
 }
 

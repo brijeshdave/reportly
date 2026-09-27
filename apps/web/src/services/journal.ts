@@ -55,8 +55,13 @@ export function createReport(input: CreateJournalEntry): Promise<JournalEntry> {
  * because it is allowed on a report whose content has been locked by appraisal —
  * the lock freezes the work, and a status is not the work.
  */
-export function changeReportStatus(id: string, statusId: string | null): Promise<JournalEntry> {
-  return http.patch<JournalEntry>(`/journal/${id}/status`, { statusId });
+export function changeReportStatus(
+  id: string,
+  statusId: string | null,
+  /** The findings, when this move is the one that finishes an issue. */
+  resolution?: { rootCause?: string; preventiveMeasures?: string },
+): Promise<JournalEntry> {
+  return http.patch<JournalEntry>(`/journal/${id}/status`, { statusId, ...resolution });
 }
 
 /** What was done on an entry, oldest first. */

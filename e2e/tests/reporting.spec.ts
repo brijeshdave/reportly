@@ -12,6 +12,7 @@ import {
   addMember,
   fillDueDate,
   logWork,
+  resolveEntry,
   pickPeople,
   submitIssue,
   superadminName,
@@ -101,8 +102,7 @@ async function resolve(page: Page): Promise<void> {
   // Nothing is resolved with an empty work log: the record of what was done is what
   // the points are scored against, and an entry closed with none cannot be scored.
   await logWork(page);
-  await page.getByLabel("Status").selectOption({ label: "Resolved" });
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await resolveEntry(page);
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
 }
 

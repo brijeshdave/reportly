@@ -244,6 +244,98 @@ export const journalEntryRowSchema = journalEntrySchema.omit({
 });
 export type JournalEntryRow = z.infer<typeof journalEntryRowSchema>;
 
+/**
+ * What a **submitted issue** must say.
+ *
+ * Reported from use: entries were arriving with a title and nothing else — no
+ * severity to score them against, no description of what happened, and no date for
+ * when it did. A report nobody can read is not a record, and one with no severity is
+ * scored against whatever fallback happens to be configured.
+ *
+ * Three deliberate exemptions:
+ *
+ *   - a **draft** is for something unfinished, and nagging somebody halfway through
+ *     writing is how people learn to file everything in one go at the end;
+ *   - a **work log** is a different shape — "nothing broke here, this is what I did"
+ *     — and has no severity, no occurrence and no issue description to give;
+ *   - **`statusId`** is not demanded, though the form marks it required. The server
+ *     defaults an issue to the first status in the *open* group, so an absent status
+ *     cannot break the rule that matters (`assertOpenStatusOnCreate`), and demanding
+ *     one would refuse callers over a value the API itself supplies.
+ *
+ * Shared because the browser checks it before the network and the route checks it
+ * after: the same function, so neither can drift into accepting what the other
+ * refuses.
+ */
+function issueMustBeComplete(
+  value: {
+    kind: string;
+    state?: string;
+    severityId?: string;
+    issueSummary?: string;
+    issueDetail?: string;
+    occurredAt?: string;
+    workSummary?: string;
+    workDetail?: string;
+    startedAt?: string;
+    endedAt?: string;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.kind !== "issue" || value.state !== "submitted") return;
+  workDoneMustBeComplete(value, ctx);
+
+  const required: [keyof typeof value, string][] = [
+    ["severityId", "Choose a severity — it decides what the entry is worth."],
+    ["issueSummary", "Say what happened, in a line."],
+    ["issueDetail", "Describe what happened — the detail is what makes this readable later."],
+    ["occurredAt", "Say when it happened."],
+  ];
+  for (const [key, message] of required) {
+    const given = value[key];
+    if (typeof given === "string" && given.trim() !== "") continue;
+    ctx.addIssue({ code: "custom", path: [key], message });
+  }
+
+  // An issue that has not happened yet cannot be reported as having happened. Worth
+  // checking because `datetime-local` makes next year as easy to type as today, and a
+  // future occurrence silently breaks every report that buckets by date.
+  if (value.occurredAt && new Date(value.occurredAt).getTime() > Date.now() + 60_000) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["occurredAt"],
+      message: "That is in the future — say when it actually happened.",
+    });
+  }
+}
+
+/**
+ * Work described on the filing form is a work log, so it is held to a work log's rules.
+ *
+ * The server turns these fields into the first item of the entry's timeline, and an
+ * item with no detail and no hours is exactly what the timeline replaced. Filing the
+ * work and logging it afterwards must not produce records of different quality — the
+ * reports cannot tell which door an item came through.
+ */
+function workDoneMustBeComplete(
+  value: { workSummary?: string; workDetail?: string; startedAt?: string; endedAt?: string },
+  ctx: z.RefinementCtx,
+): void {
+  // Nothing claimed, nothing to check: work is still allowed to be logged later.
+  if (!value.workSummary || value.workSummary.trim() === "") return;
+
+  const required: [keyof typeof value, string][] = [
+    ["workDetail", "Describe what you did — this is the record somebody reads later."],
+    ["startedAt", "Say when you started."],
+    ["endedAt", "Say when you finished."],
+  ];
+  for (const [key, message] of required) {
+    const given = value[key];
+    if (typeof given === "string" && given.trim() !== "") continue;
+    ctx.addIssue({ code: "custom", path: [key], message });
+  }
+}
+
 export const createJournalEntrySchema = z
   .object({
     kind: reportKindSchema,
@@ -265,8 +357,11 @@ export const createJournalEntrySchema = z
 
     issueSummary: shortText.optional(),
     issueDetail: longText.optional(),
-    rootCause: longText.optional(),
-    preventiveMeasures: longText.optional(),
+    // `rootCause` / `preventiveMeasures` are deliberately absent. They belong to
+    // closing an issue, not to raising one: filled in before anybody has looked at
+    // the machine they are a guess, and a guess written into the record reads later
+    // as a finding. They are asked for at the point of resolving — see
+    // `resolveJournalEntrySchema`.
     /**
      * Work already done at the moment of filing. **Not** the entry's roll-up
      * columns, despite the names: the server turns these into the first item of the
@@ -289,7 +384,8 @@ export const createJournalEntrySchema = z
   .refine((value) => !(value.startedAt && value.endedAt) || value.endedAt >= value.startedAt, {
     message: "The end time cannot be before the start time",
     path: ["endedAt"],
-  });
+  })
+  .superRefine(issueMustBeComplete);
 
 export type CreateJournalEntry = z.infer<typeof createJournalEntrySchema>;
 
@@ -333,7 +429,19 @@ export type UpdateJournalEntry = z.infer<typeof updateJournalEntrySchema>;
  *
  * `null` clears the status, for a report that should not be in the workflow at all.
  */
-export const changeStatusSchema = z.object({ statusId: uuidSchema.nullable() });
+export const changeStatusSchema = z.object({
+  statusId: uuidSchema.nullable(),
+  /**
+   * The findings, where this move is the one that finishes the issue.
+   *
+   * Carried on the status change rather than left to a separate edit, because the
+   * server refuses a resolve without them: a rule whose fields live on another screen
+   * is a rule that tells people to go away and come back. Optional here — most status
+   * moves are not a resolve — and enforced where it can see which move this is.
+   */
+  rootCause: longText.optional(),
+  preventiveMeasures: longText.optional(),
+});
 export type ChangeStatus = z.infer<typeof changeStatusSchema>;
 
 /**

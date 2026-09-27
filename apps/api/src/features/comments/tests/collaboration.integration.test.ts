@@ -130,6 +130,8 @@ async function buildTeam(admin: string) {
 async function fileReport(cookie: string, title = "Belt snapped"): Promise<string> {
   const res = await inject("POST", "/journal", cookie, {
     kind: "issue",
+    issueDetail: "Found it sheared on the drive side.",
+    occurredAt: new Date().toISOString(),
     severityId: await anySeverityId(),
     title,
     state: "submitted",
@@ -154,6 +156,9 @@ async function finish(
   workedBy: string = cookie,
 ): Promise<void> {
   const logged = await inject("POST", `/journal/${reportId}/work`, workedBy, {
+    detail: "Checked it over and ran it up.",
+    startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+    finishedAt: new Date().toISOString(),
     summary: "Replaced the belt",
   });
   expect(logged.statusCode).toBe(201);
@@ -162,6 +167,11 @@ async function finish(
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
   const res = await inject("PATCH", `/journal/${reportId}/status`, cookie, {
     statusId: resolved.id,
+    // Resolving an issue says why it happened and what stops it happening
+    // again. Supplied here so the tests that merely need a finished entry
+    // keep working; the rule itself is tested on its own.
+    rootCause: "The tensioner had backed off.",
+    preventiveMeasures: "Added it to the weekly round.",
   });
   expect(res.statusCode).toBe(200);
 }
@@ -498,6 +508,9 @@ describe("status changes", () => {
    *  a finished state puts one there first, as the person who did the work. */
   async function logWork(cookie: string, reportId: string) {
     const res = await inject("POST", `/journal/${reportId}/work`, cookie, {
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
       summary: "Replaced the belt",
     });
     expect(res.statusCode).toBe(201);
@@ -525,6 +538,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
           statusId: s.inProgress.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -532,6 +550,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
           statusId: s.open.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -541,6 +564,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
           statusId: s.resolved.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -555,12 +583,22 @@ describe("status changes", () => {
     await logWork(author.cookie, reportId);
     await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
       statusId: s.resolved.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
 
     // Marking a resolved report Duplicate would erase the fact that it was ever
     // resolved. The refusal says what to do instead.
     const refused = await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
       statusId: s.duplicate.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error.message).toMatch(/Re-open/);
@@ -568,11 +606,21 @@ describe("status changes", () => {
     // Re-opening first makes it legal, and the trail keeps both.
     await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
       statusId: s.inProgress.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
     expect(
       (
         await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
           statusId: s.duplicate.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -600,6 +648,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
           statusId: s.inProgress.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -616,6 +669,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, manager.cookie, {
           statusId: s.inProgress.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -626,6 +684,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, mate.cookie, {
           statusId: s.resolved.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(404);
@@ -646,6 +709,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, mate.cookie, {
           statusId: s.resolved.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -655,6 +723,11 @@ describe("status changes", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, outsider.cookie, {
           statusId: s.open.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(404);
@@ -912,6 +985,11 @@ describe("participants and scoring", () => {
       (
         await inject("PATCH", `/journal/${reportId}/status`, manager.cookie, {
           statusId: working.id,
+          // Resolving an issue says why it happened and what stops it happening
+          // again. Supplied here so the tests that merely need a finished entry
+          // keep working; the rule itself is tested on its own.
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
         })
       ).statusCode,
     ).toBe(200);
@@ -981,6 +1059,7 @@ describe("the work timeline", () => {
     const reportId = await fileReport(author.cookie);
 
     const first = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+      detail: "Checked it over and ran it up.",
       summary: "Isolated the drive",
       startedAt: "2026-08-22T08:40:00.000Z",
       finishedAt: "2026-08-22T09:10:00.000Z",
@@ -995,6 +1074,7 @@ describe("the work timeline", () => {
 
     // The colleague logs their own, and it belongs to them rather than to the author.
     const second = await inject("POST", `/journal/${reportId}/work`, mate.cookie, {
+      finishedAt: new Date().toISOString(),
       summary: "Fitted the replacement belt",
       detail: "Spare from the east store.",
       startedAt: "2026-08-22T11:15:00.000Z",
@@ -1027,22 +1107,39 @@ describe("the work timeline", () => {
     const { author, mate } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
     const mine = (
-      await inject("POST", `/journal/${reportId}/work`, author.cookie, { summary: "Swapped it" })
+      await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+        summary: "Swapped it",
+        detail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        finishedAt: new Date().toISOString(),
+      })
     ).json();
 
     expect(mine.canEdit).toBe(true);
+    // A correction is a whole item, not a patch of one: every field a work log needs
+    // is required on the way in, and an edit that sent only a summary would be asking
+    // the server to keep hours it can no longer see.
     const fixed = await inject("PATCH", `/journal/work/${mine.id}`, author.cookie, {
       summary: "Swapped the drive belt",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
     });
-    expect(fixed.statusCode).toBe(200);
+    expect(fixed.statusCode, fixed.body).toBe(200);
 
     // Somebody else's account of what they did is not yours to rewrite — even once
     // they are on the entry and can read every word of it.
     await inject("PUT", `/journal/${reportId}/participants`, author.cookie, {
       participants: [{ userId: mate.id }],
     });
+    // A complete item on purpose. The body is validated before the caller is
+    // authorised, so an incomplete one comes back 400 and proves nothing about who
+    // may edit what — which is the only thing this assertion is for.
     const refused = await inject("PATCH", `/journal/work/${mine.id}`, mate.cookie, {
       summary: "Actually I did it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
     });
     expect(refused.statusCode).toBe(403);
   });
@@ -1055,20 +1152,39 @@ describe("the work timeline", () => {
     // 404 rather than 403: an entry outside their line and their departments is not
     // theirs to know about, and a "forbidden" would confirm it exists.
     expect(
-      (await inject("POST", `/journal/${reportId}/work`, outsider.cookie, { summary: "Hello" }))
-        .statusCode,
+      (
+        await inject("POST", `/journal/${reportId}/work`, outsider.cookie, {
+          summary: "Hello",
+          detail: "Checked it over and ran it up.",
+          startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          finishedAt: new Date().toISOString(),
+        })
+      ).statusCode,
     ).toBe(404);
 
     // Something has to be on the timeline before it can be resolved at all.
-    await inject("POST", `/journal/${reportId}/work`, author.cookie, { summary: "Replaced it" });
+    await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+      summary: "Replaced it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", author.cookie)).json();
     const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
     const finished = await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
       statusId: resolved.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
     expect(finished.statusCode).toBe(200);
 
     const closed = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
       summary: "One more thing",
     });
     expect(closed.statusCode).toBe(409);
@@ -1079,7 +1195,12 @@ describe("the work timeline", () => {
     const { author } = await buildTeam(admin);
     const reportId = await fileReport(author.cookie);
     const log = (
-      await inject("POST", `/journal/${reportId}/work`, author.cookie, { summary: "Did a thing" })
+      await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+        summary: "Did a thing",
+        detail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        finishedAt: new Date().toISOString(),
+      })
     ).json();
 
     await inject("DELETE", `/journal/work/${log.id}`, author.cookie);

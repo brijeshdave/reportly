@@ -133,6 +133,9 @@ async function fileIssue(
 ) {
   const res = await inject("POST", "/journal", cookie, {
     kind: "issue",
+    issueSummary: "Belt seized",
+    issueDetail: "Found it sheared on the drive side.",
+    occurredAt: new Date().toISOString(),
     severityId: await anySeverityId(),
     title,
     state: "submitted",

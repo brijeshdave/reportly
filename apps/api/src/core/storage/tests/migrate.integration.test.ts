@@ -78,6 +78,9 @@ async function seedFile(admin: string): Promise<{ id: string; key: string }> {
       headers: { cookie: admin, "x-company-id": DEMO_COMPANY_ID },
       payload: {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Belt seized",
         state: "submitted",

@@ -255,6 +255,9 @@ describe("SF-004: a person's location scope constrains what they can reach", () 
           title: locationId === plantB.id ? "At plant B" : "At plant A",
           state: "submitted",
           workSummary: "Done",
+          workDetail: "Checked it over and ran it up.",
+          startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          endedAt: new Date().toISOString(),
           ...(locationId ? { locationId } : {}),
         })
       ).json().id as string;
@@ -283,6 +286,9 @@ describe("SF-004: a person's location scope constrains what they can reach", () 
         title: "My own work",
         state: "submitted",
         workSummary: "Done",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
         locationId: plantA.id,
       })
     ).json().id;

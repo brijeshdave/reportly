@@ -142,11 +142,16 @@ async function buildChain(admin: string) {
 async function fileIssue(authorCookie: string, severityId: string): Promise<string> {
   const res = await inject("POST", "/journal", authorCookie, {
     kind: "issue",
+    issueDetail: "Found it sheared on the drive side.",
+    occurredAt: new Date().toISOString(),
     title: "Conveyor jam on line 3",
     state: "submitted",
     severityId,
     issueSummary: "Belt seized",
     workSummary: "Cleared and restarted",
+    workDetail: "Checked it over and ran it up.",
+    startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+    endedAt: new Date().toISOString(),
   });
   expect(res.statusCode).toBe(201);
   return res.json().id as string;
@@ -169,6 +174,9 @@ async function finish(cookie: string, reportId: string, workCookie = cookie): Pr
     // manager cannot satisfy the rule on their team's behalf. That is the rule
     // working — the person who did the job writes down what they did.
     const logged = await inject("POST", `/journal/${reportId}/work`, workCookie, {
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
       summary: "Did the work",
     });
     expect(logged.statusCode, `work log: ${logged.body}`).toBe(201);
@@ -178,6 +186,11 @@ async function finish(cookie: string, reportId: string, workCookie = cookie): Pr
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
   const res = await inject("PATCH", `/journal/${reportId}/status`, cookie, {
     statusId: resolved.id,
+    // Resolving an issue says why it happened and what stops it happening
+    // again. Supplied here so the tests that merely need a finished entry
+    // keep working; the rule itself is tested on its own.
+    rootCause: "The tensioner had backed off.",
+    preventiveMeasures: "Added it to the weekly round.",
   });
   expect(res.statusCode).toBe(200);
 }
@@ -230,10 +243,16 @@ describe("reports and scoring", () => {
 
     // Submit it: now the manager sees it — but the review queue is only for resolved
     // reports, so it is not there yet.
-    await inject("PATCH", `/journal/${draftId}`, author.cookie, {
+    // The edit that submits carries what the draft was allowed to leave out. A draft
+    // may be half-written; the moment it enters the appraisal loop it has to say what
+    // happened, when, and how bad it was.
+    const submitted = await inject("PATCH", `/journal/${draftId}`, author.cookie, {
       state: "submitted",
       severityId: critical.id,
+      issueDetail: "Stalls under load, then clears itself after a minute.",
+      occurredAt: new Date().toISOString(),
     });
+    expect(submitted.statusCode, submitted.body).toBe(200);
     expect((await inject("GET", `/journal/${draftId}`, manager.cookie)).statusCode).toBe(200);
     const beforeResolve = (await inject("GET", "/journal/pending", manager.cookie)).json();
     expect(beforeResolve.some((p: { reportId: string }) => p.reportId === draftId)).toBe(false);
@@ -316,12 +335,17 @@ describe("reports and scoring", () => {
       state: "submitted",
       severityId: critical.id,
       workSummary: "Wiped down",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
     });
     expect(work.json().statusGroup).toBe("resolved");
 
     // An issue opens for triage.
     const issue = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title: "Belt worn",
       state: "submitted",
       severityId: critical.id,
@@ -626,6 +650,8 @@ describe("reports and scoring", () => {
     const issue = (occurredAt?: string) =>
       inject("POST", "/journal", author.cookie, {
         kind: "issue",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         title: "Belt seized",
         state: "submitted",
         severityId: critical.id,
@@ -640,6 +666,9 @@ describe("reports and scoring", () => {
         // Submitted entries carry a severity now, whatever their kind.
         severityId: critical.id,
         workSummary: "x",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
         reportDate,
       });
 
@@ -674,6 +703,8 @@ describe("reports and scoring", () => {
     // entry dated a year back, which is the backdating the rule exists to stop.
     const backdated = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title: "Belt seized",
       state: "submitted",
       severityId: critical.id,
@@ -686,6 +717,8 @@ describe("reports and scoring", () => {
     // be a step to walk around.
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title: "Belt seized",
       state: "submitted",
       severityId: critical.id,
@@ -704,11 +737,24 @@ describe("reports and scoring", () => {
     const raise = (workSummary?: string) =>
       inject("POST", "/journal", author.cookie, {
         kind: "issue",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         title: "Belt seized",
         state: "submitted",
         severityId: critical.id,
         issueSummary: "x",
-        ...(workSummary ? { workSummary } : {}),
+        // Work described at filing is a work log, so it comes with a work log's
+        // hours and detail — the two doors must not produce records of different
+        // quality. Sent together, because sending the summary alone is its own
+        // refusal and this test is about a different rule.
+        ...(workSummary
+          ? {
+              workSummary,
+              workDetail: "Checked it over and ran it up.",
+              startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+              endedAt: new Date().toISOString(),
+            }
+          : {}),
       });
 
     // Off by default: raising a breakdown now and writing it up later is the right
@@ -756,6 +802,9 @@ describe("reports and scoring", () => {
         state: "submitted",
         severityId: critical.id,
         workSummary: "x",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
         reportDate: daysAgo(30),
       });
 
@@ -783,6 +832,9 @@ describe("reports and scoring", () => {
     expect(
       (
         await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+          detail: "Checked it over and ran it up.",
+          startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          finishedAt: new Date().toISOString(),
           summary: "Belt swapped",
         })
       ).statusCode,
@@ -791,6 +843,9 @@ describe("reports and scoring", () => {
     await finish(author.cookie, reportId);
 
     const refused = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
       summary: "And greased the bearings",
     });
     expect(refused.statusCode).toBe(409);
@@ -807,6 +862,210 @@ describe("reports and scoring", () => {
     ).toBe(200);
   });
 
+  it("refuses a submitted issue that does not say what happened, naming each field", async () => {
+    // Reported from use: entries were arriving with a title and nothing else. A report
+    // nobody can read is not a record, and one with no severity is scored against
+    // whatever fallback happens to be configured.
+    const admin = await superadmin();
+    const { author } = await buildChain(admin);
+
+    const res = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Something happened",
+      state: "submitted",
+    });
+
+    expect(res.statusCode).toBe(400);
+    // Named individually, so the form puts each message under its own input rather
+    // than one sentence above four empty boxes.
+    const { fields } = res.json().error;
+    expect(Object.keys(fields).sort()).toEqual([
+      "issueDetail",
+      "issueSummary",
+      "occurredAt",
+      "severityId",
+    ]);
+  });
+
+  it("lets a draft stay half-written, and holds it to the rules when it is submitted", async () => {
+    // A draft is for something unfinished. Nagging somebody halfway through writing is
+    // how people learn to file everything in one go at the end.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+
+    const draft = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Half a thought",
+      state: "draft",
+    });
+    expect(draft.statusCode).toBe(201);
+    const id = draft.json().id as string;
+
+    // Submitting it is the other door into the same rule, and it is asked of the draft
+    // plus the edit — so an empty draft cannot submit by sending nothing at all.
+    const refused = await inject("PATCH", `/journal/${id}`, author.cookie, {
+      state: "submitted",
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(Object.keys(refused.json().error.fields)).toContain("issueDetail");
+
+    const accepted = await inject("PATCH", `/journal/${id}`, author.cookie, {
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "Belt seized",
+      issueDetail: "Sheared on the drive side and stopped the line.",
+      occurredAt: new Date().toISOString(),
+    });
+    expect(accepted.statusCode, accepted.body).toBe(200);
+  });
+
+  it("refuses an issue that has not happened yet", async () => {
+    // `datetime-local` makes next year as easy to type as today, and a future
+    // occurrence silently breaks every report that buckets by date.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
+    const res = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Belt will snap",
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "Belt seized",
+      issueDetail: "It is going to shear.",
+      occurredAt: nextWeek,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.fields.occurredAt).toMatch(/future/i);
+  });
+
+  it("will not let an issue be filed straight into a finished status", async () => {
+    // Reported from use: "any journal must not allow directly with status that are
+    // like resolved or any status that are like closed". Filing at the end skips
+    // triage entirely and leaves a status timeline that began where it should stop.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const statuses = (await inject("GET", "/journal-statuses", admin)).json();
+    const resolved = statuses.find(
+      (s: { group: string; status: string }) => s.group === "resolved" && s.status === "active",
+    );
+    expect(resolved, "the seed has a resolved status").toBeTruthy();
+
+    const res = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Belt snapped",
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "Belt seized",
+      issueDetail: "Sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
+      statusId: resolved.id,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.fields.statusId).toBeDefined();
+  });
+
+  it("still starts a work log at its finished status", async () => {
+    // The exemption that must survive the rule above: a work log is a record of work
+    // already done. It has no triage, and the create path starts it resolved on purpose.
+    const admin = await superadmin();
+    const { author } = await buildChain(admin);
+
+    const res = await inject("POST", "/journal", author.cookie, {
+      kind: "work",
+      title: "Greased the line",
+      state: "submitted",
+      workSummary: "Greased every bearing on the run",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
+    });
+
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().statusGroup).toBe("resolved");
+  });
+
+  it("will not resolve an issue that does not say why it happened", async () => {
+    // Asked for as: "at resolving time it should only allow if Root cause and
+    // Preventive measures are filled". They are not asked for when the issue is
+    // raised — before anybody has looked at the machine they would be a guess, and a
+    // guess written into the record reads later as a finding.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const reportId = await fileIssue(author.cookie, critical.id);
+    const statuses = (await inject("GET", "/journal-statuses", admin)).json();
+    const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
+
+    // The move on its own, with nothing said about why it happened.
+    const refused = await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
+      statusId: resolved.id,
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(Object.keys(refused.json().error.fields).sort()).toEqual([
+      "preventiveMeasures",
+      "rootCause",
+    ]);
+
+    // Carried on the move itself, so a resolve cannot half-happen: an entry marked
+    // Resolved whose findings failed to save separately is the record this prevents.
+    const done = await inject("PATCH", `/journal/${reportId}/status`, author.cookie, {
+      statusId: resolved.id,
+      rootCause: "The tensioner had backed off and the belt walked.",
+      preventiveMeasures: "Added the tensioner to the weekly round.",
+    });
+    expect(done.statusCode, done.body).toBe(200);
+    expect(done.json().rootCause).toContain("tensioner");
+  });
+
+  it("does not ask a work log for findings, nor a rejection", async () => {
+    // A work log is born resolved and has no fault to explain. Rejecting is precisely
+    // the case where nothing was diagnosed — refusing it for want of a root cause
+    // would make a bad entry impossible to get rid of.
+    const admin = await superadmin();
+    const { author } = await buildChain(admin);
+    const filed = await inject("POST", "/journal", author.cookie, {
+      kind: "work",
+      title: "Greased the line",
+      state: "submitted",
+      workSummary: "Greased every bearing on the run",
+      workDetail: "Went round the whole line with the gun.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
+    });
+    expect(filed.statusCode, filed.body).toBe(201);
+    expect(filed.json().statusGroup).toBe("resolved");
+  });
+
+  it("holds work described at filing to the same rules as work logged later", async () => {
+    // The two doors must not produce records of different quality: the reports cannot
+    // tell which one an item came through.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+
+    const res = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Belt snapped",
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "Belt seized",
+      issueDetail: "Sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
+      // Deliberately alone: claiming work without saying how long it took or what it
+      // involved is exactly what the timeline replaced.
+      workSummary: "Replaced the drive belt",
+    });
+
+    expect(res.statusCode).toBe(400);
+    // The hours and the detail, named where the form draws them.
+    expect(Object.keys(res.json().error.fields).sort()).toEqual([
+      "endedAt",
+      "startedAt",
+      "workDetail",
+    ]);
+  });
+
   it("turns work described on the filing form into the entry's first timeline item", async () => {
     // Reported from use: with work mandatory, an entry filed *with* work done saved
     // fine and then showed an empty Work log. The two text columns on the entry are a
@@ -818,6 +1077,8 @@ describe("reports and scoring", () => {
 
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title: "Belt snapped",
       state: "submitted",
       severityId: critical.id,
@@ -852,11 +1113,16 @@ describe("reports and scoring", () => {
 
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title: "Belt snapped",
       state: "submitted",
       severityId: critical.id,
       issueSummary: "Belt seized",
       workSummary: "Replaced the drive belt",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
     });
     expect(filed.statusCode).toBe(201);
     const reportId = filed.json().id as string;
@@ -864,6 +1130,9 @@ describe("reports and scoring", () => {
     expect(
       (
         await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+          detail: "Checked it over and ran it up.",
+          startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          finishedAt: new Date().toISOString(),
           summary: "Greased the bearings",
         })
       ).statusCode,
@@ -893,11 +1162,14 @@ describe("reports and scoring", () => {
       state: "draft",
       severityId: critical.id,
       issueSummary: "x",
+      issueDetail: "Belt seized under load and stopped the line.",
+      occurredAt: new Date().toISOString(),
     });
     expect(draft.statusCode).toBe(201);
     const reportId = draft.json().id as string;
 
-    // Nothing on the timeline: the submit is refused.
+    // Nothing on the timeline: the submit is refused. Everything else about the entry
+    // is complete, so this is the work rule refusing it and not the required fields.
     const refused = await inject("PATCH", `/journal/${reportId}`, author.cookie, {
       state: "submitted",
     });
@@ -908,6 +1180,9 @@ describe("reports and scoring", () => {
     expect(
       (
         await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+          detail: "Checked it over and ran it up.",
+          startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+          finishedAt: new Date().toISOString(),
           summary: "Swapped the belt",
         })
       ).statusCode,

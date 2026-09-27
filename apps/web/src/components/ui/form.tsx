@@ -86,15 +86,25 @@ export interface FieldProps {
   /** Rendered under the control; also announced via aria-describedby. */
   hint?: ReactNode;
   error?: string | null;
+  /**
+   * Marks the field as one that must be filled in.
+   *
+   * Shown rather than left to be discovered on save: a form that only says what it
+   * wanted once you have failed to give it is a form people fill in twice. The
+   * asterisk is `aria-hidden` and the real statement is on the control, so a screen
+   * reader hears "required" instead of "star".
+   */
+  required?: boolean;
   /** Receives the id and aria wiring. */
   children: (props: {
     id: string;
     "aria-describedby": string | undefined;
     "aria-invalid": boolean;
+    "aria-required": boolean | undefined;
   }) => ReactNode;
 }
 
-export function Field({ label, hint, error, children }: FieldProps) {
+export function Field({ label, hint, error, required, children }: FieldProps) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
@@ -104,11 +114,17 @@ export function Field({ label, hint, error, children }: FieldProps) {
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-foreground">
         {label}
+        {required ? (
+          <span aria-hidden="true" className="ml-0.5 text-destructive">
+            *
+          </span>
+        ) : null}
       </label>
       {children({
         id,
         "aria-describedby": describedBy || undefined,
         "aria-invalid": Boolean(error),
+        "aria-required": required || undefined,
       })}
       {hint ? (
         <div id={hintId} className="text-xs text-muted-foreground">

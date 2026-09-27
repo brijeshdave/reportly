@@ -116,6 +116,9 @@ async function setup(admin: string) {
   const report = (
     await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Conveyor jam on line 3",
       state: "submitted",
@@ -306,6 +309,9 @@ describe("which things carry downtime", () => {
     const entry = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Line down while the PC was reimaged",
         state: "submitted",
@@ -343,6 +349,9 @@ describe("which things carry downtime", () => {
     const entry = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Labeller stopped the line",
         state: "submitted",
@@ -364,6 +373,9 @@ describe("which things carry downtime", () => {
     const entry = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        issueSummary: "Belt seized",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
         title: "Compressor out",
         state: "submitted",

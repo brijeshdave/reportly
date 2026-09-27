@@ -289,6 +289,9 @@ describe("end users", () => {
 
     const entry = await inject("POST", "/journal", admin, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Excel will not open",
       state: "submitted",
@@ -312,6 +315,9 @@ describe("end users", () => {
     const person = await makeEndUser(admin, { fullName: "Anita Sharma", employeeNumber: "EMP-1" });
     await inject("POST", "/journal", admin, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Printer jam",
       state: "submitted",

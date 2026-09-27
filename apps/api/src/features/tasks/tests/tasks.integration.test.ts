@@ -265,6 +265,9 @@ describe("tasks", () => {
       taskId: task.id,
       kind: "work",
       title: "Replace the drive belt on Line 3",
+      // The task's own detail, as a head start on what was done. The hours are not
+      // prefilled and cannot be — only the person who did the job knows them, and the
+      // form asks for them before it will take the entry.
       workSummary: "Spare is in the east store.",
     });
 
@@ -272,6 +275,9 @@ describe("tasks", () => {
       kind: "work",
       title: prefill.json().title,
       workSummary: "Belt replaced, line back up.",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       state: "submitted",
       taskId: task.id,
     });
@@ -312,6 +318,9 @@ describe("tasks", () => {
       kind: "work",
       title: "Greased the conveyor bearings",
       workSummary: "Done on the night shift.",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       state: "submitted",
       taskId: task.id,
     });
@@ -323,6 +332,9 @@ describe("tasks", () => {
       kind: "work",
       title: "Checked the bearings again",
       workSummary: "Still fine.",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       state: "submitted",
       taskId: task.id,
     });
@@ -873,6 +885,9 @@ describe("what a task is worth", () => {
         kind: "work",
         title: "Did the big job",
         workSummary: "All of it.",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
         state: "submitted",
         taskId: task.id,
       })
@@ -957,6 +972,9 @@ describe("what a task is worth", () => {
         kind: "work",
         title: "Wrote it up",
         workSummary: "Done.",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
         state: "submitted",
         taskId: task.id,
       })

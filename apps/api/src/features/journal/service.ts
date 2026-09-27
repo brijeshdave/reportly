@@ -805,6 +805,8 @@ export async function changeStatus(
   id: string,
   statusId: string | null,
   ctx: AuthContext,
+  /** The findings, when this move is the one that finishes the issue. */
+  resolution?: { rootCause?: string; preventiveMeasures?: string },
 ): Promise<JournalEntry> {
   const row = await requireReport(id, ctx);
   await assertVisible(row, ctx);
@@ -844,13 +846,45 @@ export async function changeStatus(
   // Reported from use: entries were being resolved with no work detail at all, and
   // then scored — a number with nothing behind it. Moving to a *rejected* status is
   // exempt: refusing an entry is precisely the case where no work was done.
-  if (next?.isTerminal && next.group !== "rejected" && !current?.isTerminal) {
+  const resolving = Boolean(next?.isTerminal && next.group !== "rejected" && !current?.isTerminal);
+  if (resolving) {
     const logged = await workLogsFor(id);
     if (logged.length === 0) {
       throw new AppError(
         400,
         ERROR_CODES.VALIDATION_ERROR,
         "Log what was done before resolving this — an entry closed with no work recorded cannot be scored.",
+      );
+    }
+  }
+
+  // Resolving an **issue** says why it happened and what stops it happening again.
+  //
+  // Asked for as: "at resolving time it should only allow if Root cause and Preventive
+  // measures are filled". They are not asked for when the issue is raised — before
+  // anybody has looked at the machine they would be a guess, and a guess written into
+  // the record reads later as a finding — so this is the moment they are due.
+  //
+  // A **work log** is exempt: it is born resolved and there is no fault to explain.
+  // A **rejection** is exempt for the reason already written above: refusing an entry
+  // is precisely the case where nothing was diagnosed.
+  if (resolving && row.kind === "issue") {
+    const merged = (given: string | undefined, stored: string | null): string =>
+      (given ?? stored ?? "").trim();
+    const fields: Record<string, string> = {};
+    if (merged(resolution?.rootCause, row.rootCause) === "") {
+      fields.rootCause = "Say why it happened before closing it.";
+    }
+    if (merged(resolution?.preventiveMeasures, row.preventiveMeasures) === "") {
+      fields.preventiveMeasures = "Say what stops it happening again.";
+    }
+    if (Object.keys(fields).length > 0) {
+      throw new AppError(
+        400,
+        ERROR_CODES.VALIDATION_ERROR,
+        "An issue is not finished until it says why it happened and what prevents it.",
+        undefined,
+        fields,
       );
     }
   }
@@ -864,6 +898,13 @@ export async function changeStatus(
 
   await updateReportRow(id, {
     statusId,
+    // Written in the same call that moves it, so a resolve cannot half-happen: an
+    // entry marked Resolved whose findings failed to save separately is exactly the
+    // record this rule exists to prevent.
+    ...(resolution?.rootCause !== undefined ? { rootCause: resolution.rootCause } : {}),
+    ...(resolution?.preventiveMeasures !== undefined
+      ? { preventiveMeasures: resolution.preventiveMeasures }
+      : {}),
     ...(reopening ? { lockedAt: null } : {}),
     ...(locked ? { pointsReviewNeeded: true } : {}),
   });
@@ -1147,8 +1188,8 @@ export async function createReport(
   // without it is worth whatever the fallback happens to be. Reported from use —
   // entries were arriving with no severity at all. A draft may still be incomplete,
   // which is what a draft is for.
-  assertSeverityOnSubmit(input.state, input.severityId ?? null, input.kind);
   await assertWorkOnSubmit(input.state, input.kind, { typed: input.workSummary ?? null });
+  await assertOpenStatusOnCreate(input.kind, input.statusId, input.taskId);
 
   const defaultStatus =
     input.statusId ?? (await firstStatusInGroup(isWorkLog ? "resolved" : "open"))?.id ?? null;
@@ -1365,14 +1406,15 @@ export async function updateReport(
 
   // Submitting a draft stamps submittedAt once.
   if (input.state === "submitted" && row.state !== "submitted") {
-    // The same rule as filing one submitted outright. Checked against the patch
-    // first and the stored row second, because the severity may be arriving in
-    // this very edit.
-    assertSeverityOnSubmit(
-      "submitted",
-      (input.severityId as string | null | undefined) ?? row.severityId,
-      row.kind,
-    );
+    // Everything the create schema demands of a submitted issue, asked of the draft
+    // plus this edit — the schema can only see the request, and a draft filed empty
+    // would otherwise submit by sending nothing. Checked against the patch first and
+    // the stored row second, because a missing value may be arriving in this very edit.
+    //
+    // This replaced a severity-only check that ran ahead of it. Two assertions for one
+    // rule meant the first refusal won, so a draft missing four things was told about
+    // one of them, and the person fixed it to be told about the next.
+    assertIssueCompleteOnSubmit(row, input);
     // The edit that submits a draft is the other door into the same rule.
     await assertWorkOnSubmit("submitted", row.kind, { reportId: id });
     patch.state = "submitted";
@@ -1512,29 +1554,83 @@ async function entryCeiling(row: {
 }
 
 /**
- * A submitted entry says how bad it was.
+ * A new issue enters the workflow at the start of it.
  *
- * Not a draft: a draft is work in progress, and nagging somebody halfway through
- * writing is how people learn to file everything in one go at the end. But the
- * moment it is submitted it is somebody else's to read and to score, and the
- * severity is what sets the points ceiling — so an entry without one is scored
- * against a fallback nobody chose.
+ * `createReport` already defaults an issue to the first status in the **open** group,
+ * but an explicit `statusId` was taken as given — so an issue could be filed straight
+ * into Resolved, skipping triage entirely, and be scored with a status timeline that
+ * began at the end. Reported as "any journal must not allow directly with status that
+ * are like resolved or any status that are like closed".
+ *
+ * A **work log** is exempt and always has been: it is a record of work already done,
+ * it has no triage, and the create path deliberately starts it at `resolved`.
  */
-function assertSeverityOnSubmit(
-  state: string | undefined,
-  severityId: string | null,
+async function assertOpenStatusOnCreate(
   kind: string,
+  statusId: string | undefined,
+  taskId: string | undefined,
+): Promise<void> {
+  if (!statusId) return;
+  if (kind === "work" || taskId) return;
+
+  const status = await getStatusRow(statusId);
+  if (!status) {
+    throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "That status does not exist", undefined, {
+      statusId: "That status does not exist",
+    });
+  }
+  if (status.group === "open" && !status.isTerminal) return;
+
+  const message =
+    status.group === "rejected"
+      ? `An entry cannot be filed as "${status.name}" — rejecting is something somebody else does to it.`
+      : `An entry cannot be filed as "${status.name}". Raise it, then move it there once the work is done.`;
+  throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, message, undefined, {
+    statusId: message,
+  });
+}
+
+/**
+ * The same rule the create schema applies, against a stored draft plus its edit.
+ *
+ * The schema can only see one request. Submitting a draft is the other door into the
+ * appraisal loop, and it sends whatever the form changed — so "does this entry say
+ * what happened" has to be asked of the merged answer, or a draft filed empty last
+ * week submits today by sending nothing at all.
+ */
+function assertIssueCompleteOnSubmit(
+  row: JournalEntryRowRaw,
+  input: Record<string, unknown>,
 ): void {
-  if (state !== "submitted") return;
-  // Only a breakdown has a severity. A work log is "nothing broke here", the editor
-  // does not draw the field for one, and demanding it produced a 400 that no screen
-  // could clear — including for every entry filed by completing a task.
-  if (kind !== "issue") return;
-  if (severityId) return;
+  if (row.kind !== "issue") return;
+
+  const merged = (key: string, stored: string | Date | null): string => {
+    const patched = input[key];
+    if (patched !== undefined) return patched === null ? "" : String(patched);
+    if (stored === null) return "";
+    return stored instanceof Date ? stored.toISOString() : String(stored);
+  };
+
+  const fields: Record<string, string> = {};
+  const check = (key: string, stored: string | Date | null, message: string) => {
+    if (merged(key, stored).trim() === "") fields[key] = message;
+  };
+  check("severityId", row.severityId, "Choose a severity — it decides what the entry is worth.");
+  check("issueSummary", row.issueSummary, "Say what happened, in a line.");
+  check(
+    "issueDetail",
+    row.issueDetail,
+    "Describe what happened — the detail is what makes this readable later.",
+  );
+  check("occurredAt", row.occurredAt, "Say when it happened.");
+
+  if (Object.keys(fields).length === 0) return;
   throw new AppError(
     400,
     ERROR_CODES.VALIDATION_ERROR,
-    "Choose a severity before submitting — it decides what the entry is worth.",
+    "This entry is not finished — fill in what is missing before submitting it.",
+    undefined,
+    fields,
   );
 }
 

@@ -25,9 +25,13 @@ and a report still in progress has not finished being done — so move it to
 
 - **Issue / breakdown** — something went wrong. You give it a severity, describe what
   happened, the root cause, and what will stop it happening again, and set a status.
-  **A breakdown cannot be submitted without a severity** — the severity is what sets
-  the points ceiling, so one filed without it would be scored against a fallback
-  nobody chose. A draft may still be incomplete; that is what a draft is for.
+  **A submitted breakdown has to say what happened.** Severity, status, the short
+  line, the full description and when it occurred are all required — a report nobody
+  can read is not a record, and one without a severity would be scored against a
+  fallback nobody chose. A draft may still be incomplete; that is what a draft is for,
+  and the rules apply the moment you submit it rather than while you are writing.
+  An occurrence **cannot be in the future**: the picker will not offer it and the save
+  refuses it.
   **The work fields start closed**: raising a breakdown and fixing it are two moments,
   and the fix usually happens afterwards — sometimes by whoever reads it on the next
   shift. Tick **"I already did the work"** when it is genuinely one job, and they open.
@@ -40,7 +44,13 @@ Fill in what fits, then either:
   draft.
 - **Submit** — sends it up the line, where your managers see it and can score it.
 
-Only the **title** is required to save. Everything else is there when it helps.
+Only the **title** is required to **save a draft**. Submitting asks for the rest.
+
+> **A new issue starts at the beginning.** The status list on the filing form offers
+> only the working states — you cannot file something as _Resolved_ or _Duplicate_.
+> Filing at the end skips triage entirely and leaves a report whose history begins
+> where it should stop. Raise it, then move it along. A **work log** is the exception
+> and always has been: it is a record of work already done, so it is born finished.
 
 ### Work done at the moment of filing
 
@@ -61,8 +71,10 @@ overwrite it would be a second author. Corrections go on the item that recorded 
 ### Logging the work afterwards
 
 Open the entry and use **Log work**. Each piece of work is its own item, with **who
-did it and when** — start and finish times, both optional but worth filling in. A job
-worked over two shifts by three people reads as what it was:
+did it and when**. What you did, the detail, and the start and finish times are all
+required — an item with no hours cannot be read as a shift, cannot be put in order
+against a colleague's, and gives the points split nothing to weigh. A job worked over
+two shifts by three people reads as what it was:
 
 > 08:40 – 09:10 Ravi — Isolated the drive
 > 11:15 Mo — Fitted the replacement belt
@@ -248,6 +260,14 @@ just shows a **Done** badge. The states below are for issues.
 > work first, then resolve it. The states that end a report **without** it being
 > fixed — Duplicate, Not an issue, Rejected — do not ask for one, because no work
 > was done.
+>
+> **And an issue says why it happened.** Resolving asks for a **root cause** and
+> **preventive measures**, in a panel that opens as soon as you pick the finishing
+> status — they are saved by the same action that moves it, so a resolve cannot
+> half-happen. They are deliberately **not** on the filing form: written before
+> anybody has looked at the machine they would be a guess, and a guess in the record
+> reads later as a finding. A work log is exempt (there is no fault to explain), and
+> so is a rejection (nothing was diagnosed).
 
 **Three ways a report ends without being fixed:**
 

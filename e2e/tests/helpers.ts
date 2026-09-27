@@ -318,20 +318,25 @@ export async function addMember(
 }
 
 /**
- * Choose a severity, then submit a breakdown.
+ * Fill what a submitted breakdown must say, then submit it.
  *
- * A submitted issue must name a severity — it is what sets the points ceiling, so
- * one filed without it would be scored against a fallback nobody chose. The specs
- * predate that rule and filled a title and pressed Submit, which the server now
- * refuses; they stayed on the form and every assertion after it failed on a URL
- * that had not changed.
+ * A submitted issue names a severity, says what happened in a line and in full, and
+ * says when it happened. The specs predate those rules and filled a title and pressed
+ * Submit, which the server refuses; they then stayed on the form and every assertion
+ * after it failed on a URL that had not changed.
  *
- * The picker is a real `<select>` labelled "Severity", and the first option is
- * "None" — so the choice is made by index rather than by name, which keeps this
- * working whatever an installation calls its ladder.
+ * The severity picker is a real `<select>` and its first option is the "Choose one"
+ * placeholder — so the choice is made by index rather than by name, which keeps this
+ * working whatever an installation calls its ladder. The status is left as it comes:
+ * the form offers only the working states, and the first is already selected.
  */
 export async function submitIssue(page: Page): Promise<void> {
   await page.getByLabel("Severity").selectOption({ index: 1 });
+  await page.getByLabel("What happened (short)").fill("It stopped mid-run");
+  await page
+    .getByLabel("Detailed description")
+    .fill("Came to a halt under load and would not restart.");
+  await page.getByLabel("Occurred at").fill(localInput(-30 * 60_000));
   await page.getByRole("button", { name: "Submit", exact: true }).click();
 }
 
@@ -346,9 +351,21 @@ export async function submitIssue(page: Page): Promise<void> {
 export async function logWork(page: Page, summary = "Replaced the belt"): Promise<void> {
   await page.getByRole("button", { name: "Log work", exact: true }).click();
   await page.getByLabel("What you did").fill(summary);
+  // All of it is required now. An item with no hours cannot be read as a shift, cannot
+  // be ordered against a colleague's, and gives the points split nothing to weigh.
+  await page.getByLabel("Details").fill("Checked it over and ran it up afterwards.");
+  await page.getByLabel("Started").fill(localInput(-3_600_000));
+  await page.getByLabel("Finished").fill(localInput(-60_000));
   await page.getByRole("button", { name: "Save work", exact: true }).click();
   // The entry is only resolvable once the log has actually landed.
   await expect(page.getByText(summary).first()).toBeVisible();
+}
+
+/** A `datetime-local` value `offsetMs` from now, in the browser's own timezone. */
+export function localInput(offsetMs = 0): string {
+  const d = new Date(Date.now() + offsetMs);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**
@@ -387,4 +404,19 @@ export async function pickPeople(page: Page, label: string, ...names: string[]):
   // wired to the search box which no longer has focus once an option was clicked.
   await dismissPicker(page);
   await expect(page.getByRole("listbox")).toHaveCount(0);
+}
+
+/**
+ * Move an entry to its finished status, saying why it happened.
+ *
+ * Resolving an issue asks for a root cause and preventive measures. They appear as
+ * soon as the finishing status is picked, and the button refuses to commit until both
+ * are filled — so this is what "resolve it" now means on the screen, and a spec that
+ * only changed the dropdown would sit on a disabled button.
+ */
+export async function resolveEntry(page: Page): Promise<void> {
+  await page.getByLabel("Status").selectOption({ label: "Resolved" });
+  await page.getByLabel("Root cause").fill("The tensioner had backed off.");
+  await page.getByLabel("Preventive measures").fill("Added it to the weekly round.");
+  await page.getByRole("button", { name: "Resolve", exact: true }).click();
 }

@@ -159,6 +159,8 @@ function rowsByPerson(body: {
 async function fileIssue(who: { cookie: string }, title: string) {
   const filed = await inject("POST", "/journal", who.cookie, {
     kind: "issue",
+    issueDetail: "Found it sheared on the drive side.",
+    occurredAt: new Date().toISOString(),
     severityId: await anySeverityId(),
     title,
     state: "submitted",

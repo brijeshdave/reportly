@@ -120,6 +120,8 @@ async function chainWith(roleName: string, severityId?: string) {
   const severities = (await inject("GET", "/severities", admin)).json();
   const filed = await inject("POST", "/journal", author.cookie, {
     kind: "issue",
+    issueDetail: "Found it sheared on the drive side.",
+    occurredAt: new Date().toISOString(),
     title: "Conveyor jam",
     state: "submitted",
     severityId: severityId ?? severities[0].id,
@@ -131,6 +133,9 @@ async function chainWith(roleName: string, severityId?: string) {
   // Resolving needs the work written down, and only somebody who worked the entry
   // may write it — so the author logs it, not the admin moving the status.
   const logged = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+    detail: "Checked it over and ran it up.",
+    startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+    finishedAt: new Date().toISOString(),
     summary: "Replaced the belt",
   });
   expect(logged.statusCode).toBe(201);
@@ -138,7 +143,11 @@ async function chainWith(roleName: string, severityId?: string) {
   // Points are for finished work, so move it to a terminal status.
   const statuses = (await inject("GET", "/journal-statuses", admin)).json();
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
-  await inject("PATCH", `/journal/${reportId}/status`, admin, { statusId: resolved.id });
+  await inject("PATCH", `/journal/${reportId}/status`, admin, {
+    statusId: resolved.id,
+    rootCause: "The tensioner had backed off.",
+    preventiveMeasures: "Added it to the weekly round.",
+  });
 
   return { manager, author, reportId };
 }
@@ -218,6 +227,11 @@ describe("rejecting an entry", () => {
     const open = statuses.find((s: { group: string }) => s.group === "open");
     const moved = await inject("PATCH", `/journal/${reportId}/status`, manager.cookie, {
       statusId: open.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
     expect(moved.statusCode).toBe(409);
 

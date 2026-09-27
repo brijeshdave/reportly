@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { Select, Spinner } from "@/components/ui/form.js";
+import { Field, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Badge, Button } from "@/components/ui/primitives.js";
 import { statusTone } from "@/components/report-badges.js";
 import { changeReportStatus } from "@/services/journal.js";
@@ -29,8 +29,23 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
   const queryClient = useQueryClient();
   const statuses = useQuery({ queryKey: ["report-config", "statuses"], queryFn: fetchStatuses });
 
+  // The findings, asked for at the moment they are due. An issue is not finished until
+  // it says why it happened and what stops it happening again, and the server refuses
+  // the move without them — so this is where they are typed. They are deliberately not
+  // on the filing form: written before anybody has looked at the machine they would be
+  // a guess, and a guess in the record reads later as a finding.
+  const [rootCause, setRootCause] = useState(report.rootCause ?? "");
+  const [preventive, setPreventive] = useState(report.preventiveMeasures ?? "");
+
   const change = useMutation({
-    mutationFn: (statusId: string | null) => changeReportStatus(report.id, statusId),
+    mutationFn: (statusId: string | null) =>
+      changeReportStatus(
+        report.id,
+        statusId,
+        needsFindings(statusId)
+          ? { rootCause: rootCause.trim(), preventiveMeasures: preventive.trim() }
+          : undefined,
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["reports", "detail", report.id] });
       // The timeline gains an entry, and the list shows the new status.
@@ -63,6 +78,16 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
   const offered = all.filter((s) => isLegalMove(current, s));
   const dirty = choice !== (report.statusId ?? "");
 
+  /** Is the staged move the one that finishes this issue? */
+  function needsFindings(statusId: string | null): boolean {
+    if (report.kind !== "issue") return false;
+    const to = all.find((s) => s.id === statusId);
+    return Boolean(to?.isTerminal && to.group !== "rejected" && !current?.isTerminal);
+  }
+
+  const resolving = dirty && needsFindings(choice || null);
+  const findingsMissing = resolving && (rootCause.trim() === "" || preventive.trim() === "");
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
@@ -93,12 +118,45 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
             // could only be the placeholder, which is not a move.
             if (dirty && choice) change.mutate(choice);
           }}
-          disabled={!dirty || change.isPending || !choice}
+          disabled={!dirty || change.isPending || !choice || findingsMissing}
         >
           {change.isPending ? <Spinner /> : null}
-          Save
+          {resolving ? "Resolve" : "Save"}
         </Button>
       </div>
+
+      {/* Opened by the move itself rather than by a separate button: the fields appear
+          at the moment they are due, already knowing which move needs them. */}
+      {resolving ? (
+        <div className="mt-1 flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-3">
+          <p className="text-xs text-muted-foreground">
+            Closing this asks two things of it. They are what makes the entry worth reading a year
+            from now.
+          </p>
+          <Field label="Root cause" required>
+            {(props) => (
+              <Textarea
+                {...props}
+                rows={2}
+                value={rootCause}
+                onChange={(event) => setRootCause(event.target.value)}
+                placeholder="Why it happened — what actually failed."
+              />
+            )}
+          </Field>
+          <Field label="Preventive measures" required>
+            {(props) => (
+              <Textarea
+                {...props}
+                rows={2}
+                value={preventive}
+                onChange={(event) => setPreventive(event.target.value)}
+                placeholder="What stops it happening again."
+              />
+            )}
+          </Field>
+        </div>
+      ) : null}
 
       {current?.isTerminal && !dirty ? (
         <p className="text-xs text-muted-foreground">

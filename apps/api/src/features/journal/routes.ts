@@ -288,6 +288,10 @@ export async function journalRoutes(fastify: FastifyInstance): Promise<void> {
         request.params.id,
         request.body.statusId,
         request.ctx!,
+        {
+          rootCause: request.body.rootCause,
+          preventiveMeasures: request.body.preventiveMeasures,
+        },
       );
       await recordAudit(request, request.ctx!, {
         action: "journal.status",

@@ -233,6 +233,11 @@ export const reportEntrySettingsSchema = z.object({
    * refused. A **draft** is exempt, because a draft is for something unfinished.
    */
   requireWorkOnIssue: z.boolean().default(false),
+  /* Narrower than it once was, and worth saying plainly: an issue can no longer be
+     *resolved* without work either way — resolving refuses an empty work log, and asks
+     for a root cause and preventive measures besides. What this switch governs is
+     whether the work must be written down **at filing time**, which is the shortcut it
+     was added to remove. */
 });
 
 export type ReportEntrySettings = z.infer<typeof reportEntrySettingsSchema>;

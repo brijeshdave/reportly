@@ -125,6 +125,8 @@ async function file(cookie: string, title: string, severityId: string, state = "
     state,
     severityId,
     issueSummary: "Something stopped",
+    issueDetail: "It stopped mid-run and would not restart.",
+    occurredAt: new Date().toISOString(),
   });
   expect(res.statusCode).toBe(201);
   return res.json().id as string;
@@ -258,13 +260,23 @@ describe("the awaiting-review filter", () => {
     // only whether an entry was submitted, so it listed work still in progress as
     // though a manager could score it. It cannot — `setScores` refuses anything
     // outside the resolved group.
-    await inject("POST", `/journal/${ready}/work`, author.cookie, { summary: "Fixed it" });
+    await inject("POST", `/journal/${ready}/work`, author.cookie, {
+      summary: "Fixed it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
       id: string;
       group: string;
     }[];
     await inject("PATCH", `/journal/${ready}/status`, admin, {
       statusId: statuses.find((s) => s.group === "resolved")!.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
 
     const waiting = titles(
@@ -387,11 +399,16 @@ describe("what an entry must have", () => {
 
     const submitted = await inject("POST", "/journal", hod.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title: "No severity",
       state: "submitted",
     });
     expect(submitted.statusCode).toBe(400);
-    expect(submitted.json().error.message).toMatch(/severity/i);
+    // Named as a field, so the editor shows it under the severity picker rather than
+    // as a sentence above a form with four other inputs on it.
+    expect(submitted.json().error.fields.severityId).toMatch(/severity/i);
 
     // And the same when a draft is submitted later.
     const promoted = await inject("PATCH", `/journal/${draft.json().id}`, hod.cookie, {
@@ -414,6 +431,11 @@ describe("what an entry must have", () => {
 
     const tooSoon = await inject("PATCH", `/journal/${id}/status`, hod.cookie, {
       statusId: resolved.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
     expect(tooSoon.statusCode).toBe(400);
     expect(tooSoon.json().error.message).toMatch(/log what was done/i);
@@ -421,8 +443,13 @@ describe("what an entry must have", () => {
     // Refusing an entry is exactly the case where no work was done.
     const rejected = statuses.find((s) => s.group === "rejected")!;
     expect(
-      (await inject("PATCH", `/journal/${id}/status`, hod.cookie, { statusId: rejected.id }))
-        .statusCode,
+      (
+        await inject("PATCH", `/journal/${id}/status`, hod.cookie, {
+          statusId: rejected.id,
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
+        })
+      ).statusCode,
     ).toBe(200);
   });
 
@@ -432,6 +459,9 @@ describe("what an entry must have", () => {
     const id = await file(hod.cookie, "Fixed it", critical.id);
 
     await inject("POST", `/journal/${id}/work`, hod.cookie, {
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
       summary: "Replaced the belt",
     });
 
@@ -441,8 +471,13 @@ describe("what an entry must have", () => {
     }[];
     const resolved = statuses.find((s) => s.group === "resolved")!;
     expect(
-      (await inject("PATCH", `/journal/${id}/status`, hod.cookie, { statusId: resolved.id }))
-        .statusCode,
+      (
+        await inject("PATCH", `/journal/${id}/status`, hod.cookie, {
+          statusId: resolved.id,
+          rootCause: "The tensioner had backed off.",
+          preventiveMeasures: "Added it to the weekly round.",
+        })
+      ).statusCode,
     ).toBe(200);
   });
 });
@@ -455,13 +490,23 @@ describe("whether the review is done", () => {
     const { hod, manager, author, critical } = await buildChain(admin);
     const id = await file(author.cookie, "Scored later", critical.id);
 
-    await inject("POST", `/journal/${id}/work`, author.cookie, { summary: "Fixed it" });
+    await inject("POST", `/journal/${id}/work`, author.cookie, {
+      summary: "Fixed it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
       id: string;
       group: string;
     }[];
     await inject("PATCH", `/journal/${id}/status`, admin, {
       statusId: statuses.find((s) => s.group === "resolved")!.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
 
     const before = (await inject("GET", "/journal", author.cookie)).json().data as {
@@ -524,7 +569,12 @@ describe("whether the review is done", () => {
  */
 describe("what counts as waiting for review", () => {
   async function resolve(admin: string, id: string, authorCookie: string) {
-    await inject("POST", `/journal/${id}/work`, authorCookie, { summary: "Fixed it" });
+    await inject("POST", `/journal/${id}/work`, authorCookie, {
+      summary: "Fixed it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
       id: string;
       name: string;
@@ -532,6 +582,11 @@ describe("what counts as waiting for review", () => {
     }[];
     await inject("PATCH", `/journal/${id}/status`, admin, {
       statusId: statuses.find((s) => s.group === "resolved")!.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
   }
 
@@ -627,13 +682,23 @@ describe("points on the journal list", () => {
     const admin = await superadmin();
     const { hod, manager, author, critical } = await buildChain(admin);
     const id = await file(author.cookie, "Scored on the list", critical.id);
-    await inject("POST", `/journal/${id}/work`, author.cookie, { summary: "Fixed it" });
+    await inject("POST", `/journal/${id}/work`, author.cookie, {
+      summary: "Fixed it",
+      detail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date().toISOString(),
+    });
     const statuses = (await inject("GET", "/journal-statuses", admin)).json() as {
       id: string;
       group: string;
     }[];
     await inject("PATCH", `/journal/${id}/status`, admin, {
       statusId: statuses.find((s) => s.group === "resolved")!.id,
+      // Resolving an issue says why it happened and what stops it happening
+      // again. Supplied here so the tests that merely need a finished entry
+      // keep working; the rule itself is tested on its own.
+      rootCause: "The tensioner had backed off.",
+      preventiveMeasures: "Added it to the weekly round.",
     });
     await inject("PUT", `/journal/${id}/scores`, author.cookie, {
       scores: [{ userId: author.id, points: 2 }],

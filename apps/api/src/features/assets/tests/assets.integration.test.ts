@@ -200,6 +200,9 @@ describe("asset tree and device registry", () => {
 
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Robot arm stalling",
       state: "submitted",
@@ -255,6 +258,9 @@ describe("asset tree and device registry", () => {
       (
         await inject("POST", "/journal", author.cookie, {
           kind: "issue",
+          issueSummary: "Belt seized",
+          issueDetail: "Found it sheared on the drive side.",
+          occurredAt: new Date().toISOString(),
           severityId: await anySeverityId(),
           title,
           state: "submitted",
@@ -301,6 +307,9 @@ describe("asset tree and device registry", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueSummary: "Belt seized",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Cross-company scope",
       state: "submitted",

@@ -27,7 +27,7 @@ export interface ParsesInto<T> {
       };
 }
 
-export interface UseFormOptions<Values extends Record<string, unknown>, Payload> {
+export interface UseFormOptions<Values extends object, Payload> {
   /** The API's schema for this request. Not a copy of it — the same object. */
   schema: ParsesInto<Payload>;
   initial: Values;
@@ -46,7 +46,7 @@ export interface UseFormOptions<Values extends Record<string, unknown>, Payload>
   onSuccess?: (result: unknown) => void | Promise<void>;
 }
 
-export interface FormHandle<Values extends Record<string, unknown>> {
+export interface FormHandle<Values extends object> {
   values: Values;
   set: <K extends keyof Values>(key: K, value: Values[K]) => void;
   /** Replace the whole state — loading a different record into the same form. */
@@ -70,7 +70,7 @@ export interface FormHandle<Values extends Record<string, unknown>> {
   formRef: React.RefObject<HTMLFormElement | null>;
 }
 
-export function useForm<Values extends Record<string, unknown>, Payload>({
+export function useForm<Values extends object, Payload>({
   schema,
   initial,
   toPayload,

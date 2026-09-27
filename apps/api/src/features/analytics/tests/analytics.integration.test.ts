@@ -149,6 +149,8 @@ async function fileIssue(
 ): Promise<string> {
   const res = await inject("POST", "/journal", cookie, {
     kind: "issue",
+    issueDetail: "Found it sheared on the drive side.",
+    occurredAt: new Date().toISOString(),
     severityId: await anySeverityId(),
     title,
     state: "submitted",
@@ -405,6 +407,8 @@ describe("report timeline", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
       title: "Bearing noise",
       state: "submitted",
@@ -447,6 +451,9 @@ describe("report timeline", () => {
         title: "Routine check",
         state: "draft",
         workSummary: "Looked at it",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
       })
     ).json().id;
 
@@ -469,6 +476,9 @@ describe("report timeline", () => {
         title: "Not yours",
         state: "submitted",
         workSummary: "Done",
+        workDetail: "Checked it over and ran it up.",
+        startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        endedAt: new Date().toISOString(),
       })
     ).json().id;
 
@@ -509,6 +519,9 @@ describe("my day", () => {
       title: "Filed just now",
       state: "submitted",
       workSummary: "Done",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
     });
     await inject("POST", "/journal", author.cookie, {
       kind: "work",
@@ -634,6 +647,8 @@ describe("the management pack", () => {
   async function fileIssue(admin: string, reportDate: string, title: string): Promise<string> {
     const res = await inject("POST", "/journal", admin, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title,
       state: "submitted",
       severityId: await anySeverityId(),
@@ -694,6 +709,9 @@ describe("the management pack", () => {
       state: "submitted",
       severityId: await anySeverityId(),
       workSummary: "x",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       reportDate: when,
     });
     expect(work.statusCode).toBe(201);
@@ -761,6 +779,8 @@ describe("the management pack", () => {
     for (let i = 0; i < 3; i += 1) {
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        issueDetail: "Found it sheared on the drive side.",
+        occurredAt: new Date().toISOString(),
         title: `At the first site ${i}`,
         state: "submitted",
         severityId: await anySeverityId(),

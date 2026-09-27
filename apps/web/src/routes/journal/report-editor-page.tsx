@@ -6,20 +6,22 @@
 // measures and a status; a **work** log asks only what was done. You can **save a
 // draft** (private) or **submit** it (into the appraisal loop).
 import {
+  createJournalEntrySchema,
   type CreateJournalEntry,
   type ReportKind,
   type Severity,
   type JournalStatus,
   type CategoryRow,
 } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SearchableSelect } from "@/components/searchable-select.js";
-import { Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
+import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
+import { useForm } from "@/hooks/use-form.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchMyDepartments } from "@/services/departments.js";
@@ -175,7 +177,10 @@ function Editor({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<FormState>(seed);
+  // Which button was pressed. A ref, not state: the click has to be readable by the
+  // submit that follows it in the same tick, and a `useState` set here would still be
+  // the previous value when the payload is built.
+  const intent = useRef<"draft" | "submitted">("submitted");
   // Kept beside the form rather than inside it: tags are a list of ids, not a text
   // field, and the form's generic `set(key, value)` is typed for strings.
   const [tagIds, setTagIds] = useState<string[]>(seedTagIds);
@@ -204,6 +209,78 @@ function Editor({
   // Scoped by the API to the sites this person's groups reach.
   const locations = useQuery({ queryKey: ["locations"], queryFn: fetchMyLocations });
 
+  const build = (values: FormState, state: "draft" | "submitted") => ({
+    kind: values.kind,
+    title: values.title.trim(),
+    state,
+    departmentId: values.departmentId || undefined,
+    locationId: values.locationId || undefined,
+    categoryId: values.categoryId || undefined,
+    // Always sent, so clearing every tag actually clears them. The API leaves tags
+    // alone only when the key is absent, which is a state this form never wants.
+    tagIds,
+    severityId: values.kind === "issue" && values.severityId ? values.severityId : undefined,
+    statusId: values.kind === "issue" && values.statusId ? values.statusId : undefined,
+    occurredAt: values.kind === "issue" ? toIso(values.occurredAt) : undefined,
+    startedAt: toIso(values.startedAt),
+    endedAt: toIso(values.endedAt),
+    issueSummary: values.kind === "issue" ? values.issueSummary.trim() || undefined : undefined,
+    issueDetail: values.kind === "issue" ? values.issueDetail.trim() || undefined : undefined,
+    rootCause: values.kind === "issue" ? values.rootCause.trim() || undefined : undefined,
+    preventiveMeasures:
+      values.kind === "issue" ? values.preventiveMeasures.trim() || undefined : undefined,
+    // Only when filing. On an edit these are not accepted: they are a roll-up of the
+    // work timeline, and the entry's own Log work is where a correction belongs.
+    ...(mode === "create"
+      ? {
+          workSummary: values.workSummary.trim() || undefined,
+          workDetail: values.workDetail.trim() || undefined,
+        }
+      : {}),
+    // Always sent, including when empty: on an edit that is how scope is cleared.
+    targets: values.targets.map(({ kind, id }) => ({ kind, id })),
+  });
+
+  const editor = useForm<FormState, unknown>({
+    // The route's own schema, not a copy of it: a rule can only be enforced in two
+    // places if it is written in one. A **draft** is checked for shape alone, which
+    // is what the schema itself says — the required fields are conditioned on being
+    // submitted.
+    schema: createJournalEntrySchema,
+    initial: seed,
+    toPayload: (values) => build(values, intent.current),
+    // The parsed payload is deliberately not what gets sent. `createJournalEntrySchema`
+    // no longer carries root cause or preventive measures — they belong to closing an
+    // issue — so parsing would strip them out of an edit that is correcting them. The
+    // schema decides whether this is allowed; the builder decides what goes.
+    submit: async () => {
+      const payload = build(editorValues.current, intent.current);
+      return mode === "edit"
+        ? updateReport(reportId!, payload)
+        : createReport({ ...payload, ...(taskId ? { taskId } : {}) } as CreateJournalEntry);
+    },
+    onSuccess: async (report) => {
+      await queryClient.invalidateQueries({ queryKey: ["reports"] });
+      await navigate({
+        to: "/journal/$reportId",
+        params: { reportId: (report as { id: string }).id },
+      });
+    },
+  });
+
+  // `submit` closes over the values as they were when it was built; this is the pair
+  // of eyes on the current ones.
+  const editorValues = useRef(editor.values);
+  editorValues.current = editor.values;
+
+  const form = editor.values;
+  const set = editor.set;
+  const saving = editor.submitting;
+  const save = (state: "draft" | "submitted") => {
+    intent.current = state;
+    void editor.handleSubmit();
+  };
+
   // With exactly one department there is nothing to choose, so it is filled in
   // rather than left blank for somebody to wonder about. With several, they pick.
   useEffect(() => {
@@ -223,53 +300,6 @@ function Editor({
     enabled: Boolean(form.departmentId),
   });
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((f) => ({ ...f, [key]: value }));
-
-  const build = (state: "draft" | "submitted"): CreateJournalEntry => ({
-    kind: form.kind,
-    title: form.title.trim(),
-    state,
-    departmentId: form.departmentId || undefined,
-    locationId: form.locationId || undefined,
-    categoryId: form.categoryId || undefined,
-    // Always sent, so clearing every tag actually clears them. The API leaves tags
-    // alone only when the key is absent, which is a state this form never wants.
-    tagIds,
-    severityId: form.kind === "issue" && form.severityId ? form.severityId : undefined,
-    statusId: form.kind === "issue" && form.statusId ? form.statusId : undefined,
-    occurredAt: form.kind === "issue" ? toIso(form.occurredAt) : undefined,
-    startedAt: toIso(form.startedAt),
-    endedAt: toIso(form.endedAt),
-    issueSummary: form.kind === "issue" ? form.issueSummary.trim() || undefined : undefined,
-    issueDetail: form.kind === "issue" ? form.issueDetail.trim() || undefined : undefined,
-    rootCause: form.kind === "issue" ? form.rootCause.trim() || undefined : undefined,
-    preventiveMeasures:
-      form.kind === "issue" ? form.preventiveMeasures.trim() || undefined : undefined,
-    // Only when filing. On an edit these are not accepted: they are a roll-up of the
-    // work timeline, and the entry's own Log work is where a correction belongs.
-    ...(mode === "create"
-      ? {
-          workSummary: form.workSummary.trim() || undefined,
-          workDetail: form.workDetail.trim() || undefined,
-        }
-      : {}),
-    // Always sent, including when empty: on an edit that is how scope is cleared.
-    targets: form.targets.map(({ kind, id }) => ({ kind, id })),
-  });
-
-  const save = useMutation({
-    mutationFn: (state: "draft" | "submitted") =>
-      mode === "edit"
-        ? updateReport(reportId!, build(state))
-        : createReport({ ...build(state), ...(taskId ? { taskId } : {}) }),
-    onSuccess: async (report) => {
-      await queryClient.invalidateQueries({ queryKey: ["reports"] });
-      await navigate({ to: "/journal/$reportId", params: { reportId: report.id } });
-    },
-  });
-
-  const submit = (event: FormEvent) => event.preventDefault();
   const isIssue = form.kind === "issue";
   // Only when *filing* an issue. Editing one keeps the fields open — correcting a
   // typo in what you already wrote should not need a different screen — and a work
@@ -289,6 +319,13 @@ function Editor({
   const [workOpen, setWorkOpen] = useState(false);
   const activeSeverities = (severities.data ?? []).filter((s: Severity) => s.status === "active");
   const activeStatuses = (statuses.data ?? []).filter((s: JournalStatus) => s.status === "active");
+  // Only the statuses an entry may be *filed* at. An issue enters the workflow at the
+  // start of it — filing straight into Resolved skips triage entirely and leaves a
+  // status timeline that began where it should stop. The server refuses it either
+  // way; this is what stops the form offering a choice the save will not take.
+  const openStatuses = activeStatuses.filter(
+    (s: JournalStatus) => s.group === "open" && !s.isTerminal,
+  );
   const activeCategories = (categories.data ?? []).filter(
     (c: CategoryRow) => c.status === "active",
   );
@@ -309,8 +346,14 @@ function Editor({
           with a dropdown per level, and a deep path needs room to read rather than
           being cut off. Still capped, so lines of prose do not run the full width
           of a large monitor. */}
-      <form onSubmit={submit} className="mt-2 flex max-w-5xl flex-col gap-4">
-        {save.error ? <ErrorAlert error={save.error} /> : null}
+      <form
+        ref={editor.formRef}
+        onSubmit={editor.handleSubmit}
+        className="mt-2 flex max-w-5xl flex-col gap-4"
+      >
+        {/* What could not be blamed on a field — a permission, a conflict, a network
+            failure. Everything the server could attribute is under its own input. */}
+        {editor.formError ? <ErrorAlert error={editor.formError} /> : null}
 
         <Card className="flex flex-col gap-4 p-6">
           {/* Only when this company still files both. An entry carries its own
@@ -334,13 +377,11 @@ function Editor({
             ))}
           </div>
 
-          <Field label="Title">
+          <Field label="Title" required error={editor.errorFor("title")}>
             {(props) => (
               <Input
                 {...props}
-                value={form.title}
-                onChange={(e) => set("title", e.target.value)}
-                required
+                {...editor.register("title")}
                 autoFocus
                 placeholder={isIssue ? "e.g. Conveyor jam on line 3" : "e.g. Daily QC round"}
               />
@@ -445,86 +486,67 @@ function Editor({
           <Card className="flex flex-col gap-4 p-6">
             <h2 className="text-sm font-semibold">The issue</h2>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Severity</span>
-                <select
-                  value={form.severityId}
-                  onChange={(e) => set("severityId", e.target.value)}
-                  className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
-                >
-                  <option value="">None</option>
-                  {activeSeverities.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Status</span>
-                <select
-                  value={form.statusId}
-                  onChange={(e) => set("statusId", e.target.value)}
-                  className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
-                >
-                  {activeStatuses.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Field label="Severity" required error={editor.errorFor("severityId")}>
+                {(props) => (
+                  <Select {...props} {...editor.register("severityId")}>
+                    <option value="">Choose one</option>
+                    {activeSeverities.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label="Status" required error={editor.errorFor("statusId")}>
+                {(props) => (
+                  <Select {...props} {...editor.register("statusId")}>
+                    {openStatuses.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
             </div>
 
-            <Field label="What happened (short)">
-              {(props) => (
-                <Input
-                  {...props}
-                  value={form.issueSummary}
-                  onChange={(e) => set("issueSummary", e.target.value)}
-                />
-              )}
+            <Field label="What happened (short)" required error={editor.errorFor("issueSummary")}>
+              {(props) => <Input {...props} {...editor.register("issueSummary")} />}
             </Field>
-            <Field label="Detailed description">
-              {(props) => (
-                <Textarea
-                  {...props}
-                  value={form.issueDetail}
-                  onChange={(e) => set("issueDetail", e.target.value)}
-                  rows={3}
-                />
-              )}
+            <Field label="Detailed description" required error={editor.errorFor("issueDetail")}>
+              {(props) => <Textarea {...props} {...editor.register("issueDetail")} rows={3} />}
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Occurred at</span>
-                <Input
-                  type="datetime-local"
-                  value={form.occurredAt}
-                  onChange={(e) => set("occurredAt", e.target.value)}
-                />
-              </label>
+              <Field label="Occurred at" required error={editor.errorFor("occurredAt")}>
+                {(props) => (
+                  <Input
+                    {...props}
+                    type="datetime-local"
+                    {...editor.register("occurredAt")}
+                    max={nowForInput()}
+                  />
+                )}
+              </Field>
             </div>
-            <Field label="Root cause">
-              {(props) => (
-                <Textarea
-                  {...props}
-                  value={form.rootCause}
-                  onChange={(e) => set("rootCause", e.target.value)}
-                  rows={2}
-                />
-              )}
-            </Field>
-            <Field label="Preventive measures">
-              {(props) => (
-                <Textarea
-                  {...props}
-                  value={form.preventiveMeasures}
-                  onChange={(e) => set("preventiveMeasures", e.target.value)}
-                  rows={2}
-                />
-              )}
-            </Field>
+            {/* Root cause and preventive measures belong to *closing* the issue, not to
+                raising it: filled in before anybody has looked at the machine they are a
+                guess, and a guess written into the record reads later as a finding. On a
+                new entry they are not offered at all; the Resolve step asks for them and
+                will not finish without them. They stay here on an edit so a wording can
+                be corrected without re-opening anything. */}
+            {mode === "edit" ? (
+              <>
+                <Field label="Root cause" error={editor.errorFor("rootCause")}>
+                  {(props) => <Textarea {...props} {...editor.register("rootCause")} rows={2} />}
+                </Field>
+                <Field label="Preventive measures" error={editor.errorFor("preventiveMeasures")}>
+                  {(props) => (
+                    <Textarea {...props} {...editor.register("preventiveMeasures")} rows={2} />
+                  )}
+                </Field>
+              </>
+            ) : null}
           </Card>
         ) : null}
 
@@ -647,22 +669,35 @@ function Editor({
             variant="secondary"
             size="sm"
             type="button"
-            disabled={save.isPending || form.title.trim() === ""}
-            onClick={() => save.mutate("draft")}
+            disabled={saving || form.title.trim() === ""}
+            onClick={() => save("draft")}
           >
             Save draft
           </Button>
           <Button
             size="sm"
             type="button"
-            disabled={save.isPending || form.title.trim() === ""}
-            onClick={() => save.mutate("submitted")}
+            disabled={saving || form.title.trim() === ""}
+            onClick={() => save("submitted")}
           >
-            {save.isPending ? <Spinner /> : null}
+            {saving ? <Spinner /> : null}
             Submit
           </Button>
         </div>
       </form>
     </>
   );
+}
+
+/**
+ * Now, as a `datetime-local` value — the ceiling on "Occurred at".
+ *
+ * A native `max` is what stops the picker offering next month at all; the schema
+ * refuses a future occurrence anyway, and a control that lets somebody choose what
+ * the form will then reject is a control that wasted their time.
+ */
+function nowForInput(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

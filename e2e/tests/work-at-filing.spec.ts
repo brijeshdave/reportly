@@ -12,7 +12,7 @@
 // uses puts the work where the screen that reads it looks.
 import { expect, test, type Page } from "@playwright/test";
 
-import { addMember, superadminName, unique } from "./helpers.js";
+import { addMember, localInput, submitIssue, superadminName, unique } from "./helpers.js";
 
 /** The editor derives the department from the author's own memberships, so the
  *  signed-in superadmin has to be on one before anything here can be submitted. */
@@ -53,14 +53,17 @@ test("work typed on the filing form becomes the entry's first work log item", as
 
   await page.goto("/journal/new");
   await page.getByLabel("Title").fill(title);
-  await page.getByLabel("Severity").selectOption({ index: 1 });
 
   // The shortcut the complaint was about: an issue whose work is already finished.
+  // Ticked before submitting, because the work fields are part of what is submitted.
   await page.getByLabel("I already did the work").check();
   await page.getByLabel("Summary").fill("Replaced the drive belt");
   await page.getByLabel("Details").fill("Spare from the east store.");
+  // Work described at filing is a work log, so it carries a work log's hours.
+  await page.getByLabel("Started work").fill(localInput(-3_600_000));
+  await page.getByLabel("Finished work").fill(localInput(-60_000));
 
-  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await submitIssue(page);
   await expect(page).toHaveURL(/\/journal\/[0-9a-f-]{36}$/);
 
   // The bug, as a person saw it: this card read "Nothing logged yet" while the form
@@ -77,6 +80,9 @@ test("work typed on the filing form becomes the entry's first work log item", as
   // write, so a second item used to take the first one's place rather than follow it.
   await page.getByRole("button", { name: "Log work", exact: true }).click();
   await page.getByLabel("What you did").fill("Greased the bearings");
+  await page.getByLabel("Details").fill("Went round the whole run with the gun.");
+  await page.getByLabel("Started").fill(localInput(-45 * 60_000));
+  await page.getByLabel("Finished").fill(localInput(-5 * 60_000));
   await page.getByRole("button", { name: "Save work", exact: true }).click();
   await expect(page.getByText("Greased the bearings").first()).toBeVisible();
   await expect(page.getByText("Replaced the drive belt").first()).toBeVisible();
@@ -93,8 +99,7 @@ test("editing an entry sends you to the work log rather than offering the roll-u
 
   await page.goto("/journal/new");
   await page.getByLabel("Title").fill(title);
-  await page.getByLabel("Severity").selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Submit", exact: true }).click();
+  await submitIssue(page);
   await expect(page).toHaveURL(/\/journal\/[0-9a-f-]{36}$/);
 
   // Straight to the route. The detail page's Edit is a button well down the page and

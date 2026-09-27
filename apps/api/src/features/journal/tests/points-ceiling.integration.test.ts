@@ -128,6 +128,8 @@ async function fileAndResolve(
 ) {
   const filed = await inject("POST", "/journal", author.cookie, {
     kind: "issue",
+    issueDetail: "Found it sheared on the drive side.",
+    occurredAt: new Date().toISOString(),
     title: "Conveyor jam",
     state: "submitted",
     severityId,
@@ -138,11 +140,18 @@ async function fileAndResolve(
   const reportId = filed.json().id as string;
 
   await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+    detail: "Checked it over and ran it up.",
+    startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+    finishedAt: new Date().toISOString(),
     summary: "Replaced the belt",
   });
   const statuses = (await inject("GET", "/journal-statuses", admin)).json();
   const resolved = statuses.find((s: { name: string }) => s.name === "Resolved");
-  await inject("PATCH", `/journal/${reportId}/status`, admin, { statusId: resolved.id });
+  await inject("PATCH", `/journal/${reportId}/status`, admin, {
+    statusId: resolved.id,
+    rootCause: "The tensioner had backed off.",
+    preventiveMeasures: "Added it to the weekly round.",
+  });
   return reportId;
 }
 
@@ -272,12 +281,16 @@ describe("submitting without a severity", () => {
     const { author } = await scene(5);
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
       title: "Conveyor jam",
       state: "submitted",
       issueSummary: "Belt seized",
     });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error.message).toContain("Choose a severity");
+    // Named as a field now, not only as a sentence: the editor puts it under the
+    // severity picker rather than above the whole form.
+    expect(res.json().error.fields.severityId).toContain("Choose a severity");
   });
 
   it("allows a draft breakdown, which is still being written", async () => {
@@ -296,6 +309,9 @@ describe("submitting without a severity", () => {
       kind: "work",
       title: "Greased the bearings",
       workSummary: "Night shift round.",
+      workDetail: "Checked it over and ran it up.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
       state: "submitted",
     });
     expect(res.statusCode).toBe(201);
