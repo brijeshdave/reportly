@@ -413,6 +413,11 @@ in the end-user reports.
 | Delete        | `end-users:delete` | Refused once an entry names them. Deactivate instead.         |
 | Import        | `end-users:import` | Matched on the employee number; all or nothing.               |
 
+Four shipped roles carry these: **End users viewer**, **editor**, **admin** and
+**superadmin** — the last because deleting is a tier above administering everywhere in
+Reportly. A journal role grants `end-users:read` and nothing more: naming somebody on
+an entry is part of filing, maintaining the register is a different job.
+
 The list shows an **entry count** beside each person, which is the reason the register
 exists: it is what turns a staff list into the answer to "whose equipment keeps
 failing". The full story, including how the journal narrows the list by department, is

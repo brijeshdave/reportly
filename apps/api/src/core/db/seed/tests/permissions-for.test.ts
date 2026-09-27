@@ -193,6 +193,35 @@ describe("the broad ladder", () => {
     expect(viewer).not.toContain("audit:view");
   });
 
+  it("gives the end-user register its own job, and keeps deletion a tier up", () => {
+    const byName = new Map(AREA_ROLES.map((r) => [r.name, r.permissions]));
+
+    // Reported as missing after the feature shipped: the five keys existed and were
+    // enforced, but the only role that held them was "Journal admin" — so the person
+    // whose job is the register had to be given the journal as well.
+    const admin = byName.get("End users admin")!;
+    expect(admin).toContain("end-users:create");
+    expect(admin).toContain("end-users:import");
+    // Its own area, so its own tier rule: an edit shows in the history, a deletion
+    // takes the history — and here the history is what the reports are made of.
+    expect(admin).not.toContain("end-users:delete");
+    expect(byName.get("End users superadmin")!).toContain("end-users:delete");
+
+    // The middle tier keeps the list straight without the bulk load.
+    const editor = byName.get("End users editor")!;
+    expect(editor).toContain("end-users:update");
+    expect(editor).not.toContain("end-users:import");
+    expect(editor).not.toContain("end-users:delete");
+
+    // Filing an entry names people, so every journal tier reads the list — and
+    // reads is all it does. Maintaining it is not a journal administrator's job.
+    const journal = byName.get("Journal admin")!;
+    expect(journal).toContain("end-users:read");
+    expect(journal).not.toContain("end-users:create");
+    expect(journal).not.toContain("end-users:import");
+    expect(byName.get("Journal editor")!).toContain("end-users:read");
+  });
+
   it("every permission is reachable from some role", () => {
     // Otherwise a key exists, is enforced, and can be granted to nobody — which is
     // a permission that silently forbids the thing it names.

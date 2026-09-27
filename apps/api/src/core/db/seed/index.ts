@@ -410,12 +410,11 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.JOURNAL_CONFIG_MANAGE,
       PERMISSIONS.JOURNAL_CONFIG_IMPORT,
       // Naming the person a fault happened to is part of filing it, so every tier
-      // that files gets the list. Maintaining the list is the tier below.
+      // that files gets the list — and only the list. Maintaining the register is
+      // its own job with its own roles ("End users admin" and below): a journal
+      // administrator has no more business importing five thousand people than a
+      // helpdesk coordinator has scoring an entry.
       PERMISSIONS.END_USERS_READ,
-      PERMISSIONS.END_USERS_CREATE,
-      PERMISSIONS.END_USERS_UPDATE,
-      PERMISSIONS.END_USERS_DELETE,
-      PERMISSIONS.END_USERS_IMPORT,
       PERMISSIONS.CATEGORIES_MANAGE,
       PERMISSIONS.TAGS_MANAGE,
       PERMISSIONS.COMMENTS_UPDATE,
@@ -671,6 +670,51 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.GROUPS_READ,
       PERMISSIONS.ROLES_READ,
       PERMISSIONS.DEPARTMENTS_READ,
+    ],
+  },
+
+  /* --------------------------------------------------------------- end users --- */
+  {
+    // Its own family rather than a fold of Access or of Journal, and for the same
+    // reason the table is its own: maintaining the register of people the team
+    // supports is a job — a helpdesk coordinator's — and it is not the same job as
+    // administering accounts (they have no accounts) or as running the journal
+    // (filing needs only `:read`, which every journal role already carries).
+    //
+    // `:delete` is here and is stripped into "End users superadmin" by the tier
+    // rule below, like every other area: an edit is visible in the history, a
+    // deletion takes the history with it — and here the history is the reports.
+    name: "End users admin",
+    permissions: [
+      PERMISSIONS.END_USERS_READ,
+      PERMISSIONS.END_USERS_CREATE,
+      PERMISSIONS.END_USERS_UPDATE,
+      PERMISSIONS.END_USERS_DELETE,
+      PERMISSIONS.END_USERS_IMPORT,
+      PERMISSIONS.DEPARTMENTS_READ,
+      PERMISSIONS.REPORTS_VIEW_END_USER_SUMMARY,
+      PERMISSIONS.REPORTS_VIEW_END_USER_ISSUES,
+    ],
+  },
+  {
+    // Keeps the register straight — adds people, corrects them, makes a leaver
+    // inactive — without the bulk load that can rewrite every row at once.
+    name: "End users editor",
+    permissions: [
+      PERMISSIONS.END_USERS_READ,
+      PERMISSIONS.END_USERS_CREATE,
+      PERMISSIONS.END_USERS_UPDATE,
+      PERMISSIONS.DEPARTMENTS_READ,
+    ],
+  },
+  {
+    // Reads the register and the two figures built from it. For the person who is
+    // asked "whose laptop is this?" and answers it, rather than maintaining it.
+    name: "End users viewer",
+    permissions: [
+      PERMISSIONS.END_USERS_READ,
+      PERMISSIONS.REPORTS_VIEW_END_USER_SUMMARY,
+      PERMISSIONS.REPORTS_VIEW_END_USER_ISSUES,
     ],
   },
 

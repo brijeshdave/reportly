@@ -136,7 +136,20 @@ there would claim everything was fixed instantly.
 
 `end-users:read` is held by **everybody who files**, because naming the person a fault
 happened to is part of filing an entry. The four that change the list are held
-separately, like the rest of the master data.
+separately, like the rest of the master data — a journal administrator can name people
+on entries and nothing more.
+
+Four shipped roles carry them, so nobody has to assemble one:
+
+| Role                     | What it is for                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| **End users viewer**     | Reads the register and the two reports. For answering "whose laptop is this?". |
+| **End users editor**     | Adds people, corrects them, makes a leaver inactive. No bulk import.           |
+| **End users admin**      | The above, plus the spreadsheet import.                                        |
+| **End users superadmin** | The above, plus deleting somebody who is named on nothing.                     |
+
+Deleting sits a tier above administering, as it does everywhere in Reportly: an edit
+shows up in the history, and a deletion takes the history with it.
 
 The two reports have their own keys — `reports:view:end_user_summary` and
 `reports:view:end_user_issues` — so the figures can be given to a manager without
