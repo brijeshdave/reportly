@@ -86,3 +86,37 @@ test("offers no finished status when filing, and no root cause to guess at", asy
   await expect(page.getByLabel("Root cause")).toBeHidden();
   await expect(page.getByLabel("Preventive measures")).toBeHidden();
 });
+
+test("shows a message under every work-done field", async ({ page }) => {
+  // Reported from use: "no proper errors or some times no errors shown for work done
+  // on front end." The work fields were validated and not drawn, so the submit
+  // stopped and said nothing at all.
+  await pickCompany(page);
+  await page.goto("/journal/new");
+  await expect(page.getByLabel("Title")).toBeVisible();
+  await page.getByLabel("Title").fill(`Belt snapped ${unique("w").slice(0, 6)}`);
+
+  // Everything the issue needs, so the only thing left wrong is the work.
+  await page.getByLabel("Severity").selectOption({ index: 1 });
+  await page.getByLabel("What happened (short)").fill("It stopped mid-run");
+  await page.getByLabel("Detailed description").fill("Came to a halt under load.");
+  await page.getByLabel("Occurred at").fill(nowMinus(30));
+
+  // Claim work, then say nothing else about it.
+  await page.getByLabel("I already did the work").check();
+  await page.getByLabel("Summary").fill("Replaced the drive belt");
+  await page.getByRole("button", { name: "Submit", exact: true }).click();
+
+  await expect(page.getByText(/Describe what you did/)).toBeVisible();
+  await expect(page.getByText("Say when you started.")).toBeVisible();
+  await expect(page.getByText("Say when you finished.")).toBeVisible();
+  await expect(page).toHaveURL(/\/journal\/new$/);
+  await page.screenshot({ path: "test-results/work-done-errors.png", fullPage: true });
+});
+
+/** A `datetime-local` value, that many minutes ago. */
+function nowMinus(minutes: number): string {
+  const d = new Date(Date.now() - minutes * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}

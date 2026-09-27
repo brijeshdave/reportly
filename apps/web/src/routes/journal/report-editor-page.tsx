@@ -594,48 +594,44 @@ function Editor({
               </p>
             ) : (
               <>
-                <Field label="Summary">
-                  {(props) => (
-                    <Input
-                      {...props}
-                      value={form.workSummary}
-                      onChange={(e) => set("workSummary", e.target.value)}
-                    />
-                  )}
+                {/* Work claimed here becomes the entry's first work log item, so it is
+                    held to a work log's rules — and every one of these has to be able to
+                    show its own message. They were left unwired when the issue fields
+                    were converted, which made a form that refused to submit and said
+                    nothing: the messages were set on fields that drew none, and there
+                    was no input for the focus to move to. */}
+                <Field label="Summary" required error={editor.errorFor("workSummary")}>
+                  {(props) => <Input {...props} {...editor.register("workSummary")} />}
                 </Field>
-                <Field label="Details">
-                  {(props) => (
-                    <Textarea
-                      {...props}
-                      value={form.workDetail}
-                      onChange={(e) => set("workDetail", e.target.value)}
-                      rows={3}
-                    />
-                  )}
+                <Field label="Details" required error={editor.errorFor("workDetail")}>
+                  {(props) => <Textarea {...props} {...editor.register("workDetail")} rows={3} />}
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label
-                    className="flex flex-col gap-1 text-sm"
-                    title="When YOU picked the job up — not when the machine stopped. If you were called at 2am but only started at 6am, put 6am."
+                  <Field
+                    label="Started work"
+                    required
+                    error={editor.errorFor("startedAt")}
+                    hint="When YOU picked the job up — not when the machine stopped. If you were called at 2am but only started at 6am, put 6am."
                   >
-                    <span className="font-medium">Started work</span>
-                    <Input
-                      type="datetime-local"
-                      value={form.startedAt}
-                      onChange={(e) => set("startedAt", e.target.value)}
-                    />
-                  </label>
-                  <label
-                    className="flex flex-col gap-1 text-sm"
-                    title="When you were done with it — including any watching or checking afterwards. Not when the machine came back."
+                    {(props) => (
+                      <Input {...props} type="datetime-local" {...editor.register("startedAt")} />
+                    )}
+                  </Field>
+                  <Field
+                    label="Finished work"
+                    required
+                    error={editor.errorFor("endedAt")}
+                    hint="When you were done with it — including any watching or checking afterwards. Not when the machine came back."
                   >
-                    <span className="font-medium">Finished work</span>
-                    <Input
-                      type="datetime-local"
-                      value={form.endedAt}
-                      onChange={(e) => set("endedAt", e.target.value)}
-                    />
-                  </label>
+                    {(props) => (
+                      <Input
+                        {...props}
+                        type="datetime-local"
+                        {...editor.register("endedAt")}
+                        max={nowForInput()}
+                      />
+                    )}
+                  </Field>
                 </div>
                 {/* This said "coming soon" of downtime long after downtime shipped —
               so the screen was telling people the very separation it was making
@@ -645,7 +641,8 @@ function Editor({
                   <ul className="mt-1 space-y-1">
                     <li>
                       <strong>Here</strong> — your own hours on the job, start to finish, including
-                      watching it afterwards. Leave both empty if you would rather not say.
+                      watching it afterwards. Both are needed: an item with no hours cannot be read
+                      as a shift, or set beside a colleague's.
                     </li>
                     <li>
                       <strong>Downtime</strong> — how long production actually stopped. Recorded on

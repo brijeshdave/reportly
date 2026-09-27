@@ -125,17 +125,47 @@ export function useForm<Values extends object, Payload>({
     [validate, values],
   );
 
-  const focusFirst = useCallback((fields: FieldErrors) => {
-    const first = Object.keys(fields)[0];
-    if (!first) return;
-    const node = formRef.current?.querySelector<HTMLElement>(`[name="${CSS.escape(first)}"]`);
-    // Scrolled as well as focused: on a long form the bad field is often above or
-    // below the fold, and a focus nobody can see reads as a submit that did nothing.
-    // Called defensively — `scrollIntoView` is absent in jsdom and on old engines, and
-    // a throw here would take the whole submit with it to move the page a little.
-    node?.focus();
-    node?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-  }, []);
+  const nodeFor = useCallback(
+    (key: string) =>
+      formRef.current?.querySelector<HTMLElement>(`[name="${CSS.escape(key)}"]`) ?? null,
+    [],
+  );
+
+  /**
+   * Move to the first bad field, and refuse to fail silently.
+   *
+   * A message can only be read if something draws it. A field the form validates but
+   * does not `register` has no input to carry the message and none to move focus to,
+   * so the submit stopped, said nothing, and looked like a dead button — reported
+   * exactly that way about the journal editor's work fields, which were left unwired
+   * when the rest of the form was converted.
+   *
+   * So anything with nowhere to go is gathered into the form-level alert instead. It
+   * is not as good as a message under the input, and it is not meant to be: it is the
+   * floor, and it holds while the remaining forms are still being converted.
+   */
+  const focusFirst = useCallback(
+    (fields: FieldErrors) => {
+      const keys = Object.keys(fields);
+      if (keys.length === 0) return;
+
+      const homeless = keys.filter((key) => !nodeFor(key));
+      if (homeless.length > 0) {
+        setFormError(new Error(homeless.map((key) => fields[key]).join(" ")));
+      }
+
+      const first = keys.find((key) => nodeFor(key));
+      if (!first) return;
+      const node = nodeFor(first);
+      // Scrolled as well as focused: on a long form the bad field is often above or
+      // below the fold, and a focus nobody can see reads as a submit that did nothing.
+      // Called defensively — `scrollIntoView` is absent in jsdom and on old engines,
+      // and a throw here would take the whole submit with it to move the page a little.
+      node?.focus();
+      node?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    },
+    [nodeFor],
+  );
 
   const handleSubmit = useCallback(
     async (event?: FormEvent) => {
@@ -145,6 +175,7 @@ export function useForm<Values extends object, Payload>({
       const { fields, data } = validate(values);
       if (data === undefined) {
         setErrors(fields);
+        // After `setFormError(null)` above, so the net it may set survives this pass.
         focusFirst(fields);
         return;
       }

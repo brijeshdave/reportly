@@ -86,10 +86,12 @@ export function PriorityBadge({ priority }: { priority: TaskPriority }) {
  * levels with different words on another — so a lookup by name would be a list this
  * file could only ever get wrong. The ladder already says which end is worse.
  *
- * The bottom of the ladder is quiet, the top is red, and everything between takes
- * the middle two tones. One severity on its own is neutral: with nothing to compare
- * it to, colouring it red would be an opinion the data does not support.
+ * The bottom of the ladder is quiet, the top is red. One severity on its own is
+ * neutral: with nothing to compare it to, colouring it red would be an opinion the
+ * data does not support.
  */
+const SEVERITY_SCALE = ["neutral", "success", "info", "warning", "danger"] as const;
+
 export function SeverityBadge({ name }: { name: string | null }) {
   const { data } = useQuery({ queryKey: ["severities"], queryFn: fetchSeverities });
   if (!name) return <span className="text-muted-foreground">—</span>;
@@ -100,8 +102,19 @@ export function SeverityBadge({ name }: { name: string | null }) {
   // has to say the word — a missing colour is a smaller fault than a missing label.
   if (index < 0 || ladder.length < 2) return <Badge tone="neutral">{name}</Badge>;
 
-  const share = index / (ladder.length - 1);
-  const tone =
-    share >= 1 ? "danger" : share >= 0.66 ? "warning" : share >= 0.33 ? "info" : "success";
-  return <Badge tone={tone}>{name}</Badge>;
+  // Spread the rungs across the scale rather than bucketing them by proportion.
+  //
+  // Reported from use: "Informational and minor badges has same colors and looks."
+  // They did. The thresholds divided a 0–1 share into four bands, and the default
+  // ladder has five rungs — so Informational (0.00) and Minor (0.25) both fell in the
+  // bottom band and came out the same green. A ladder is an ordered thing and the
+  // whole point of colouring it is to tell one rung from the next, so the position is
+  // mapped onto the scale directly: the bottom rung is the quietest tone, the top is
+  // red, and everything between lands on its own step.
+  //
+  // Five tones, so a ladder of six or more must repeat one somewhere. That is a real
+  // limit rather than a bug: past five steps the colours stop being distinguishable
+  // at a glance anyway, and the name is still on the badge.
+  const step = Math.round((index / (ladder.length - 1)) * (SEVERITY_SCALE.length - 1));
+  return <Badge tone={SEVERITY_SCALE[step]}>{name}</Badge>;
 }

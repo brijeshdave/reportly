@@ -109,6 +109,45 @@ describe("useForm", () => {
     );
   });
 
+  it("never refuses in silence, even when a bad field is not on the screen", async () => {
+    // Reported from use, about the journal editor's work fields: "no proper errors or
+    // some times no errors shown". They were validated and not drawn, so the messages
+    // were set on inputs that did not exist and the focus had nowhere to move — the
+    // submit stopped and said nothing, which reads as a dead button.
+    //
+    // The field's own message is still the right place and the fix was to draw it.
+    // This is the floor underneath that: anything with nowhere to go is gathered into
+    // the form-level alert rather than swallowed.
+    const submit = vi.fn();
+
+    function PartialForm() {
+      const form = useForm({
+        schema,
+        initial: { title: "", email: "" },
+        submit,
+      });
+      return (
+        <form ref={form.formRef} onSubmit={form.handleSubmit}>
+          {/* `email` is validated but never registered — the case that went quiet. */}
+          <Field label="Title" error={form.errorFor("title")}>
+            {(props) => <Input {...props} {...form.register("title")} />}
+          </Field>
+          {form.formError ? <p role="alert">{(form.formError as Error).message}</p> : null}
+          <button type="submit">Save</button>
+        </form>
+      );
+    }
+
+    render(<PartialForm />);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // The drawn field still says its own piece.
+    expect(await screen.findByText("Give it a title")).toBeInTheDocument();
+    // And the undrawn one is not lost.
+    expect(await screen.findByRole("alert")).toHaveTextContent("That is not an email address");
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("puts a server refusal under the field the server blamed", async () => {
     // The half the browser cannot do for itself. Uniqueness, a grace period, a rule
     // that depends on stored settings — the server is the only thing that knows, and
