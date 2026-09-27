@@ -53,6 +53,11 @@ const DesignationEditorPage = lazy(() =>
     default: m.DesignationEditorPage,
   })),
 );
+const EndUserEditorPage = lazy(() =>
+  import("@/routes/end-users/end-user-editor-page.js").then((m) => ({
+    default: m.EndUserEditorPage,
+  })),
+);
 const CartridgeSetupPage = lazy(() =>
   import("@/routes/parts/cartridge-setup.js").then((m) => ({ default: m.CartridgeSetupPage })),
 );
@@ -397,6 +402,36 @@ const roleDetailRoute = createRoute({
   component: function RoleDetail() {
     const { roleId } = roleDetailRoute.useParams();
     return <RoleDetailPage roleId={roleId} />;
+  },
+});
+
+// The people the team supports, who have no account of their own. `end-users:read`
+// is held by everybody who files, because naming the person a fault happened to is
+// part of filing; changing the list is cut separately.
+const endUsersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/end-users",
+  beforeLoad: requirePermission(PERMISSIONS.END_USERS_READ),
+  component: lazyRouteComponent(
+    () => import("@/routes/end-users/end-users-list.js"),
+    "EndUsersListPage",
+  ),
+});
+
+const endUserCreateRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/end-users/new",
+  beforeLoad: requirePermission(PERMISSIONS.END_USERS_CREATE),
+  component: () => <EndUserEditorPage mode="create" />,
+});
+
+const endUserEditRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/end-users/$endUserId/edit",
+  beforeLoad: requirePermission(PERMISSIONS.END_USERS_UPDATE),
+  component: function EndUserEdit() {
+    const { endUserId } = endUserEditRoute.useParams();
+    return <EndUserEditorPage mode="edit" endUserId={endUserId} />;
   },
 });
 
@@ -891,6 +926,27 @@ const managementPackRoute = createRoute({
   ),
 });
 
+/**
+ * End-user reporting — whose equipment keeps failing.
+ *
+ * Its own page as well as two sources in the Reports library: the library answers
+ * "let me build a view of this", and this answers the question somebody actually
+ * walks in with. Either of the two keys opens it; the page hides the half the
+ * caller may not read.
+ */
+const endUserReportRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/end-users",
+  beforeLoad: requireAnyPermission([
+    PERMISSIONS.REPORTS_VIEW_END_USER_SUMMARY,
+    PERMISSIONS.REPORTS_VIEW_END_USER_ISSUES,
+  ]),
+  component: lazyRouteComponent(
+    () => import("@/routes/reports/end-user-report-page.js"),
+    "EndUserReportPage",
+  ),
+});
+
 const reportConfigRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/journal-config",
@@ -1084,10 +1140,14 @@ const routeTree = rootRoute.addChildren([
     analyticsRoute,
     insightsRoute,
     managementPackRoute,
+    endUserReportRoute,
     organizationRoute,
     designationsRoute,
     designationCreateRoute,
     designationEditRoute,
+    endUsersRoute,
+    endUserCreateRoute,
+    endUserEditRoute,
     departmentsRoute,
     departmentCreateRoute,
     departmentEditRoute,

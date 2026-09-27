@@ -32,6 +32,7 @@ import { healthRoutes } from "@/features/health/routes.js";
 import { locationsRoutes } from "@/features/locations/routes.js";
 import { departmentsRoutes } from "@/features/departments/routes.js";
 import { designationsRoutes } from "@/features/designations/routes.js";
+import { endUsersRoutes } from "@/features/end-users/routes.js";
 import { reportConfigRoutes } from "@/features/journal-config/routes.js";
 import { journalRoutes } from "@/features/journal/routes.js";
 import { analyticsRoutes } from "@/features/analytics/routes.js";
@@ -170,6 +171,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(locationsRoutes, { prefix: API_PREFIX });
   await app.register(departmentsRoutes, { prefix: API_PREFIX });
   await app.register(designationsRoutes, { prefix: API_PREFIX });
+  await app.register(endUsersRoutes, { prefix: API_PREFIX });
   await app.register(reportConfigRoutes, { prefix: API_PREFIX });
   await app.register(vocabularyRoutes, { prefix: API_PREFIX });
   await app.register(assetsRoutes, { prefix: API_PREFIX });

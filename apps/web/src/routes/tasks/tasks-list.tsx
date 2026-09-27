@@ -16,6 +16,7 @@ import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { taskViewFilters, type TaskView } from "@/lib/list-views.js";
+import { personHint } from "@/lib/person-hint.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchOrgPeople } from "@/services/departments.js";
 import { fetchLocations } from "@/services/locations.js";
@@ -222,7 +223,7 @@ export function TasksListPage() {
           ...(people.data ?? []).map((p) => ({
             value: p.userId,
             label: p.name,
-            hint: p.departmentNames.join(", ") || undefined,
+            hint: personHint(p),
           })),
         ],
       },
@@ -240,7 +241,7 @@ export function TasksListPage() {
             .map((p) => ({
               value: p.userId,
               label: p.name,
-              hint: p.departmentNames.join(", ") || undefined,
+              hint: personHint(p),
             })),
         ],
       },

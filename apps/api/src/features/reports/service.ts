@@ -37,6 +37,8 @@ import {
   isOnTime,
   occurrenceDates,
   shiftDurationMinutes,
+  END_USER_ISSUE_COLUMNS,
+  END_USER_SUMMARY_COLUMNS,
   formatDate,
   formatDateTime,
   formatDurationMinutes,
@@ -189,9 +191,13 @@ export async function runReport(
                           ? await runDeptWorkloadDaily(ctx, definition, from, to, tzOffsetMinutes)
                           : definition.source === "dept_irregularity"
                             ? await runDeptIrregularity(ctx, definition, from, to, tzOffsetMinutes)
-                            : isPartSource(definition.source)
-                              ? await runCartridges(ctx, definition, from, to)
-                              : await runJournal(ctx, definition, from, to, tzOffsetMinutes);
+                            : definition.source === "end_user_issues"
+                              ? await runEndUserIssues(ctx, definition, from, to)
+                              : definition.source === "end_user_summary"
+                                ? await runEndUserSummary(ctx, definition, from, to)
+                                : isPartSource(definition.source)
+                                  ? await runCartridges(ctx, definition, from, to)
+                                  : await runJournal(ctx, definition, from, to, tzOffsetMinutes);
 
   const companyName = ctx.companyId ? await companyNameOf(ctx.companyId) : null;
 
@@ -889,6 +895,173 @@ async function runRoutineCompliance(ctx: AuthContext, from: Date, to: Date): Pro
     columns: ROUTINE_COMPLIANCE_COLUMNS,
     assetName: null,
   };
+}
+
+/* --------------------------- end-user reports ------------------------------ */
+
+/**
+ * The rows both end-user reports are made of: one per entry per person named on it,
+ * inside the journal's own visibility rule.
+ *
+ * Why the same read twice over: the detail report *is* these rows, and the summary
+ * is them counted. Aggregating in SQL for the summary would mean two queries that
+ * have to agree about what counts as an issue, which is exactly the disagreement
+ * that put an inflated "issues resolved" on a slide once already.
+ */
+async function endUserRows(
+  ctx: AuthContext,
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+): Promise<repo.EndUserIssueRowRaw[]> {
+  const visibleAuthorIds = ctx.isSuperadmin
+    ? null
+    : [ctx.userId, ...(await downlineUserIds(ctx.userId))];
+  return repo.endUserIssueRows(
+    definition,
+    from,
+    to,
+    ctx.userId,
+    visibleAuthorIds,
+    ctx.companyId,
+    withLocationsNullable(ctx, journalEntries.locationId),
+  );
+}
+
+/** Every entry, by the person it happened to. A row per person named, not per entry. */
+async function runEndUserIssues(
+  ctx: AuthContext,
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+): Promise<SourceResult> {
+  const raw = await endUserRows(ctx, definition, from, to);
+  const rows: ReportRow[] = raw.map((r, i) => ({
+    // An entry naming three people is three rows, so the row id cannot be the
+    // entry's. `reportId` still points at the entry, which is what the table links.
+    id: `${r.entryId}:${r.endUserId}:${i}`,
+    reportId: r.entryId,
+    cells: {
+      endUser: r.fullName,
+      employeeNumber: r.employeeNumber,
+      date: formatDate(r.reportDate.toISOString()),
+      title: r.title,
+      kind: r.kind === "work" ? "Work log" : "Issue",
+      category: r.categoryName ?? "—",
+      severity: r.severityName ?? "—",
+      status: r.statusName ?? "—",
+      assignee: r.assigneeName ?? "—",
+      duration: formatDurationMinutes(
+        r.startedAt && r.endedAt
+          ? Math.max(0, Math.round((r.endedAt.getTime() - r.startedAt.getTime()) / 60_000))
+          : null,
+      ),
+    },
+  }));
+  return oneGroup("Issues by end user", rows, END_USER_ISSUE_COLUMNS);
+}
+
+/** The median of a list of numbers, or null when there is nothing to take it of. */
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/**
+ * One row per person: how often they needed help, how much of it is still open, the
+ * worst it got, what keeps happening to them, and how long they waited.
+ *
+ * "Worst" is read off the ladder's own `orderIndex` rather than a level named in
+ * code: severity names belong to the organisation, so a report that looked for
+ * "Major" would be wrong the first time somebody renamed it.
+ */
+async function runEndUserSummary(
+  ctx: AuthContext,
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+): Promise<SourceResult> {
+  const raw = await endUserRows(ctx, definition, from, to);
+
+  interface Tally {
+    fullName: string;
+    employeeNumber: string;
+    departmentName: string | null;
+    entries: number;
+    issues: number;
+    open: number;
+    worstName: string | null;
+    worstOrder: number;
+    categories: Map<string, number>;
+    resolveHours: number[];
+    lastEntry: Date;
+  }
+  const people = new Map<string, Tally>();
+
+  for (const r of raw) {
+    const t: Tally = people.get(r.endUserId) ?? {
+      fullName: r.fullName,
+      employeeNumber: r.employeeNumber,
+      departmentName: r.departmentName,
+      entries: 0,
+      issues: 0,
+      open: 0,
+      worstName: null,
+      worstOrder: -Infinity,
+      categories: new Map(),
+      resolveHours: [],
+      lastEntry: r.reportDate,
+    };
+    t.entries += 1;
+    if (r.kind === "issue") {
+      t.issues += 1;
+      // A missing status counts as open: nothing has said it is finished.
+      if (r.isTerminal !== true) t.open += 1;
+      // Issues only. A work log is filed already finished, so counting one here
+      // would drag the wait towards zero and flatter the figure.
+      if (r.resolvedAt) {
+        t.resolveHours.push((r.resolvedAt.getTime() - r.createdAt.getTime()) / 3_600_000);
+      }
+    }
+    if (r.severityName !== null && (r.severityOrder ?? -Infinity) > t.worstOrder) {
+      t.worstName = r.severityName;
+      t.worstOrder = r.severityOrder ?? -Infinity;
+    }
+    if (r.categoryName) {
+      t.categories.set(r.categoryName, (t.categories.get(r.categoryName) ?? 0) + 1);
+    }
+    if (r.reportDate > t.lastEntry) t.lastEntry = r.reportDate;
+    people.set(r.endUserId, t);
+  }
+
+  const rows: ReportRow[] = [...people.entries()]
+    // Most affected first: the report is read from the top, and the person it keeps
+    // happening to is the point of it.
+    .sort((a, b) => b[1].entries - a[1].entries || a[1].fullName.localeCompare(b[1].fullName))
+    .map(([id, t]) => {
+      const top = [...t.categories.entries()].sort((a, b) => b[1] - a[1])[0];
+      const waited = median(t.resolveHours);
+      return {
+        id,
+        reportId: null,
+        cells: {
+          endUser: t.fullName,
+          employeeNumber: t.employeeNumber,
+          department: t.departmentName ?? "—",
+          entries: String(t.entries),
+          issues: String(t.issues),
+          open: String(t.open),
+          worst: t.worstName ?? "—",
+          repeatCategory: top ? `${top[0]} (${top[1]})` : "—",
+          mttr: waited === null ? "—" : formatDurationMinutes(Math.round(waited * 60)),
+          lastEntry: formatDate(t.lastEntry.toISOString()),
+        },
+      };
+    });
+
+  return oneGroup("End users", rows, END_USER_SUMMARY_COLUMNS);
 }
 
 /* --------------------------- cartridge reports ----------------------------- */

@@ -301,6 +301,10 @@ export const PACK_SECTIONS = [
   "reliability",
   "activity",
   "people",
+  // Who the work was *about*, as opposed to `people`, which is who did it. Drawn only
+  // where entries actually name somebody, so a company that files against whole
+  // departments never gets an empty slide.
+  "end_users",
   "compliance",
   "cartridges",
 ] as const;

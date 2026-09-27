@@ -47,8 +47,10 @@ export function fetchUser(id: string): Promise<User> {
  * that being expressible again.
  */
 export function searchUsers(term: string, limit: PageSize = 10): Promise<User[]> {
+  // `search`, not `name`: the server matches name, username, email and employee id
+  // with one term, because which of those the asker knows is not up to us.
   const filters = term.trim()
-    ? JSON.stringify([{ field: "name", op: "contains", value: term.trim() }])
+    ? JSON.stringify([{ field: "search", op: "contains", value: term.trim() }])
     : undefined;
   return http
     .get<{ data: User[] }>("/users", {

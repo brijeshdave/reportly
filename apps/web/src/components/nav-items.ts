@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   Clock,
   Coins,
+  ContactRound,
   DatabaseBackup,
   Layers,
   Factory,
@@ -173,6 +174,17 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Trophy,
         permission: PERMISSIONS.LEADERBOARD_VIEW,
       },
+      // Whose equipment keeps failing. Sits beside the library rather than inside
+      // it because it is a question people arrive with, not a view they build.
+      {
+        label: "End-user issues",
+        to: "/reports/end-users",
+        icon: ContactRound,
+        anyPermission: [
+          PERMISSIONS.REPORTS_VIEW_END_USER_SUMMARY,
+          PERMISSIONS.REPORTS_VIEW_END_USER_ISSUES,
+        ],
+      },
       // Everyone's own points ledger and their team's, plus a summary. `points:read`
       // is held by every role, so this is the one Reports-area entry a Member sees.
       {
@@ -246,6 +258,15 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/designations",
         icon: IdCard,
         permission: PERMISSIONS.DESIGNATIONS_READ,
+      },
+      // Not accounts: the people the team supports. They sit here because this is
+      // where somebody looks for a person, and nowhere else in the app, so the
+      // hundreds of them never crowd a picker that is asking about staff.
+      {
+        label: "End users",
+        to: "/end-users",
+        icon: ContactRound,
+        permission: PERMISSIONS.END_USERS_READ,
       },
       { label: "Groups", to: "/groups", icon: UsersRound, permission: PERMISSIONS.GROUPS_READ },
       { label: "Roles", to: "/roles", icon: KeyRound, permission: PERMISSIONS.ROLES_READ },

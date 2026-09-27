@@ -37,6 +37,10 @@ with compliance tracking and month-end awards.
 reliability by device, downtime, shift coverage, routine compliance. MTBF and
 MTTR per asset subtree. Print them or export to a spreadsheet.
 
+**The people you support.** A register of end users — the people an issue happens
+_to_, who have no account of their own. An entry names whoever it happened to, and
+the reports answer whose equipment keeps failing and who keeps needing help.
+
 **Assets and devices** in a tree — site, line, station — picked a level at a time,
 with bulk import and export for every master list.
 

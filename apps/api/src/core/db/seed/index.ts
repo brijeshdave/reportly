@@ -252,6 +252,10 @@ const REPORT_FAMILIES: { name: string; matches: (source: ReportSource) => boolea
   },
   { name: "Leaderboard reports viewer", matches: (s) => s === "leaderboard" },
   { name: "Workload reports viewer", matches: (s) => s.startsWith("dept_") },
+  // Who the work was about, rather than who did it. Its own family because it is
+  // its own job: a helpdesk lead reading "whose laptop keeps failing" has no
+  // business with the plant's reliability figures.
+  { name: "End-user reports viewer", matches: (s) => s.startsWith("end_user_") },
 ];
 
 const REPORT_FAMILY_ROLES: { name: string; permissions: Permission[] }[] = REPORT_FAMILIES.map(
@@ -405,6 +409,13 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.JOURNAL_REJECT,
       PERMISSIONS.JOURNAL_CONFIG_MANAGE,
       PERMISSIONS.JOURNAL_CONFIG_IMPORT,
+      // Naming the person a fault happened to is part of filing it, so every tier
+      // that files gets the list. Maintaining the list is the tier below.
+      PERMISSIONS.END_USERS_READ,
+      PERMISSIONS.END_USERS_CREATE,
+      PERMISSIONS.END_USERS_UPDATE,
+      PERMISSIONS.END_USERS_DELETE,
+      PERMISSIONS.END_USERS_IMPORT,
       PERMISSIONS.CATEGORIES_MANAGE,
       PERMISSIONS.TAGS_MANAGE,
       PERMISSIONS.COMMENTS_UPDATE,
@@ -423,6 +434,9 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.JOURNAL_READ,
       PERMISSIONS.JOURNAL_CREATE,
       PERMISSIONS.JOURNAL_UPDATE,
+      // Reading the list only. Naming who the fault happened to is part of filing;
+      // maintaining the list of people is not.
+      PERMISSIONS.END_USERS_READ,
       PERMISSIONS.COMMENTS_UPDATE,
       PERMISSIONS.ATTACHMENTS_READ,
       PERMISSIONS.ATTACHMENTS_WRITE,
@@ -1097,6 +1111,18 @@ const SYSTEM_REPORT_VIEWS: { name: string; description: string; definition: Repo
     description:
       "Who did little or nothing this month, with their rate per working day beside the group's average.",
     definition: def({ source: "dept_irregularity", range: "this_month", grouping: "none" }),
+  },
+  {
+    name: "Issues by end user",
+    description:
+      "Every entry this month by the person it happened to — a row per person named, so an entry about three people is three rows.",
+    definition: def({ source: "end_user_issues", range: "this_month", grouping: "none" }),
+  },
+  {
+    name: "End user summary",
+    description:
+      "Per person this month: entries, issues, how many are still open, the worst it got, what keeps happening to them, and the median wait.",
+    definition: def({ source: "end_user_summary", range: "this_month", grouping: "none" }),
   },
   {
     name: "Routine log",

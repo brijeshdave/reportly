@@ -22,7 +22,9 @@ import {
   assets,
   departments,
   downtimeEntries,
+  endUsers,
   journalEntries,
+  journalTargets,
   locations,
   parts,
   pointAwards,
@@ -391,6 +393,110 @@ export async function issuesBySeverity(scope: PackScope, from: Date, to: Date): 
     .groupBy(sql`1`, sql`2`)
     .orderBy(desc(sql`2`));
   return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/* ------------------------------- end users --------------------------------- */
+
+/**
+ * Entries about each end user — the people the work was *about*, not the people who
+ * did it.
+ *
+ * `journal_targets.target_id` is text (the scope is polymorphic), so the join casts
+ * `end_users.id` to text rather than the column the other way round, which keeps the
+ * index usable. The kind is pinned: an asset id and an end-user id are both uuids.
+ */
+export async function entriesByEndUser(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+  limit = 10,
+): Promise<Point[]> {
+  const rows = await db
+    .select({ label: endUsers.fullName, value: count() })
+    .from(journalEntries)
+    .innerJoin(
+      journalTargets,
+      and(eq(journalTargets.reportId, journalEntries.id), eq(journalTargets.targetKind, "endUser")),
+    )
+    .innerJoin(endUsers, sql`${endUsers.id}::text = ${journalTargets.targetId}`)
+    .where(journalScope(scope, from, to))
+    .groupBy(endUsers.id, endUsers.fullName)
+    .orderBy(desc(count()))
+    .limit(limit);
+  return rows.map((r) => ({ label: r.label, value: Number(r.value) }));
+}
+
+/** How many different people the period's work was about. One card on the pack. */
+export async function endUsersAffected(scope: PackScope, from: Date, to: Date): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(distinct ${journalTargets.targetId})::int` })
+    .from(journalEntries)
+    .innerJoin(
+      journalTargets,
+      and(eq(journalTargets.reportId, journalEntries.id), eq(journalTargets.targetKind, "endUser")),
+    )
+    .where(journalScope(scope, from, to));
+  return Number(row?.n ?? 0);
+}
+
+export interface EndUserPackRow {
+  fullName: string;
+  employeeNumber: string;
+  departmentName: string | null;
+  entries: number;
+  issues: number;
+  open: number;
+}
+
+/**
+ * The people it happened to most, as a table.
+ *
+ * "Open" is by the status *group*, not a status name: the names are the
+ * installation's own vocabulary, and an entry with no status at all has not been
+ * finished, so it counts as open.
+ */
+export async function endUserPackRows(
+  scope: PackScope,
+  from: Date,
+  to: Date,
+  limit = 8,
+): Promise<EndUserPackRow[]> {
+  const rows = await db
+    .select({
+      fullName: endUsers.fullName,
+      employeeNumber: endUsers.employeeNumber,
+      departmentName: departments.name,
+      entries: count(),
+      issues: sql<number>`count(*) filter (where ${journalEntries.kind} = 'issue')::int`,
+      open: sql<number>`count(*) filter (
+        where ${journalEntries.kind} = 'issue'
+          AND NOT EXISTS (
+            SELECT 1 FROM journal_statuses st
+            WHERE st.id = ${journalEntries.statusId} AND st.is_terminal IS TRUE
+          )
+      )::int`,
+    })
+    .from(journalEntries)
+    .innerJoin(
+      journalTargets,
+      and(eq(journalTargets.reportId, journalEntries.id), eq(journalTargets.targetKind, "endUser")),
+    )
+    .innerJoin(endUsers, sql`${endUsers.id}::text = ${journalTargets.targetId}`)
+    // The end user's own department — the one they belong to, not the team that
+    // dealt with the entry.
+    .leftJoin(departments, eq(departments.id, endUsers.departmentId))
+    .where(journalScope(scope, from, to))
+    .groupBy(endUsers.id, endUsers.fullName, endUsers.employeeNumber, departments.name)
+    .orderBy(desc(count()))
+    .limit(limit);
+  return rows.map((r) => ({
+    fullName: r.fullName,
+    employeeNumber: r.employeeNumber,
+    departmentName: r.departmentName,
+    entries: Number(r.entries),
+    issues: Number(r.issues),
+    open: Number(r.open),
+  }));
 }
 
 /** Entries filed per person — who is writing things down at all. */

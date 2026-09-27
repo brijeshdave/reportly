@@ -249,10 +249,15 @@ function MembersTab({ group, assignments }: TabProps) {
   if (users.isLoading) return <Spinner />;
   if (users.error) return <ErrorAlert error={users.error} />;
 
+  // The staff number rides along in `meta`, which is both shown beside the name and
+  // searched by the box above — the two questions "which Anita is this?" and "who is
+  // EMP-1042?" then have the same answer in the same place.
   const options: PickerOption[] = (users.data ?? []).map((user) => ({
     id: user.id,
     label: user.name,
-    meta: user.email + (user.status === "inactive" ? " · inactive" : ""),
+    meta: [user.employeeId, user.email, user.status === "inactive" ? "inactive" : null]
+      .filter((part): part is string => Boolean(part))
+      .join(" · "),
   }));
 
   return (

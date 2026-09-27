@@ -25,6 +25,7 @@ import {
   deviceTypes,
   devices,
   downtimeEntries,
+  endUsers,
   journalEntries,
   journalScores,
   journalStatuses,
@@ -371,6 +372,30 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
   // belongs to no asset and rolls up nowhere, and without downtime every MTBF and
   // MTTR is "nothing failed", which is a true statement about an empty database
   // and a useless one about a demo.
+  // The people the work was about — a list of eight, so the end-user reports and the
+  // pack's end-user section have something to say. They are not accounts: none of
+  // them can sign in, and they appear nowhere that asks for staff.
+  const END_USER_NAMES = [
+    "Anita Sharma",
+    "Ravi Kumar",
+    "Priya Nair",
+    "Imran Shaikh",
+    "Meera Joshi",
+    "Suresh Patil",
+    "Kavita Rao",
+    "Deepak Verma",
+  ];
+  const endUserRows = END_USER_NAMES.map((fullName, i) => ({
+    id: id(i + 1, "e"),
+    companyId: COMPANY_ID,
+    departmentId: DEPT_ENGINEERING,
+    fullName,
+    employeeNumber: `EMP-${1001 + i}`,
+    description: i % 3 === 0 ? "Shop floor office, first shift" : null,
+    status: "active",
+  }));
+  await database.insert(endUsers).values(endUserRows).onConflictDoNothing();
+
   const LINE_ASSETS = [lineOne, lineTwo];
   await database
     .insert(journalTargets)
@@ -380,6 +405,25 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
         targetKind: "asset",
         targetId: LINE_ASSETS[i % LINE_ASSETS.length]!,
       })),
+    )
+    .onConflictDoNothing();
+
+  // Two entries in three name the person it happened to, and the names repeat
+  // unevenly — a demo where everybody has exactly one issue makes the "who keeps
+  // needing help" report look like a list of staff. This walk gives the first two
+  // people several each and everybody else one or two, which is the shape a real
+  // month has and the shape the report is built to show.
+  const WHO = [0, 1, 0, 2, 3, 1, 0, 4, 5, 1, 6, 2, 0, 7, 3];
+  await database
+    .insert(journalTargets)
+    .values(
+      entries
+        .filter((_entry, i) => i % 3 !== 2)
+        .map((entry, i) => ({
+          reportId: entry.id!,
+          targetKind: "endUser",
+          targetId: endUserRows[WHO[i % WHO.length]!]!.id,
+        })),
     )
     .onConflictDoNothing();
 

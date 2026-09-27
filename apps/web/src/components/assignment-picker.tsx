@@ -85,8 +85,16 @@ export function AssignmentPicker({
     return <EmptyState icon={Inbox} title="Nothing to assign" description={emptyMessage} />;
   }
 
+  // The name, and everything shown beside it: a person is looked for by whatever the
+  // asker happens to know — a staff number, an email — and a box that searched only
+  // the name made the rest of the row look like decoration.
+  const term = query.trim().toLowerCase();
   const matches = options.filter((option) =>
-    option.label.toLowerCase().includes(query.trim().toLowerCase()),
+    term === ""
+      ? true
+      : [option.label, option.meta, option.description].some((part) =>
+          part?.toLowerCase().includes(term),
+        ),
   );
 
   // What is already assigned goes first, under its own heading. With fifty roles to

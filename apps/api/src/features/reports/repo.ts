@@ -10,6 +10,7 @@
 //   2. `report_views` / `report_view_groups` — the saved definitions and their
 //      group audiences.
 import { type AnyColumn, type SQL, and, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/core/db/index.js";
 import type { AuthContext } from "@reportly/shared";
@@ -17,9 +18,11 @@ import type { AuthContext } from "@reportly/shared";
 import { withLocationsNullable } from "@/core/db/scoped.js";
 import {
   assets,
+  categories,
   departments,
   devices,
   downtimeEntries,
+  endUsers,
   groupUsers,
   journalEntries,
   journalScores,
@@ -28,6 +31,7 @@ import {
   pointAwards,
   reportViewGroups,
   reportViews,
+  severities,
   users,
 } from "@/core/db/schema.js";
 import {
@@ -75,6 +79,20 @@ function filterConditions(filters: ReportFilters): SQL[] {
   // fold into one EXISTS on `journal_targets`; asset and device ids are distinct
   // uuids, so a single `target_id IN (…)` cannot confuse the two. `target_id` is
   // text, so the ids are matched as text (no cast).
+  // The people the work was *about*. Its own EXISTS, and pinned to the kind: an
+  // end-user id and an asset id are both uuids, so a single untyped `target_id IN`
+  // would silently match a thing that happened to share an id.
+  if (filters.endUserId && filters.endUserId.length > 0) {
+    conds.push(sql`EXISTS (
+      SELECT 1 FROM ${journalTargets} jt
+      WHERE jt.report_id = ${journalEntries.id}
+        AND jt.target_kind = 'endUser'
+        AND jt.target_id IN (${sql.join(
+          filters.endUserId.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+    )`);
+  }
   const targetIds = [...(filters.assetId ?? []), ...(filters.deviceId ?? [])];
   if (targetIds.length > 0) {
     conds.push(sql`EXISTS (
@@ -460,6 +478,131 @@ export async function groupIdsForUser(userId: string): Promise<string[]> {
     .from(groupUsers)
     .where(eq(groupUsers.userId, userId));
   return rows.map((r) => r.groupId);
+}
+
+// --- end-user sources ---
+
+/**
+ * One row per (entry, end user named on it) — the "whose equipment keeps failing"
+ * report.
+ *
+ * Built on the journal's own visibility rule and location scope, like every other
+ * source: an end-user report must never show an entry its reader could not open in
+ * the journal. The inner join to `journal_targets` is what makes it a report about
+ * people rather than a journal with an extra column — an entry naming three people
+ * is three rows, and an entry naming nobody is not here at all.
+ *
+ * `target_id` is text (the scope is polymorphic), so the join to `end_users.id`
+ * casts the uuid to text rather than the other way round, which keeps the index on
+ * `end_users.id` usable.
+ */
+export interface EndUserIssueRowRaw {
+  entryId: string;
+  endUserId: string;
+  fullName: string;
+  employeeNumber: string;
+  departmentName: string | null;
+  reportDate: Date;
+  title: string;
+  kind: string;
+  categoryName: string | null;
+  severityName: string | null;
+  severityOrder: number | null;
+  statusName: string | null;
+  isTerminal: boolean | null;
+  assigneeName: string | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  createdAt: Date;
+  /** When it first reached a resolved status, or null if it never has. */
+  resolvedAt: Date | null;
+}
+
+/** The window, the company, the site and the reporting line — shared by both reports. */
+function endUserWhere(
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+  callerId: string,
+  visibleAuthorIds: string[] | null,
+  companyId: string | null,
+  locationScope: SQL | undefined,
+): SQL | undefined {
+  return and(
+    visibilityScope(callerId, visibleAuthorIds),
+    eq(journalEntries.state, "submitted"),
+    companyId ? eq(journalEntries.companyId, companyId) : undefined,
+    locationScope,
+    gte(journalEntries.reportDate, from),
+    lt(journalEntries.reportDate, to),
+    ...filterConditions(definition.filters),
+  );
+}
+
+/**
+ * When an entry first reached a resolved status. The entry does not record it — the
+ * status trail does, and the *first* such event is the one that counts: an entry
+ * reopened and resolved again took as long as it took the first time.
+ */
+const RESOLVED_AT = sql<Date | null>`(
+  SELECT min(e.changed_at) FROM journal_status_events e
+  JOIN journal_statuses st ON st.id = e.to_status_id
+  WHERE e.report_id = ${journalEntries.id} AND st."group" = 'resolved'
+)`;
+
+export async function endUserIssueRows(
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+  callerId: string,
+  visibleAuthorIds: string[] | null,
+  companyId: string | null,
+  locationScope: SQL | undefined,
+): Promise<EndUserIssueRowRaw[]> {
+  const assignee = alias(users, "end_user_report_assignee");
+  return (
+    db
+      .select({
+        entryId: journalEntries.id,
+        endUserId: endUsers.id,
+        fullName: endUsers.fullName,
+        employeeNumber: endUsers.employeeNumber,
+        departmentName: departments.name,
+        reportDate: journalEntries.reportDate,
+        title: journalEntries.title,
+        kind: journalEntries.kind,
+        categoryName: categories.name,
+        severityName: severities.name,
+        severityOrder: severities.orderIndex,
+        statusName: journalStatuses.name,
+        isTerminal: journalStatuses.isTerminal,
+        assigneeName: assignee.name,
+        startedAt: journalEntries.startedAt,
+        endedAt: journalEntries.endedAt,
+        createdAt: journalEntries.createdAt,
+        resolvedAt: RESOLVED_AT,
+      })
+      .from(journalEntries)
+      .innerJoin(
+        journalTargets,
+        and(
+          eq(journalTargets.reportId, journalEntries.id),
+          eq(journalTargets.targetKind, "endUser"),
+        ),
+      )
+      .innerJoin(endUsers, sql`${endUsers.id}::text = ${journalTargets.targetId}`)
+      // The end user's own department, which is the one the report groups by. The
+      // entry's department is the team that dealt with it — a different fact.
+      .leftJoin(departments, eq(departments.id, endUsers.departmentId))
+      .leftJoin(categories, eq(categories.id, journalEntries.categoryId))
+      .leftJoin(severities, eq(severities.id, journalEntries.severityId))
+      .leftJoin(journalStatuses, eq(journalStatuses.id, journalEntries.statusId))
+      .leftJoin(assignee, eq(assignee.id, journalEntries.assigneeId))
+      .where(
+        endUserWhere(definition, from, to, callerId, visibleAuthorIds, companyId, locationScope),
+      )
+      .orderBy(endUsers.fullName, journalEntries.reportDate)
+  );
 }
 
 // --- report views ---

@@ -450,7 +450,7 @@ function AddMember({ onAdd, alreadyIn }: { onAdd: (user: User) => void; alreadyI
       <Input
         value={term}
         onChange={(event) => setTerm(event.target.value)}
-        placeholder="Search a person by name to add them…"
+        placeholder="Search by name or employee id to add them…"
         aria-label="Add a person"
       />
 
@@ -473,8 +473,10 @@ function AddMember({ onAdd, alreadyIn }: { onAdd: (user: User) => void; alreadyI
               <Avatar userId={user.id} name={user.name} version={user.avatarVersion} size="sm" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{user.name}</span>
+                {/* The staff number first where there is one: it is what somebody
+                    searching by number needs to see confirmed back. */}
                 <span className="block truncate text-xs text-muted-foreground">
-                  {user.designation ?? user.email}
+                  {[user.employeeId, user.designation ?? user.email].filter(Boolean).join(" · ")}
                 </span>
               </span>
               <Plus className="h-4 w-4 text-muted-foreground" />

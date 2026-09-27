@@ -1,15 +1,20 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Picking what a report is about.
 //
-// The two halves are picked differently on purpose, because there are different
-// numbers of them. Assets, departments and people are a short list you can look
-// through, so they get checkbox dropdowns. Devices may run to thousands, so they get
-// a search box that asks the server — the same split that keeps the whole scope model
-// honest. Everything here is optional: plenty of work is about nothing in particular.
-import { type JournalTargetInput, type TargetKind } from "@reportly/shared";
+// The halves are picked differently on purpose, because there are different numbers
+// of them. Assets and departments are a short list you can look through, so they get
+// checkbox dropdowns. Devices may run to thousands, so they get a search box that
+// asks the server — the same split that keeps the whole scope model honest.
+// Everything here is optional: plenty of work is about nothing in particular.
+//
+// The person field used to offer Reportly *accounts*, so technicians tagged
+// colleagues because that was the only list there was, and nothing recorded who the
+// fault actually happened to. It now offers end users, narrowed to the department
+// chosen alongside it — see `routes/end-users`.
+import { TARGET_KIND_LABELS, type JournalTargetInput, type TargetKind } from "@reportly/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { MultiSelect } from "@/components/multi-select.js";
 import type { SelectOption } from "@/components/searchable-select.js";
@@ -19,7 +24,8 @@ import { AssetCascadePicker } from "@/components/asset-cascade-picker.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { assetOptions as buildAssetOptions, assetsAtSite } from "@/lib/asset-paths.js";
 import { fetchAssets, fetchDevices } from "@/services/assets.js";
-import { fetchDepartments, fetchOrgPeople } from "@/services/departments.js";
+import { fetchDepartments } from "@/services/departments.js";
+import { fetchPickableEndUsers } from "@/services/end-users.js";
 
 /** A chosen target, carrying the label so a chip can be drawn without a lookup. */
 export interface ScopeTarget extends JournalTargetInput {
@@ -40,7 +46,6 @@ export function ScopePicker({
 }) {
   const assets = useQuery({ queryKey: ["assets"], queryFn: fetchAssets });
   const departments = useQuery({ queryKey: ["departments"], queryFn: fetchDepartments });
-  const people = useQuery({ queryKey: ["org-people"], queryFn: fetchOrgPeople });
 
   const allAssets = assets.data ?? [];
   // Once a site is chosen, the picker walks only the assets standing at it (plus any not
@@ -74,10 +79,71 @@ export function ScopePicker({
     (departments.data ?? []).map((d) => ({ value: d.id, name: d.name, path: d.path })),
   );
 
-  const peopleOptions: SelectOption[] = (people.data ?? []).map((p) => ({
-    value: p.userId,
-    label: p.name,
+  // Departments are chosen for two reasons at once: they record that a whole
+  // department is affected, and they narrow the End user list. The two part company
+  // the moment somebody names a person: the choice keeps narrowing the list, but it
+  // stops being what the entry is recorded against.
+  //
+  // So the last known choice is remembered here rather than in state — computed
+  // during render, because it is not something the screen reacts to, it is what the
+  // previous render knew. State seeded once at mount was wrong for an entry being
+  // *edited*: its targets arrive after the first render, so the remembered set was
+  // empty, and clearing the last named person dropped the entry's department
+  // silently.
+  const narrowing = useRef<string[]>([]);
+  const namedEndUsers = idsOf("endUser");
+  const namesPeople = namedEndUsers.length > 0;
+  const departmentTargetIds = idsOf("department");
+  if (!namesPeople) narrowing.current = departmentTargetIds;
+  const deptValues = namesPeople ? narrowing.current : departmentTargetIds;
+
+  // Narrowed on the server, not in the browser: the whole list is every person the
+  // team supports, and a plant has far more of those than it has staff.
+  const endUsers = useQuery({
+    queryKey: ["end-users", "pickable", [...deptValues].sort()],
+    queryFn: () => fetchPickableEndUsers(deptValues),
+    enabled: !disabled,
+  });
+
+  // The employee number comes along, because two people share a name more often than
+  // anybody expects. Same shape as the label the server resolves after saving, so a
+  // chip does not change the moment the page is reloaded.
+  const endUserOptions: SelectOption[] = (endUsers.data ?? []).map((p) => ({
+    value: p.id,
+    label: `${p.fullName} (${p.employeeNumber})`,
+    ...(p.departmentName ? { hint: p.departmentName } : {}),
   }));
+
+  const chooseDepartments = (ids: string[]) => {
+    narrowing.current = ids;
+    setKind("department", namesPeople ? [] : ids, departmentChoices);
+  };
+
+  /**
+   * Naming somebody turns "the whole department" into "these people in it", so the
+   * department target steps aside; clearing the last name puts it back.
+   *
+   * Reported from use: 198 of the 199 entries that named a person also carried the
+   * department, so every one of them counted twice — once against the individual and
+   * once against everybody around them.
+   */
+  const chooseEndUsers = (ids: string[]) => {
+    const others = value.filter((t) => t.kind !== "endUser" && t.kind !== "department");
+    const picked = ids.map((id) => ({
+      kind: "endUser" as const,
+      id,
+      label: endUserOptions.find((o) => o.value === id)?.label ?? id,
+    }));
+    const departmentTargets =
+      ids.length > 0
+        ? []
+        : narrowing.current.map((id) => ({
+            kind: "department" as const,
+            id,
+            label: departmentChoices.find((o) => o.value === id)?.label ?? id,
+          }));
+    onChange([...others, ...picked, ...departmentTargets]);
+  };
 
   // The asset chosen most recently — what the device list narrows to.
   const chosenAssets = value.filter((t) => t.kind === "asset");
@@ -115,26 +181,45 @@ export function ScopePicker({
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Departments</span>
+          <p className="text-xs text-muted-foreground">
+            {namesPeople
+              ? "Narrowing the list of people below. Named people are what this is recorded against."
+              : "For work that affects a department as a whole. It also narrows the people below."}
+          </p>
           <MultiSelect
             ariaLabel="Departments this report is about"
             options={departmentChoices}
-            values={idsOf("department")}
-            onChange={(ids) => setKind("department", ids, departmentChoices)}
+            values={deptValues}
+            onChange={chooseDepartments}
             placeholder="None"
             disabled={disabled}
           />
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">People</span>
+          <span className="font-medium">End users</span>
+          <p className="text-xs text-muted-foreground">
+            {deptValues.length > 0
+              ? "The people in the departments chosen. Naming them records this against them rather than the whole department."
+              : "Who it happened to. Choose a department to narrow the list."}
+          </p>
           <MultiSelect
-            ariaLabel="People this report is about"
-            options={peopleOptions}
-            values={idsOf("user")}
-            onChange={(ids) => setKind("user", ids, peopleOptions)}
+            ariaLabel="End users this report is about"
+            options={endUserOptions}
+            values={namedEndUsers}
+            onChange={chooseEndUsers}
             placeholder="None"
             disabled={disabled}
           />
+          {endUsers.isLoading ? (
+            <span className="text-xs text-muted-foreground">Loading people…</span>
+          ) : endUserOptions.length === 0 ? (
+            <span className="text-xs text-muted-foreground">
+              {deptValues.length > 0
+                ? "Nobody is on the end-user list for these departments yet."
+                : "No end users yet. They are maintained under People & access → End users."}
+            </span>
+          ) : null}
         </label>
       </div>
 
@@ -159,7 +244,7 @@ export function ScopePicker({
               key={`${target.kind}:${target.id}`}
               className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-xs"
             >
-              <span className="text-muted-foreground">{target.kind}</span>
+              <span className="text-muted-foreground">{TARGET_KIND_LABELS[target.kind]}</span>
               {target.label}
               {!disabled ? (
                 <button

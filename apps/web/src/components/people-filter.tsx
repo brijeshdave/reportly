@@ -46,13 +46,19 @@ export function PeopleFilter({
     enabled: value !== "" && !(matches.data ?? []).some((person) => person.id === value),
   });
 
+  // The staff number goes on the second line beside the email — both because it is
+  // how people are asked for, and because the control searches the hint as well as
+  // the label, so what is shown is what can be typed.
+  const hintFor = (person: { email: string; employeeId?: string | null }): string =>
+    person.employeeId ? `${person.employeeId} · ${person.email}` : person.email;
+
   const options: SelectOption[] = [
     ...(chosen.data
-      ? [{ value: chosen.data.id, label: chosen.data.name, hint: chosen.data.email }]
+      ? [{ value: chosen.data.id, label: chosen.data.name, hint: hintFor(chosen.data) }]
       : []),
     ...(matches.data ?? [])
       .filter((person) => person.id !== chosen.data?.id)
-      .map((person) => ({ value: person.id, label: person.name, hint: person.email })),
+      .map((person) => ({ value: person.id, label: person.name, hint: hintFor(person) })),
   ];
 
   return (

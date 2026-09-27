@@ -41,6 +41,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { AssetCascadePicker } from "@/components/asset-cascade-picker.js";
 import { assetOptions } from "@/lib/asset-paths.js";
+import { personHint } from "@/lib/person-hint.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { usePermission } from "@/components/can.js";
 import { MultiSelect } from "@/components/multi-select.js";
@@ -51,6 +52,7 @@ import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { fetchAssets } from "@/services/assets.js";
 import { fetchCategories, fetchSeverities, fetchStatuses } from "@/services/journal-config.js";
 import { fetchDepartments, fetchOrgPeople } from "@/services/departments.js";
+import { fetchPickableEndUsers } from "@/services/end-users.js";
 import { fetchLocations } from "@/services/locations.js";
 import {
   createReportView,
@@ -332,11 +334,20 @@ function ControlsPanel({
   const people = useQuery({ queryKey: ["org", "people"], queryFn: fetchOrgPeople });
   const assets = useQuery({ queryKey: ["assets"], queryFn: fetchAssets });
   const devices = useQuery({ queryKey: ["devices", "picker"], queryFn: fetchDevicesForPicker });
+  // The active end users, unnarrowed: this picker is a filter, so it must be able to
+  // reach somebody whose department is not part of the question being asked.
+  const endUserPeople = useQuery({
+    queryKey: ["end-users", "pickable", []],
+    queryFn: () => fetchPickableEndUsers([]),
+  });
   // Whether this company uses the cartridges module, from the session — the same
   // fact the sidebar reads to decide whether the whole area exists.
   const partsEnabled = useSuspenseQuery(sessionQuery).data.modules.parts;
 
   const isJournal = definition.source === "journal";
+  // The two end-user reports read the journal, so every journal filter means
+  // something to them — they simply have their own fixed columns and no grouping.
+  const isEndUser = definition.source.startsWith("end_user_");
   // The same cap the server applies, so the pickers show the window that will run.
   const capDays = MAX_CUSTOM_RANGE_DAYS[definition.source];
 
@@ -345,7 +356,7 @@ function ControlsPanel({
   const peopleOpts: SelectOption[] = (people.data ?? []).map((p) => ({
     value: p.userId,
     label: p.name,
-    hint: p.departmentNames.join(", ") || undefined,
+    hint: personHint(p),
   }));
   // Assets flattened with their full path, so names that repeat across plants are
   // still distinguishable in a flat multi-select.
@@ -357,6 +368,11 @@ function ControlsPanel({
   const deviceOpts: SelectOption[] = (devices.data ?? []).map((d) => ({
     value: d.id,
     label: d.identifier ? `${d.name} (${d.identifier})` : d.name,
+  }));
+  const endUserOpts: SelectOption[] = (endUserPeople.data ?? []).map((p) => ({
+    value: p.id,
+    label: `${p.fullName} (${p.employeeNumber})`,
+    ...(p.departmentName ? { hint: p.departmentName } : {}),
   }));
 
   return (
@@ -602,11 +618,26 @@ function ControlsPanel({
               ))}
             </div>
           </Labeled>
+        </>
+      )}
 
+      {!isJournal && !isEndUser ? null : (
+        <>
           <div className="flex flex-col gap-2 border-t border-border pt-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Filters
             </h3>
+            {/* Who the work was about. On the journal report it answers "show me
+                everything that happened to these three people"; on the end-user
+                reports it narrows a list that is already per person. */}
+            <FilterField label="End user">
+              <MultiSelect
+                values={filterValues("endUserId")}
+                onChange={(v) => setFilter("endUserId", v)}
+                options={endUserOpts}
+                placeholder="Anyone"
+              />
+            </FilterField>
             <FilterField label="Location">
               <MultiSelect
                 values={filterValues("locationId")}

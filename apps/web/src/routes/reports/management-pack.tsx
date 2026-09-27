@@ -53,6 +53,7 @@ const SECTION_LABELS: Record<PackSection, string> = {
   reliability: "Reliability and downtime",
   activity: "What was filed",
   people: "People and points",
+  end_users: "End users",
   compliance: "Routines and tasks",
   cartridges: "Cartridges",
 };

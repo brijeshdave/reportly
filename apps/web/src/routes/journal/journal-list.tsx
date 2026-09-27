@@ -12,6 +12,7 @@ import {
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
+import { personHint } from "@/lib/person-hint.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { Plus } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -436,7 +437,7 @@ export function JournalListPage({
     const peopleOptions = (people.data ?? []).map((p) => ({
       value: p.userId,
       label: p.name,
-      hint: p.departmentNames.join(", ") || undefined,
+      hint: personHint(p),
     }));
 
     return [

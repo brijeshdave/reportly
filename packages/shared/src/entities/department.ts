@@ -166,6 +166,14 @@ export const orgPersonSchema = z.object({
   userId: z.string(),
   name: nameSchema,
   email: z.string().email(),
+  /**
+   * Their staff number, where they have one.
+   *
+   * Carried so a picker can be *searched* by it: people are looked for by whatever
+   * the asker happens to know, and on a shop floor that is as often a number as a
+   * name.
+   */
+  employeeId: z.string().nullable(),
   designation: z.string().nullable(),
   /** Every department they are in, for telling two people of the same name apart. */
   departmentNames: z.array(z.string()),

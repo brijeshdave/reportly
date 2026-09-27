@@ -7,7 +7,7 @@
 // You score a report from here too, in real points (0.5 steps). Which column you
 // may fill follows from who you are, decided by the server (myScoreTier). The first
 // score locks the report's content; re-opening it clears every score.
-import { PERMISSIONS, formatDate, formatDateTime } from "@reportly/shared";
+import { PERMISSIONS, TARGET_KIND_LABELS, formatDate, formatDateTime } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Ban, Lock, Wrench } from "lucide-react";
@@ -333,7 +333,9 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
                         key={`${target.kind}:${target.id}`}
                         className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs"
                       >
-                        <span className="text-muted-foreground">{target.kind}</span>
+                        <span className="text-muted-foreground">
+                          {TARGET_KIND_LABELS[target.kind]}
+                        </span>
                         {target.label}
                       </span>
                     ))}

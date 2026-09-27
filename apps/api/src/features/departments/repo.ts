@@ -344,6 +344,8 @@ export interface OrgPersonRow {
   userId: string;
   name: string;
   email: string;
+  /** Their staff number, where they have one — what a picker can be searched by. */
+  employeeId: string | null;
   designation: string | null;
   departmentNames: string[];
 }
@@ -356,6 +358,7 @@ export async function orgPeople(companyId: string): Promise<OrgPersonRow[]> {
       userId: departmentUsers.userId,
       name: users.name,
       email: users.email,
+      employeeId: users.employeeId,
       designation: designations.name,
       departmentName: departments.name,
     })

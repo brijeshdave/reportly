@@ -73,10 +73,23 @@ Under **What is it about?** you can point the report at anything it concerns:
   list.
 - **Devices** — the individual machines. **Searched**, not browsed, because there may
   be thousands of them.
-- **Departments** and **People** — when the report concerns those instead.
+- **Departments** — when the whole department is affected: a network outage, an office
+  move, a shared printer everybody uses.
+- **End users** — the person it actually happened to. The list is narrowed to whichever
+  departments you chose above, so on a plant of two thousand people you see the handful
+  that matter.
 
 Pick as many as apply, in any mix — **or none at all**. Plenty of work is not about
 any particular thing, and a report with nothing picked is a complete report.
+
+> **Naming people replaces the department.** Once you name an end user, the entry is
+> recorded against those people rather than against their whole department — the
+> department you chose is doing the narrowing, not the recording. Otherwise every issue
+> would be counted twice: once against the individual and once against everybody around
+> them. Clear the last name and the department comes back.
+
+The list here is the **end-user register**, not the staff list — see
+[End users](/user/end-users).
 
 > **Why devices are searched, not browsed.** Nobody is going to file ten thousand
 > machines into a tree by hand. Instead each device records the asset it **lives at**,
@@ -492,6 +505,7 @@ The headline numbers stay, because that is what the pack is.
 | Reliability and downtime | Downtime by asset, downtime through the month, and the issues that keep coming back                                                                                                                                                                       |
 | What was filed           | Issues and work over time, and issues by category, department and severity, plus where entries stand                                                                                                                                                      |
 | People and points        | Points by person and department, and who is filing entries at all                                                                                                                                                                                         |
+| End users                | Entries by the person they happened to, and a table of who needed the most help — only when entries actually name people                                                                                                                                  |
 | Routines and tasks       | Routine completions by department, and tasks completed by person                                                                                                                                                                                          |
 | Cartridges               | Cartridges fitted by site — only when the module is on and something was fitted                                                                                                                                                                           |
 
@@ -510,6 +524,9 @@ that everything is closed instantly.
   3. **Reliability** — the worst assets and what keeps coming back.
   4. **People** — points, entries, routines, tasks and cartridge services, each per
      person.
+  5. **Who needed help** — entries by end user and who needed the most help. Added
+     only where entries name people, so a plant that files against whole departments
+     still gets four slides.
 
   A slide with nothing to put on it is left out rather than printed empty. Use
   **Indicators on the deck** to choose which numbers reach slide 1 — the page keeps

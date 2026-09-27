@@ -1,7 +1,7 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // User repository — the only code touching the users table for profile/admin
 // operations (better-auth owns auth-table writes). Services call these.
-import { type SQL, and, desc, eq, gt, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, gt, ilike, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import {
@@ -130,6 +130,27 @@ function presenceCondition(query: ResolvedListQuery): SQL | undefined {
   return wanted ? live : sql`not ${live}`;
 }
 
+/**
+ * One box, several columns — "search" is not a column either.
+ *
+ * Asked for from use: people are looked for by whatever the asker happens to know,
+ * and that is as often an employee number as a name. A filter per column cannot
+ * answer that, because the generic builder ANDs them: name *and* employee id would
+ * have to both match, and nobody types both.
+ */
+function searchCondition(query: ResolvedListQuery): SQL | undefined {
+  const filter = query.filters.find((entry) => entry.field === "search");
+  const term = typeof filter?.value === "string" ? filter.value.trim() : "";
+  if (term === "") return undefined;
+  const like = `%${term}%`;
+  return or(
+    ilike(users.name, like),
+    ilike(users.username, like),
+    ilike(users.email, like),
+    ilike(users.employeeId, like),
+  );
+}
+
 export async function listUsers(
   query: ResolvedListQuery,
 ): Promise<{ rows: UserRow[]; total: number }> {
@@ -137,7 +158,7 @@ export async function listUsers(
   // Neither of these is a column, so neither can ride the generic filter builder —
   // which silently drops a filter naming a field it does not know, making a
   // control that looks like it works and changes nothing.
-  const extra = [presenceCondition(query), staleCondition(query)].filter(
+  const extra = [presenceCondition(query), staleCondition(query), searchCondition(query)].filter(
     (condition): condition is SQL => condition !== undefined,
   );
   const where = extra.length > 0 ? and(parts.where, ...extra) : parts.where;

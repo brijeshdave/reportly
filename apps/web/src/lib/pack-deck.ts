@@ -390,7 +390,11 @@ export async function downloadPackDeck(
   // Only when there is something to put on it. A quiet month — no stoppages, nothing
   // recurring — used to produce a slide carrying a title band and white space, which
   // is a blank somebody has to apologise for mid-meeting.
-  const recurring = sections.find((section) => section.table)?.table;
+  // By title, not by "the first section with a table": the end-user section carries
+  // one too, and `find` would have quietly put the wrong table on this slide.
+  const recurring = sections.find(
+    (section) => section.table?.title === "Issues that keep coming back",
+  )?.table;
   const hasRecurring = Boolean(recurring && recurring.rows.length > 0);
   const reliability = pick("Downtime by asset", "Downtime by site", "Downtime through the period");
   if (reliability.length > 0 || hasRecurring) {
@@ -437,6 +441,45 @@ export async function downloadPackDeck(
     const four = deck.addSlide();
     frame(four, shapes, "People", period);
     addChartGrid(four, shapes, people, { x: 0.35, y: 1.05, w: 12.63, h: 6.1 }, 3);
+  }
+
+  // ---------------------------------------------------------------- slide 5
+  //
+  // Who the work was *about*. Added only when entries actually name people, like
+  // every other slide here: a company still filing against whole departments gets
+  // four slides, exactly as before.
+  const endUserCharts = pick("Entries by end user");
+  const endUserTable = sections.find(
+    (section) => section.table?.title === "Who needed the most help",
+  )?.table;
+  const hasEndUserTable = Boolean(endUserTable && endUserTable.rows.length > 0);
+  if (endUserCharts.length > 0 || hasEndUserTable) {
+    const five = deck.addSlide();
+    frame(five, shapes, "Who needed help", period);
+    if (endUserCharts.length > 0 && hasEndUserTable) {
+      addChartGrid(five, shapes, endUserCharts, { x: 0.35, y: 1.05, w: 6.2, h: 6.1 }, 1);
+      addTable(
+        five,
+        shapes,
+        endUserTable!.title,
+        endUserTable!.columns,
+        endUserTable!.rows,
+        { x: 6.75, y: 1.05, w: 6.23, h: 6.1 },
+        ACCENT[2]!,
+      );
+    } else if (hasEndUserTable) {
+      addTable(
+        five,
+        shapes,
+        endUserTable!.title,
+        endUserTable!.columns,
+        endUserTable!.rows,
+        { x: 0.35, y: 1.05, w: 12.63, h: 6.1 },
+        ACCENT[2]!,
+      );
+    } else {
+      addChartGrid(five, shapes, endUserCharts, { x: 0.35, y: 1.05, w: 12.63, h: 6.1 }, 1);
+    }
   }
 
   await deck.writeFile({ fileName: filename });

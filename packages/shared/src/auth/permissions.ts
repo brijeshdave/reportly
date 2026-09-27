@@ -96,6 +96,19 @@ export const PERMISSIONS = {
   // rides on locations:read.
   LOCATIONS_IMPORT: "locations:import",
 
+  /**
+   * End users — the supported people who have no Reportly account.
+   *
+   * `:read` is held by anybody who files an entry, because naming the person the
+   * fault is about is part of filing it. The rest are administrative, cut the way
+   * every other master list is.
+   */
+  END_USERS_READ: "end-users:read",
+  END_USERS_CREATE: "end-users:create",
+  END_USERS_UPDATE: "end-users:update",
+  END_USERS_DELETE: "end-users:delete",
+  END_USERS_IMPORT: "end-users:import",
+
   DESIGNATIONS_READ: "designations:read",
   DESIGNATIONS_CREATE: "designations:create",
   DESIGNATIONS_UPDATE: "designations:update",
@@ -215,6 +228,11 @@ export const PERMISSIONS = {
   REPORTS_VIEW_DEPT_WORKLOAD: "reports:view:dept_workload",
   REPORTS_VIEW_DEPT_WORKLOAD_DAILY: "reports:view:dept_workload_daily",
   REPORTS_VIEW_DEPT_IRREGULARITY: "reports:view:dept_irregularity",
+  // Who the work was about rather than who did it — the two end-user reports. Their
+  // own keys because they name the people the team supports, which is a different
+  // question from what any technician did.
+  REPORTS_VIEW_END_USER_ISSUES: "reports:view:end_user_issues",
+  REPORTS_VIEW_END_USER_SUMMARY: "reports:view:end_user_summary",
   REPORTS_MANAGE: "reports:manage",
 
   // The dedicated leaderboard page — the podium ranking of people by points earned.

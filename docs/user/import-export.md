@@ -5,8 +5,8 @@ Useful for the initial load, for bulk changes, and for handing a list to
 somebody who wants to look at it in Excel.
 
 Available for: **assets**, **asset types**, **devices**, **locations**,
-**departments**, **journal vocabulary** (categories and tags), **groups**,
-**roles** and **users**.
+**departments**, **end users**, **journal vocabulary** (categories and tags),
+**groups**, **roles** and **users**.
 
 ---
 
@@ -32,6 +32,10 @@ half-loaded state to unpick.
 **Matched by name.** A row whose name already exists updates that record; a new
 name creates one. So a re-import of an edited export is an update, not a pile of
 duplicates.
+
+**End users are matched on their employee number**, not their name — two people
+share a name more often than anybody expects, and the number is the one thing that
+tells them apart. See [End users](/user/end-users).
 
 **References are by name, not id.** A device names its department; a group names
 its roles. You write what a person would write, and the import resolves it. A

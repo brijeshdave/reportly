@@ -73,6 +73,34 @@ describe("users", () => {
     expect(search.json().data.map((u: { email: string }) => u.email)).toEqual(["alice@acme.test"]);
   });
 
+  it("finds a person by name, username, email or employee id, from one box", async () => {
+    // Every people picker in the app searches through this: the person asking knows
+    // one of those four things, and which one is not up to us. Each is a separate
+    // column, and the generic filter builder ANDs its conditions — so a filter per
+    // column would demand a name *and* an employee id, which nobody types.
+    const cookie = await superadmin();
+    const created = await inject("POST", "/users", cookie, {
+      name: "Anita Sharma",
+      email: "anita@acme.test",
+      username: "anita.sharma",
+      employeeId: "EMP-1042",
+      password: "Str0ngTempPass!x",
+    });
+    expect(created.statusCode).toBe(201);
+
+    const search = async (term: string) => {
+      const filters = JSON.stringify([{ field: "search", op: "contains", value: term }]);
+      const res = await inject("GET", `/users?filters=${encodeURIComponent(filters)}`, cookie);
+      expect(res.statusCode).toBe(200);
+      return res.json().data.map((u: { name: string }) => u.name);
+    };
+
+    for (const term of ["anita sh", "anita.sharma", "anita@acme", "EMP-1042", "emp-104"]) {
+      expect({ term, found: await search(term) }).toEqual({ term, found: ["Anita Sharma"] });
+    }
+    expect(await search("EMP-9999")).toEqual([]);
+  });
+
   it("deactivates and reactivates a user", async () => {
     const cookie = await superadmin();
     const { id } = await signUp("bob@acme.test");

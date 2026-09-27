@@ -180,6 +180,11 @@ export const REPORT_SOURCES = [
   "dept_workload",
   "dept_workload_daily",
   "dept_irregularity",
+  // Who the work was *about*. `end_user_issues` is a row per entry naming somebody,
+  // `end_user_summary` a row per person — which is the question management actually
+  // asks: whose equipment keeps failing, and who keeps needing help.
+  "end_user_issues",
+  "end_user_summary",
 ] as const;
 export type ReportSource = (typeof REPORT_SOURCES)[number];
 
@@ -211,6 +216,8 @@ export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
   dept_workload: "reports:view:dept_workload",
   dept_workload_daily: "reports:view:dept_workload_daily",
   dept_irregularity: "reports:view:dept_irregularity",
+  end_user_issues: "reports:view:end_user_issues",
+  end_user_summary: "reports:view:end_user_summary",
 };
 
 /**
@@ -262,6 +269,12 @@ export const REPORT_SCOPE: Record<ReportSource, ReportScopeShape> = {
   dept_workload: "people",
   dept_workload_daily: "people",
   dept_irregularity: "people",
+  // Every row is still made of somebody's entries, so the reporting line decides
+  // what may be read. An end user is not a person in the hierarchy, but the entry
+  // naming them was filed by somebody who is — narrowing by the reader's downline
+  // is what stops one plant's helpdesk reading another's.
+  end_user_issues: "people",
+  end_user_summary: "people",
 };
 
 /** Every per-report key, for seeding a role that may read all of them. */
@@ -291,6 +304,8 @@ export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
   dept_workload: "Department workload — what each person did",
   dept_workload_daily: "Department workload by day — each person, day by day",
   dept_irregularity: "Irregularity — who did little or nothing",
+  end_user_issues: "End users — every issue, by person affected",
+  end_user_summary: "End users — summary per person",
 };
 
 /** The sources that read the cartridges module, hidden where it is switched off. */
@@ -405,12 +420,47 @@ export const ROUTINE_COMPLIANCE_COLUMNS = [
 ] as const;
 
 /**
+ * Columns for the two end-user reports.
+ *
+ * The detail report keeps `endUser` first: it is what the report is sorted and read
+ * by, and putting the date first would make it look like the journal with an extra
+ * column. The summary counts what a helpdesk is judged on — how often somebody
+ * needed help, how much of it was serious, and how long they waited.
+ */
+export const END_USER_ISSUE_COLUMNS = [
+  "endUser",
+  "employeeNumber",
+  "date",
+  "title",
+  "kind",
+  "category",
+  "severity",
+  "status",
+  "assignee",
+  "duration",
+] as const;
+
+export const END_USER_SUMMARY_COLUMNS = [
+  "endUser",
+  "employeeNumber",
+  "department",
+  "entries",
+  "issues",
+  "open",
+  "worst",
+  "repeatCategory",
+  "mttr",
+  "lastEntry",
+] as const;
+
+/**
  * The product area a report belongs to, derived from its source. Used as the report's
  * tag/chip and to group the Reports library into tabs — one consistent domain per
  * source rather than free-form tags.
  */
 export const REPORT_DOMAINS = [
   "Journal",
+  "End users",
   "Downtime",
   "Reliability",
   "Leaderboard",
@@ -422,6 +472,7 @@ export const REPORT_DOMAINS = [
 export type ReportDomain = (typeof REPORT_DOMAINS)[number];
 
 export function reportDomain(source: ReportSource): ReportDomain {
+  if (source.startsWith("end_user_")) return "End users";
   if (source.startsWith("dept_")) return "Workload";
   if (source.startsWith("shift_")) return "Scheduling";
   if (source.startsWith("routine_")) return "Routines";
@@ -682,6 +733,15 @@ export const ALL_REPORT_COLUMN_LABELS: Record<string, string> = {
   completed: "Completed",
   missed: "Missed",
   onTime: "On-time %",
+  // end users
+  endUser: "End user",
+  employeeNumber: "Employee no.",
+  entries: "Entries",
+  // Named by the ladder rather than counted against a fixed level: severity names are
+  // the organisation's to choose, so "Major or above" cannot be hardcoded here.
+  worst: "Worst severity",
+  repeatCategory: "Most common",
+  lastEntry: "Last entry",
 };
 
 /**
@@ -708,6 +768,11 @@ export const MAX_CUSTOM_RANGE_DAYS: Record<ReportSource, number> = {
   dept_workload: 366,
   dept_workload_daily: 31,
   dept_irregularity: 366,
+  // A year of somebody's history is the point of asking — "this keeps happening to
+  // them" is not a statement about one month. The detail report is a row per entry,
+  // so it is capped like the journal it is made of.
+  end_user_issues: 31,
+  end_user_summary: 366,
   // A cartridge's life is measured in months, and the health reports are only
   // meaningful over enough tours to see a pattern.
   part_register: 366,
@@ -836,6 +901,8 @@ export function columnsForSource(source: ReportSource): readonly string[] {
   if (source === "shift_attendance") return SHIFT_ATTENDANCE_COLUMNS;
   if (source === "routine_log") return ROUTINE_LOG_COLUMNS;
   if (source === "routine_compliance") return ROUTINE_COMPLIANCE_COLUMNS;
+  if (source === "end_user_issues") return END_USER_ISSUE_COLUMNS;
+  if (source === "end_user_summary") return END_USER_SUMMARY_COLUMNS;
   return REPORT_COLUMNS;
 }
 
@@ -866,6 +933,14 @@ export const reportFiltersSchema = z.object({
   assetId: z.array(uuidSchema).optional(),
   /** Entries tagged to any of these devices — "every issue and work log on sensor 12". */
   deviceId: z.array(uuidSchema).optional(),
+  /**
+   * The end users a report is narrowed to — the people the work was *about*.
+   *
+   * Its own field rather than folding into `personId`, for the same reason that is
+   * separate from `authorId`: "who did it" and "who it happened to" are different
+   * relationships, and one name for both is how a filter starts meaning two things.
+   */
+  endUserId: z.array(uuidSchema).optional(),
   kind: reportKindSchema.optional(),
   /** Only entries that are a recurrence of an earlier one — the "keeps happening" set. */
   recurring: z.boolean().optional(),

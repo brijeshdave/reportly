@@ -60,7 +60,7 @@ const GROUP_DEFS: { id: string; label: string; resources: string[] }[] = [
   {
     id: "people",
     label: "People & access",
-    resources: ["users", "designations", "groups", "roles"],
+    resources: ["users", "designations", "end-users", "groups", "roles"],
   },
   {
     id: "system",
@@ -81,6 +81,7 @@ const GROUP_DEFS: { id: string; label: string; resources: string[] }[] = [
 /** Prettier headings than the raw resource slug where the slug reads badly. */
 const RESOURCE_LABELS: Record<string, string> = {
   "journal-config": "Journal setup",
+  "end-users": "End users",
   "device-types": "Device types",
   sso: "Single sign-on",
 };

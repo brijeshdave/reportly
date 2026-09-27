@@ -398,6 +398,26 @@ at before you change one: a rename touches all of them at once, and a title cann
 deleted while it is in use — retire it, and the people who hold it keep it while
 nobody new is offered it.
 
+### Manage the end users
+
+**End users** (`end-users:read`) is the register of the people your team **supports** —
+the ones an issue happens _to_. They are not accounts: they never sign in, they hold no
+permissions, and they appear only on this page, in the journal's **End user** field and
+in the end-user reports.
+
+| Task          | Permission         | Notes                                                         |
+| ------------- | ------------------ | ------------------------------------------------------------- |
+| New end user  | `end-users:create` | Full name and employee number are both required.              |
+| Correct one   | `end-users:update` | Every entry naming them points at this record, so it follows. |
+| Make inactive | `end-users:update` | Out of the journal's picker; their history is untouched.      |
+| Delete        | `end-users:delete` | Refused once an entry names them. Deactivate instead.         |
+| Import        | `end-users:import` | Matched on the employee number; all or nothing.               |
+
+The list shows an **entry count** beside each person, which is the reason the register
+exists: it is what turns a staff list into the answer to "whose equipment keeps
+failing". The full story, including how the journal narrows the list by department, is
+in [End users](/user/end-users).
+
 A user's designation is then picked from this list on their profile. A retired title
 is not offered to anybody new, but if someone already holds one it still shows on
 their profile (marked "retired"), so saving their profile never quietly strips it.
@@ -732,11 +752,18 @@ permission count and whether it is a **System** role or one of yours.
 
 ### Find a role, a group or a person quickly
 
-The Roles, Groups, Designations and Users lists each carry a **search box** and a
-two-way **toggle** in the toolbar — System / Custom on roles and groups, Active /
-Retired on job titles and people. They are the filters that get used constantly, so
-they sit in the open rather than behind **Filters**, which still holds everything
-else.
+The Roles, Groups, Designations, End users and Users lists each carry a **search
+box** and a two-way **toggle** in the toolbar — System / Custom on roles and groups,
+Active / Retired on job titles and people. They are the filters that get used
+constantly, so they sit in the open rather than behind **Filters**, which still holds
+everything else.
+
+**One box, whichever fact you have.** Searching people matches their **name,
+username, email or employee id**, and searching end users matches their **name or
+employee number** — you type what you know rather than choosing a column first. The
+same search backs every people picker in the app: naming somebody on a task, adding
+them to a department, filtering a report by who filed it. Each option shows the staff
+number beside the name, so what is on the row is what can be typed.
 
 ### Copy a system group
 

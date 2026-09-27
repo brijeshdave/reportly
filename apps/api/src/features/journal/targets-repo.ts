@@ -16,6 +16,7 @@ import {
   departments,
   deviceTypes,
   devices,
+  endUsers,
   journalTargets,
   users,
 } from "@/core/db/schema.js";
@@ -85,6 +86,27 @@ async function labelsFor(targets: { kind: string; id: string }[]): Promise<Map<s
       .from(users)
       .where(inArray(users.id, userIds));
     for (const r of rows) labels.set(`user:${r.id}`, { label: r.name, tracksDowntime: false });
+  }
+
+  // The person the fault happened to. Labelled with the employee number, because two
+  // people share a name more often than anybody expects and the number is what tells
+  // them apart on the master list.
+  const endUserIds = idsOf("endUser");
+  if (endUserIds.length > 0) {
+    const rows = await db
+      .select({
+        id: endUsers.id,
+        fullName: endUsers.fullName,
+        employeeNumber: endUsers.employeeNumber,
+      })
+      .from(endUsers)
+      .where(inArray(endUsers.id, endUserIds));
+    for (const r of rows) {
+      labels.set(`endUser:${r.id}`, {
+        label: `${r.fullName} (${r.employeeNumber})`,
+        tracksDowntime: false,
+      });
+    }
   }
 
   const departmentIds = idsOf("department");
@@ -196,6 +218,18 @@ export async function existingTargets(
       .innerJoin(departments, eq(departments.id, departmentUsers.departmentId))
       .where(and(inArray(departmentUsers.userId, userIds), eq(departments.companyId, companyId)));
     for (const r of rows) found.add(`user:${r.id}`);
+  }
+
+  // An end user belongs to exactly one company, so the check is the plain one — and
+  // it has to be here, or naming somebody the fault happened to is refused as
+  // "not in this company" whatever list it came from.
+  const endUserIds = idsOf("endUser");
+  if (endUserIds.length > 0) {
+    const rows = await db
+      .select({ id: endUsers.id })
+      .from(endUsers)
+      .where(and(inArray(endUsers.id, endUserIds), eq(endUsers.companyId, companyId)));
+    for (const r of rows) found.add(`endUser:${r.id}`);
   }
 
   return found;

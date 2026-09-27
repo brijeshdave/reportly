@@ -256,6 +256,26 @@ Two things follow for anyone converting one:
   reworked into opening it. `pickFromCombo` in `e2e/tests/helpers.ts` is the
   standard way to drive one.
 
+### Why are end users their own table rather than a flag on `users`?
+
+Because the exclusion has to be structural. An end user has no password, no company
+access, no place in the reporting line, no points and no inbox — so a flag on the
+account list would oblige every surface that reads people to exclude them one at a
+time: the assignment picker, the downline walk, the leaderboard, review chains,
+rosters, the org chart, every people filter. The first one that forgot would be a
+leak, and it would look like a populated dropdown rather than like a bug.
+
+Their own table means they appear where they are asked for — the register, the
+journal's **End user** field, the two end-user reports — and nowhere else, without
+anybody having to remember.
+
+What is deliberately NOT done: the 206 historical targets that named _accounts_
+(`target_kind = 'user'`) were left alone. `user` is still a valid target kind and
+still resolves a label, so old entries keep reading correctly; nothing converts
+them, because a guess about which colleague meant which end user would be a
+fabrication in somebody's record. The picker no longer offers accounts, so the set
+cannot grow.
+
 ### Why do departments carry a `path` and a `companyName`?
 
 Because a picker rendering `d.name` is ambiguous, and it is ambiguous in a way the

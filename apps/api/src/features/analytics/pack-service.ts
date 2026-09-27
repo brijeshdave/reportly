@@ -304,6 +304,22 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
     }),
   ];
 
+  // Only where anybody has been named. On a company still filing against whole
+  // departments the number is zero every month, and a card that never moves is a card
+  // people learn to skip.
+  const [affectedNow, affectedWas] = await Promise.all([
+    pack.endUsersAffected(scope, from, to),
+    pack.endUsersAffected(scope, previousFrom, previousTo),
+  ]);
+  if (affectedNow > 0 || affectedWas > 0) {
+    indicators.push(
+      indicator("endUsersAffected", "End users affected", affectedNow, affectedWas, {
+        higherIsBetter: false,
+        hint: "People named on at least one entry in the period.",
+      }),
+    );
+  }
+
   // Only where the module is used at all. A card reading "Cartridges serviced: 0" on
   // a company that does not refill anything is a slide saying nothing, every month.
   if (cartridgesNow > 0 || cartridgesWas > 0) {
@@ -501,6 +517,42 @@ export async function managementPack(query: PackQuery, companyId: string): Promi
           : []),
       ],
     });
+  }
+
+  if (sections.includes("end_users")) {
+    const [byEndUser, worst] = await Promise.all([
+      pack.entriesByEndUser(scope, from, to),
+      pack.endUserPackRows(scope, from, to),
+    ]);
+    // Same rule as the cartridges section: a section with nothing in it is not
+    // drawn, printed or exported, because an empty slide reads as a broken system.
+    if (byEndUser.length > 0) {
+      built.push({
+        section: "end_users",
+        title: "End users",
+        series: [
+          {
+            key: "entriesByEndUser",
+            title: "Entries by end user",
+            description: "Who the work was about — not who did it.",
+            unit: "entries",
+            points: byEndUser,
+          },
+        ],
+        table: {
+          title: "Who needed the most help",
+          columns: ["End user", "Employee no.", "Department", "Entries", "Issues", "Still open"],
+          rows: worst.map((r) => [
+            r.fullName,
+            r.employeeNumber,
+            r.departmentName ?? "—",
+            String(r.entries),
+            String(r.issues),
+            String(r.open),
+          ]),
+        },
+      });
+    }
   }
 
   if (sections.includes("compliance")) {

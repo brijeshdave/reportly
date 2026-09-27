@@ -26,6 +26,7 @@ export * from "@/entities/company.js";
 export * from "@/entities/location.js";
 export * from "@/entities/department.js";
 export * from "@/entities/designation.js";
+export * from "@/entities/end-user.js";
 export * from "@/entities/report-config.js";
 export * from "@/entities/asset.js";
 export * from "@/entities/report-scope.js";

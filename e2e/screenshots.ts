@@ -181,6 +181,18 @@ const SHOTS: Shot[] = [
     ready: (page) => page.getByRole("heading", { name: "Reports", exact: true }).waitFor(),
   },
   {
+    name: "end-users",
+    path: "/end-users",
+    ready: (page) => page.getByRole("table").waitFor(),
+  },
+  {
+    name: "end-user-report",
+    path: "/reports/end-users",
+    // The summary table, not the heading: the page opens on a heading and then runs
+    // the report, and a shot taken in between shows a spinner.
+    ready: (page) => page.getByRole("table").waitFor(),
+  },
+  {
     name: "roles",
     path: "/roles",
     ready: (page) => page.getByRole("table").waitFor(),

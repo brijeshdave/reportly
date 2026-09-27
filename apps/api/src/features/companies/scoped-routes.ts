@@ -34,6 +34,9 @@ export const COMPANY_OWNED_PREFIXES = [
   "/device-types",
   "/devices",
   "/downtime",
+  // The people a company supports are that company's own master data, like its
+  // departments — a deactivated company stops gaining them.
+  "/end-users",
   "/journal",
   "/journal-config",
   "/journal-statuses",

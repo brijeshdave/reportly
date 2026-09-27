@@ -1593,6 +1593,54 @@ export const scheduleChangeLog = pgTable(
   ],
 );
 
+/**
+ * A person the IT team supports who does not use Reportly.
+ *
+ * Asked for from use: the journal's "People" field offered the *user* table, so
+ * technicians were tagging colleagues — 206 targets naming 13 accounts — because
+ * that was the only list there was. The people the work is actually about were not
+ * in the system at all.
+ *
+ * A table of its own rather than a flag on `users`, and the reason is structural
+ * rather than aesthetic. An end user has no password, no company access, no place in
+ * the reporting line, no points and no inbox. A flag would mean every surface that
+ * reads people — the assignment picker, the downline walk, the leaderboard, review
+ * chains, notification targets, rosters — had to learn to exclude them, and each
+ * place that forgot would be a leak. Nothing that reads `users` can see this table,
+ * so the exclusion cannot be forgotten. They will also outnumber the staff ten to
+ * one, and no existing dropdown should grow by that factor.
+ *
+ * `linkedUserId` is the bridge for the few who are both: a colleague who files their
+ * own entries and is occasionally the subject of somebody else's.
+ */
+export const endUsers = pgTable(
+  "end_users",
+  {
+    id: idPk(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    /** Where they sit. The journal's picker narrows to the department chosen there. */
+    departmentId: uuid("department_id").references(() => departments.id, {
+      onDelete: "set null",
+    }),
+    fullName: text("full_name").notNull(),
+    /** Required and unique within the company — it is how a person is told apart. */
+    employeeNumber: text("employee_number").notNull(),
+    description: text("description"),
+    /** active | inactive. Inactive keeps the history and leaves the picker. */
+    status: text("status").notNull().default("active"),
+    /** Set where this person also has a Reportly account. */
+    linkedUserId: text("linked_user_id").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("end_users_company_employee_number_unique").on(t.companyId, t.employeeNumber),
+    index("end_users_company_status_idx").on(t.companyId, t.status),
+    index("end_users_department_idx").on(t.departmentId),
+  ],
+);
+
 // --- team routines: recurring duties with per-person completion tracking ---
 
 /**

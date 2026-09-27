@@ -8,9 +8,30 @@
 import { z } from "zod";
 
 /** The kinds of thing a report can be scoped to. */
-export const TARGET_KINDS = ["asset", "device", "user", "department"] as const;
+/**
+ * What an entry can be *about*.
+ *
+ * `endUser` is the person the fault happened to — the field the journal now offers.
+ * `user` is kept for the entries filed before end users existed: those 206 targets
+ * name real work and must keep resolving, even though nothing writes the kind any
+ * more. Removing it from the list would turn history into unlabelled ids.
+ */
+export const TARGET_KINDS = ["asset", "device", "user", "endUser", "department"] as const;
 export type TargetKind = (typeof TARGET_KINDS)[number];
 export const targetKindSchema = z.enum(TARGET_KINDS);
+
+/**
+ * How each kind reads on a chip. `endUser` is not a word, and every screen that shows
+ * a scope chip was printing the enum straight out.
+ */
+export const TARGET_KIND_LABELS: Record<TargetKind, string> = {
+  asset: "asset",
+  device: "device",
+  department: "department",
+  endUser: "end user",
+  // Kept for the entries filed before end users existed, which named accounts.
+  user: "person",
+};
 
 /** One scope link as sent in — a kind and the id of the thing. */
 export const reportTargetInputSchema = z.object({

@@ -103,6 +103,27 @@ describe("AssignmentPicker", () => {
     expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
   });
 
+  it("searches what is shown beside the name, not only the name", async () => {
+    // A person is looked for by whatever the asker knows — a staff number on a
+    // laptop sticker, an email in a ticket. Searching only the name made everything
+    // else on the row look like decoration.
+    const user = userEvent.setup({ delay: null });
+    render(
+      <AssignmentPicker
+        options={[
+          { id: "1", label: "Anita Sharma", meta: "EMP-1042 · anita@acme.test" },
+          { id: "2", label: "Grace Hopper", meta: "EMP-2001 · grace@acme.test" },
+        ]}
+        selectedIds={[]}
+        onSave={onSave}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Search options"), "EMP-1042");
+    expect(screen.getByText("Anita Sharma")).toBeInTheDocument();
+    expect(screen.queryByText("Grace Hopper")).not.toBeInTheDocument();
+  });
+
   it("reports its dirtiness, so the tab can be marked", async () => {
     // A preserved draft looks exactly like a saved one; the page needs to know.
     const onDirtyChange = vi.fn();

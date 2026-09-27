@@ -253,7 +253,7 @@ export function UsersListPage() {
         {...list}
         columns={columns}
         filterDefs={filterDefs}
-        quickSearch={{ field: "name", placeholder: "Search people" }}
+        quickSearch={{ field: "search", placeholder: "Name, username, email or employee id" }}
         quickToggle={{
           field: "status",
           label: "Active or retired",
