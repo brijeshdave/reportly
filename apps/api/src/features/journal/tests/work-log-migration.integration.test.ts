@@ -23,6 +23,9 @@ const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const migrationFile = fileURLToPath(
   new URL("../../../../drizzle/0009_work_log_timeline.sql", import.meta.url),
 );
+const rescueFile = fileURLToPath(
+  new URL("../../../../drizzle/0030_rescue_work_typed_at_filing.sql", import.meta.url),
+);
 
 afterAll(async () => {
   await appPool.end();
@@ -33,14 +36,17 @@ beforeEach(async () => {
   await resetDb();
 });
 
-/** Run the migration the way drizzle does: one statement per breakpoint. */
-async function replayMigration(): Promise<void> {
-  const text = await readFile(migrationFile, "utf8");
+/** Run a migration the way drizzle does: one statement per breakpoint. */
+async function replay(file: string): Promise<void> {
+  const text = await readFile(file, "utf8");
   for (const statement of text.split("--> statement-breakpoint")) {
     if (statement.trim() === "") continue;
     await db.execute(sql.raw(statement));
   }
 }
+
+const replayMigration = () => replay(migrationFile);
+const replayRescue = () => replay(rescueFile);
 
 /** An entry as it looked before the timeline existed: work in the two text columns. */
 async function entryWithWorkText(overrides: {
@@ -131,6 +137,72 @@ describe("migration 0009 — rescuing the work already written", () => {
     const id = await entryWithWorkText({});
 
     await replayMigration();
+
+    expect(await itemsFor(id)).toEqual([]);
+  });
+});
+
+describe("migration 0030 — the entries the filing form left behind", () => {
+  // 0009 rescued everything written before the timeline existed. What it could not
+  // know is that the *create* path kept assigning the roll-up columns directly
+  // afterwards, so entries filed with "Work done" filled in went on arriving with
+  // text and no item — the Work log read empty while the gate demanding work passed.
+  // The code no longer does that; this is the data that shape left behind.
+
+  it("gives a filed-with-work entry the item it never got", async () => {
+    const id = await entryWithWorkText({
+      workSummary: "Replaced the drive belt",
+      workDetail: "Spare from the east store.",
+    });
+
+    await replayRescue();
+
+    const items = await itemsFor(id);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.summary).toBe("Replaced the drive belt");
+    expect(items[0]!.detail).toBe("Spare from the east store.");
+    expect(items[0]!.userId).toBe("work-migration-author");
+    expect(items[0]!.startedAt?.toISOString()).toBe("2026-08-01T09:15:00.000Z");
+    expect(items[0]!.finishedAt?.toISOString()).toBe("2026-08-01T10:05:00.000Z");
+  });
+
+  it("does not touch an entry whose timeline already has something on it", async () => {
+    // The guard that matters most here. Unlike 0009 this runs on databases where the
+    // timeline is in daily use, so an entry with real items — logged by colleagues,
+    // scored against — must come through completely untouched.
+    const id = await entryWithWorkText({ workSummary: "Replaced the drive belt" });
+    await replayMigration();
+    const before = await itemsFor(id);
+    expect(before).toHaveLength(1);
+
+    await replayRescue();
+
+    expect(await itemsFor(id)).toHaveLength(1);
+  });
+
+  it("does not duplicate anything when it runs twice", async () => {
+    const id = await entryWithWorkText({ workSummary: "Replaced the drive belt" });
+
+    await replayRescue();
+    await replayRescue();
+
+    expect(await itemsFor(id)).toHaveLength(1);
+  });
+
+  it("gives a detail-only entry a usable line rather than an empty one", async () => {
+    const id = await entryWithWorkText({ workDetail: "Tightened everything and ran it up." });
+
+    await replayRescue();
+
+    const items = await itemsFor(id);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.summary).toBe("Work recorded before the timeline");
+  });
+
+  it("leaves an entry with no work alone", async () => {
+    const id = await entryWithWorkText({});
+
+    await replayRescue();
 
     expect(await itemsFor(id)).toEqual([]);
   });
