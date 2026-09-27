@@ -42,6 +42,22 @@ Fill in what fits, then either:
 
 Only the **title** is required to save. Everything else is there when it helps.
 
+### Work done at the moment of filing
+
+Where the job is already finished when you write it up, fill in **Work done** on the
+filing form. That becomes the **first item of the entry's work log**, in your name,
+timed from the start and finish you gave — not a separate note. So an entry filed
+with the work described already has a work log, and anything added later joins it
+rather than replacing it.
+
+On an issue the section starts closed, behind **I already did the work**: a breakdown
+should be raised at the machine and written up afterwards. An administrator can
+remove that shortcut — see **Require work done on an issue** in [Configuration](configuration.md).
+
+Editing an entry afterwards does **not** offer those fields, and that is deliberate:
+by then the work is a timeline several people may have written, and a form that could
+overwrite it would be a second author. Corrections go on the item that recorded them.
+
 ### Logging the work afterwards
 
 Open the entry and use **Log work**. Each piece of work is its own item, with **who
@@ -56,7 +72,8 @@ belongs to them: you can correct your own, and nobody can rewrite yours. Adding
 somebody to _who worked on it_ is also what lets them open the entry at all.
 
 The entry's own work summary follows the newest item, so the reports and exports carry
-on reading one line.
+on reading one line. It is written **only** from the work log — nothing types into it
+directly, which is what keeps the one-line version and the timeline from disagreeing.
 
 **A closed entry will not take new work**, and neither will a locked one. That is deliberate and separate from the
 appraisal lock, which comes later: a finished record that still accepts "what was

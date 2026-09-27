@@ -782,16 +782,16 @@ describe("reports and scoring", () => {
     // Open: work can be logged.
     expect(
       (
-        await inject("PATCH", `/journal/${reportId}`, author.cookie, {
-          workSummary: "Belt swapped",
+        await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+          summary: "Belt swapped",
         })
       ).statusCode,
-    ).toBe(200);
+    ).toBe(201);
 
     await finish(author.cookie, reportId);
 
-    const refused = await inject("PATCH", `/journal/${reportId}`, author.cookie, {
-      workSummary: "And greased the bearings",
+    const refused = await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+      summary: "And greased the bearings",
     });
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error.message).toMatch(/closed/i);
@@ -805,5 +805,137 @@ describe("reports and scoring", () => {
         })
       ).statusCode,
     ).toBe(200);
+  });
+
+  it("turns work described on the filing form into the entry's first timeline item", async () => {
+    // Reported from use: with work mandatory, an entry filed *with* work done saved
+    // fine and then showed an empty Work log. The two text columns on the entry are a
+    // roll-up of `journal_work_logs`, and the create path was assigning them directly
+    // — so the gate read a column nothing else agreed with, and the tab that reads the
+    // timeline had nothing to show.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+
+    const filed = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Belt snapped",
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "Belt seized",
+      workSummary: "Replaced the drive belt",
+      workDetail: "Spare from the east store.",
+      startedAt: new Date("2026-08-01T09:15:00.000Z").toISOString(),
+      endedAt: new Date("2026-08-01T10:05:00.000Z").toISOString(),
+    });
+    expect(filed.statusCode, filed.body).toBe(201);
+    const reportId = filed.json().id as string;
+
+    const logs = (await inject("GET", `/journal/${reportId}/work`, author.cookie)).json();
+    expect(logs).toHaveLength(1);
+    expect(logs[0].summary).toBe("Replaced the drive belt");
+    expect(logs[0].detail).toBe("Spare from the east store.");
+    // Timed from the entry's own start and finish, the way migration 0009 attributed
+    // the entries it rescued — the closest to a truthful timestamp the form collects.
+    expect(logs[0].startedAt).toBe("2026-08-01T09:15:00.000Z");
+    expect(logs[0].finishedAt).toBe("2026-08-01T10:05:00.000Z");
+    // And the roll-up agrees with the timeline rather than being a second opinion.
+    expect(filed.json().workSummary).toBe("Replaced the drive belt");
+  });
+
+  it("does not lose the work described at filing when more work is logged later", async () => {
+    // The sharp end of the same bug. `refreshWorkRollup` recomputes the two columns
+    // from the timeline, so the first genuine work log overwrote whatever had been
+    // typed on the filing form — the text was not merely invisible, it was scheduled
+    // for deletion. Both items must survive.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+
+    const filed = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Belt snapped",
+      state: "submitted",
+      severityId: critical.id,
+      issueSummary: "Belt seized",
+      workSummary: "Replaced the drive belt",
+    });
+    expect(filed.statusCode).toBe(201);
+    const reportId = filed.json().id as string;
+
+    expect(
+      (
+        await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+          summary: "Greased the bearings",
+        })
+      ).statusCode,
+    ).toBe(201);
+
+    const logs = (await inject("GET", `/journal/${reportId}/work`, author.cookie)).json();
+    expect(logs.map((l: { summary: string }) => l.summary)).toEqual([
+      "Replaced the drive belt",
+      "Greased the bearings",
+    ]);
+  });
+
+  it("counts the timeline, not the roll-up, when a draft is submitted with work mandatory", async () => {
+    // The other door into the rule. It used to read `journal_entries.work_summary`,
+    // which is a cache of the answer — so a draft whose work had since been removed
+    // still submitted, and one whose work was only ever a column passed on a value
+    // nothing else agreed with.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    await inject("PUT", "/settings/reports/entry", admin, {
+      value: { requireWorkOnIssue: true },
+    });
+
+    const draft = await inject("POST", "/journal", author.cookie, {
+      kind: "issue",
+      title: "Still writing this",
+      state: "draft",
+      severityId: critical.id,
+      issueSummary: "x",
+    });
+    expect(draft.statusCode).toBe(201);
+    const reportId = draft.json().id as string;
+
+    // Nothing on the timeline: the submit is refused.
+    const refused = await inject("PATCH", `/journal/${reportId}`, author.cookie, {
+      state: "submitted",
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error.message).toMatch(/work done is required/i);
+
+    // Log a piece of work and the same submit goes through.
+    expect(
+      (
+        await inject("POST", `/journal/${reportId}/work`, author.cookie, {
+          summary: "Swapped the belt",
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      (await inject("PATCH", `/journal/${reportId}`, author.cookie, { state: "submitted" }))
+        .statusCode,
+    ).toBe(200);
+  });
+
+  it("keeps a pre-timeline entry's work text when work is refreshed around it", async () => {
+    // Decided rather than backfilled: entries whose work only ever reached the two
+    // columns keep their text, because a work log invented with a guessed worker and
+    // no times is a false row in a timeline people score off. So a refresh with an
+    // empty timeline must decline to write rather than null the columns — and
+    // emptying the timeline on purpose must still clear them.
+    const admin = await superadmin();
+    const { author, critical } = await buildChain(admin);
+    const reportId = await fileIssue(author.cookie, critical.id);
+
+    const logs = (await inject("GET", `/journal/${reportId}/work`, author.cookie)).json();
+    expect(logs).toHaveLength(1);
+
+    const removed = await inject("DELETE", `/journal/work/${logs[0].id}`, author.cookie);
+    expect(removed.statusCode).toBe(204);
+
+    // The last item is gone and this caller knows it, so the roll-up goes with it.
+    const after = (await inject("GET", `/journal/${reportId}`, author.cookie)).json();
+    expect(after.workSummary).toBeNull();
   });
 });

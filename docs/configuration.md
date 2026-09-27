@@ -219,6 +219,10 @@ reported. Turn it on where the work is in fact always finished before anybody ty
 the editor then stops offering "I already did the work" and the server refuses an
 empty submit. A **draft** is exempt, since a draft is for something unfinished.
 
+What is typed there becomes the entry's **first work log item** — so the rule cannot
+be satisfied by a line that never reaches the record. Submitting a draft later is held
+to the same rule, measured against the work log itself.
+
 **Grace applies to superadmins** decides whether the account that can do anything is
 bound by the limit. Off by default: a superadmin is usually the person correcting a
 mistake, and locking them out makes the mistake permanent. Turn it on where the

@@ -107,12 +107,33 @@ export async function refreshWorkRollup(reportId: string): Promise<void> {
     .orderBy(desc(journalWorkLogs.startedAt), desc(journalWorkLogs.createdAt))
     .limit(1);
 
+  // Nothing to roll up from, so nothing is written. It used to null the columns
+  // here, which quietly destroyed data: entries filed through the create form
+  // before it wrote a timeline item carry their work in these columns and in no
+  // other place, and the first time anybody logged real work against one the text
+  // somebody had typed was gone. A refresh with an empty timeline cannot tell
+  // "this entry has no work" from "this entry's work never became an item", so it
+  // declines to answer. Emptying the timeline says so for itself — see
+  // `clearWorkRollup`.
+  if (!newest) return;
+
   await db
     .update(journalEntries)
-    .set({
-      workSummary: newest?.summary ?? null,
-      workDetail: newest?.detail ?? null,
-      updatedAt: new Date(),
-    })
+    .set({ workSummary: newest.summary, workDetail: newest.detail, updatedAt: new Date() })
+    .where(eq(journalEntries.id, reportId));
+}
+
+/**
+ * Clear the roll-up outright, for the one caller that knows it should be empty:
+ * whoever just removed the last item from the timeline.
+ *
+ * Kept apart from `refreshWorkRollup` on purpose. That function is called from
+ * every write and has no way of knowing whether an empty timeline is the truth or
+ * a gap; this one is called from the single place where it is the truth.
+ */
+export async function clearWorkRollup(reportId: string): Promise<void> {
+  await db
+    .update(journalEntries)
+    .set({ workSummary: null, workDetail: null, updatedAt: new Date() })
     .where(eq(journalEntries.id, reportId));
 }

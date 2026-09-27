@@ -267,6 +267,14 @@ export const createJournalEntrySchema = z
     issueDetail: longText.optional(),
     rootCause: longText.optional(),
     preventiveMeasures: longText.optional(),
+    /**
+     * Work already done at the moment of filing. **Not** the entry's roll-up
+     * columns, despite the names: the server turns these into the first item of the
+     * entry's work timeline (`journal_work_logs`), attributed to whoever filed it
+     * and timed from `startedAt`/`endedAt`. Everything afterwards is logged against
+     * the entry itself, because one job worked over two shifts is several items and
+     * a filing form cannot hold that.
+     */
     workSummary: shortText.optional(),
     workDetail: longText.optional(),
 
@@ -306,8 +314,12 @@ export const updateJournalEntrySchema = z.object({
   issueDetail: longText.nullable().optional(),
   rootCause: longText.nullable().optional(),
   preventiveMeasures: longText.nullable().optional(),
-  workSummary: shortText.nullable().optional(),
-  workDetail: longText.nullable().optional(),
+  // `workSummary` / `workDetail` are deliberately absent. They are a roll-up of the
+  // entry's work timeline, owned by the code that writes it, and an edit form that
+  // could set them was a second writer to a derived column — the newest work log
+  // would overwrite the correction on its next write, so the edit only appeared to
+  // stick. Correcting what was done is done on the item that recorded it:
+  // PATCH /journal/work/:id.
   recurrenceOfId: uuidSchema.nullable().optional(),
   /** Replaces the whole scope set when present; omit to leave scope untouched. */
   targets: z.array(reportTargetInputSchema).optional(),

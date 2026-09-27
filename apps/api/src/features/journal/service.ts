@@ -81,6 +81,7 @@ import {
 } from "@/features/journal/score-events-repo.js";
 import { colleaguesOf } from "@/features/departments/repo.js";
 import {
+  clearWorkRollup,
   deleteWorkLogRow,
   getWorkLog,
   insertWorkLog,
@@ -1147,7 +1148,7 @@ export async function createReport(
   // entries were arriving with no severity at all. A draft may still be incomplete,
   // which is what a draft is for.
   assertSeverityOnSubmit(input.state, input.severityId ?? null, input.kind);
-  await assertWorkOnSubmit(input.state, input.kind, input.workSummary ?? null);
+  await assertWorkOnSubmit(input.state, input.kind, { typed: input.workSummary ?? null });
 
   const defaultStatus =
     input.statusId ?? (await firstStatusInGroup(isWorkLog ? "resolved" : "open"))?.id ?? null;
@@ -1173,8 +1174,6 @@ export async function createReport(
     issueDetail: input.issueDetail ?? null,
     rootCause: input.rootCause ?? null,
     preventiveMeasures: input.preventiveMeasures ?? null,
-    workSummary: input.workSummary ?? null,
-    workDetail: input.workDetail ?? null,
     recurrenceOfId: input.recurrenceOfId ?? null,
     taskId: input.taskId ?? null,
     // Whoever files it is on it, unless they said otherwise. The alternative — an
@@ -1196,6 +1195,30 @@ export async function createReport(
     changedBy: ctx.userId,
   });
   if (input.tagIds?.length) await applyTags("report", id, fields.departmentId, input.tagIds);
+  // Work described on the filing form is the timeline's first item, not a column.
+  //
+  // It used to be assigned straight onto the entry's `work_summary` / `work_detail`,
+  // which are a **roll-up** of `journal_work_logs` and are owned by the code that
+  // writes that timeline (see the header of `work-log-repo.ts`). The result was an
+  // entry whose Work log tab was empty while the gate that demands work passed, and
+  // whose typed text was overwritten by the first real item anybody logged. Filing
+  // work and logging work now go down the same path, which is the only way the two
+  // cannot disagree.
+  //
+  // Timed from the entry's own start and finish — the same attribution migration
+  // 0009 used when it rescued the pre-timeline entries, and for the same reason:
+  // they are the closest to a truthful timestamp the form collects.
+  if (input.workSummary && input.workSummary.trim() !== "") {
+    await insertWorkLog({
+      reportId: id,
+      userId: ctx.userId,
+      summary: input.workSummary.trim(),
+      detail: input.workDetail?.trim() || null,
+      startedAt: fields.startedAt ?? null,
+      finishedAt: fields.endedAt ?? null,
+    });
+    await refreshWorkRollup(id);
+  }
   // The author is the first worker, so the points maths needs no special case for
   // them — they are simply a participant with an equal share until somebody says
   // otherwise.
@@ -1298,22 +1321,6 @@ export async function updateReport(
     );
   }
 
-  // Work cannot be logged against a closed ticket.
-  //
-  // The lock above is about *appraisal*; this is about the ticket being finished.
-  // They are different moments — an entry is closed long before anyone scores it —
-  // and a closed ticket that still accepts "what was done" is one whose record can be
-  // rewritten after everybody has stopped looking. Re-open it if there is more to
-  // say; that move is logged, which is the point.
-  const touchesWork = input.workSummary !== undefined || input.workDetail !== undefined;
-  if (touchesWork && (await isClosed(row.statusId))) {
-    throw new AppError(
-      409,
-      ERROR_CODES.CONFLICT,
-      "This entry is closed. Re-open it before logging any more work against it.",
-    );
-  }
-
   const patch: JournalEntryPatch = {};
   const assign = <K extends keyof JournalEntryPatch>(key: K, value: JournalEntryPatch[K]) => {
     if (value !== undefined) patch[key] = value;
@@ -1332,8 +1339,6 @@ export async function updateReport(
   assign("issueDetail", input.issueDetail as string | null | undefined);
   assign("rootCause", input.rootCause as string | null | undefined);
   assign("preventiveMeasures", input.preventiveMeasures as string | null | undefined);
-  assign("workSummary", input.workSummary as string | null | undefined);
-  assign("workDetail", input.workDetail as string | null | undefined);
   assign("recurrenceOfId", input.recurrenceOfId as string | null | undefined);
   if (input.reportDate !== undefined) patch.reportDate = new Date(input.reportDate as string);
   if (input.occurredAt !== undefined) patch.occurredAt = toDate(input.occurredAt as string | null);
@@ -1369,11 +1374,7 @@ export async function updateReport(
       row.kind,
     );
     // The edit that submits a draft is the other door into the same rule.
-    await assertWorkOnSubmit(
-      "submitted",
-      row.kind,
-      (input.workSummary as string | null | undefined) ?? row.workSummary,
-    );
+    await assertWorkOnSubmit("submitted", row.kind, { reportId: id });
     patch.state = "submitted";
     patch.submittedAt = new Date();
   } else if (input.state === "draft") {
@@ -1570,12 +1571,21 @@ export async function journalEntryRules(ctx: AuthContext): Promise<JournalEntryR
 async function assertWorkOnSubmit(
   state: string | undefined,
   kind: string,
-  workSummary: string | null,
+  work: { typed: string | null } | { reportId: string },
 ): Promise<void> {
   if (state !== "submitted" || kind !== "issue") return;
   const { requireWorkOnIssue } = await getSystemSetting(REPORT_ENTRY_SETTINGS);
   if (!requireWorkOnIssue) return;
-  if (workSummary && workSummary.trim() !== "") return;
+  // Two doors into the same rule, and they can only look at different things. A
+  // create has no entry yet, so the only evidence is what was typed; an update has
+  // a timeline, which is the record — reading the roll-up column there checked a
+  // cache of the answer instead of the answer, and passed for an entry whose work
+  // had since been removed.
+  const satisfied =
+    "typed" in work
+      ? Boolean(work.typed && work.typed.trim() !== "")
+      : (await workLogsFor(work.reportId)).length > 0;
+  if (satisfied) return;
   throw new AppError(
     400,
     ERROR_CODES.VALIDATION_ERROR,
@@ -2175,5 +2185,11 @@ export async function removeWorkLog(logId: string, ctx: AuthContext): Promise<vo
   }
 
   await deleteWorkLogRow(logId);
-  await refreshWorkRollup(log.reportId);
+  // Removing the last item is the one case where an empty timeline is the answer
+  // rather than a gap, and this is the only caller that knows it. `refreshWorkRollup`
+  // declines to null the columns precisely so that it cannot wipe an entry whose work
+  // never became an item — see its comment.
+  const left = await workLogsFor(log.reportId);
+  if (left.length === 0) await clearWorkRollup(log.reportId);
+  else await refreshWorkRollup(log.reportId);
 }

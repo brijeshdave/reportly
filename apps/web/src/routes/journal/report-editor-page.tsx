@@ -129,8 +129,11 @@ export function JournalEntryEditorPage({
         issueDetail: existing.data.issueDetail ?? "",
         rootCause: existing.data.rootCause ?? "",
         preventiveMeasures: existing.data.preventiveMeasures ?? "",
-        workSummary: existing.data.workSummary ?? "",
-        workDetail: existing.data.workDetail ?? "",
+        // Left empty rather than seeded from the entry: the edit form does not draw
+        // the work fields at all, because what was done lives on the work timeline
+        // and the entry's copy of it is a roll-up nothing should type into.
+        workSummary: "",
+        workDetail: "",
         // The detail read resolves each link's label, so the chips draw straight away.
         targets: existing.data.targets,
       }
@@ -243,8 +246,14 @@ function Editor({
     rootCause: form.kind === "issue" ? form.rootCause.trim() || undefined : undefined,
     preventiveMeasures:
       form.kind === "issue" ? form.preventiveMeasures.trim() || undefined : undefined,
-    workSummary: form.workSummary.trim() || undefined,
-    workDetail: form.workDetail.trim() || undefined,
+    // Only when filing. On an edit these are not accepted: they are a roll-up of the
+    // work timeline, and the entry's own Log work is where a correction belongs.
+    ...(mode === "create"
+      ? {
+          workSummary: form.workSummary.trim() || undefined,
+          workDetail: form.workDetail.trim() || undefined,
+        }
+      : {}),
     // Always sent, including when empty: on an edit that is how scope is cleared.
     targets: form.targets.map(({ kind, id }) => ({ kind, id })),
   });
@@ -525,7 +534,7 @@ function Editor({
             available, because sometimes the honest entry really is "belt snapped, I
             replaced it" and two screens for that would be worse. A work log is
             nothing but work done, so it is never collapsed. */}
-        {isIssue && mode === "edit" ? (
+        {mode === "edit" ? (
           <Card className="flex flex-col gap-2 p-6">
             <h2 className="text-sm font-semibold">Work done</h2>
             <p className="text-sm text-muted-foreground">
