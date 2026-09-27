@@ -11,6 +11,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   addMember,
   fillDueDate,
+  localInput,
   logWork,
   resolveEntry,
   pickPeople,
@@ -170,6 +171,12 @@ test("assigns a task, completes it, and the work lands as a linked report", asyn
   await page.getByRole("button", { name: /Complete & log work/i }).click();
   await expect(page).toHaveURL(/\/journal\/new\?taskId=[0-9a-f-]{36}/);
   await expect(page.getByLabel("Title")).toHaveValue(title);
+  // The task's site comes with it — the form does not ask again for something it was
+  // just told. What it cannot know is the hours, so those are filled in here.
+  await expect(page.locator('select[name="locationId"]')).not.toHaveValue("");
+  await page.getByLabel("Details").fill("Fitted the replacement and ran it up.");
+  await page.getByLabel("Started work").fill(localInput(-3_600_000));
+  await page.getByLabel("Finished work").fill(localInput(-60_000));
 
   await page.getByRole("button", { name: "Submit", exact: true }).click();
   await expect(page).toHaveURL(/\/journal\/[0-9a-f-]{36}$/);

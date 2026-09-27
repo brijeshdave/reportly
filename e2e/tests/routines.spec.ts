@@ -33,6 +33,9 @@ test("creates a daily routine, assigns it, and logs today's occurrence", async (
   await page.getByLabel("Title").fill(title);
   await page.getByLabel("Cadence").selectOption("daily");
   await page.getByLabel("Points", { exact: true }).fill("3");
+  // Required, like the site on every other kind of entry: a routine with none cannot
+  // be counted towards any plant's compliance.
+  await page.getByLabel("Site").selectOption({ index: 1 });
 
   // The superadmin assigns it to themselves — the point here is the logging half,
   // and a routine with nobody on it has no occurrences to log.

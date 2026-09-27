@@ -9,7 +9,7 @@
 import { asc } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
-import { severities } from "@/core/db/schema.js";
+import { locations, severities } from "@/core/db/schema.js";
 
 /** The lowest seeded severity — any real one will do; the ladder starts here. */
 export async function anySeverityId(): Promise<string> {
@@ -19,5 +19,22 @@ export async function anySeverityId(): Promise<string> {
     .orderBy(asc(severities.orderIndex))
     .limit(1);
   if (!row) throw new Error("No severities seeded — the test database is not set up");
+  return row.id;
+}
+
+/**
+ * A seeded site, for the many tests that only need a valid one.
+ *
+ * Every kind of entry names the site it belongs to now — a journal entry, a task, a
+ * routine. Reaching for one through the API in each file would be the same three
+ * lines sixteen times over, which is what this module exists to stop.
+ */
+export async function anyLocationId(): Promise<string> {
+  const [row] = await db
+    .select({ id: locations.id })
+    .from(locations)
+    .orderBy(asc(locations.name))
+    .limit(1);
+  if (!row) throw new Error("No sites seeded — the test database is not set up");
   return row.id;
 }

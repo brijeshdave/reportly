@@ -690,6 +690,9 @@ export async function prefillFor(id: string, ctx: AuthContext): Promise<TaskPref
     title: row.title,
     workSummary: row.detail,
     departmentId: row.departmentId,
+    // The plant the task was at. The entry belongs to the same one, and the person
+    // logging it should not have to answer a question the task already answered.
+    locationId: row.locationId,
     // Everybody who worked on it, including whoever handed it over, so the author
     // divides the points across the people who actually did the job rather than
     // retyping the list from memory.

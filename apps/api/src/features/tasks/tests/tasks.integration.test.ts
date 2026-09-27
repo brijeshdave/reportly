@@ -15,6 +15,10 @@ import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import * as queue from "@/core/queue/notifications.js";
 import type { NotificationRequest } from "@/features/notifications/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -31,6 +35,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 /** Run something and collect the events it emitted, instead of queueing them.
@@ -150,6 +155,7 @@ describe("tasks", () => {
     const { lead, operator } = await buildChain(admin);
 
     const created = await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Replace the drive belt on Line 3",
@@ -173,6 +179,7 @@ describe("tasks", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Inspect the guard on Line 3",
@@ -198,6 +205,7 @@ describe("tasks", () => {
 
     // The outsider is nobody's manager here, so the operator is not theirs to task.
     const sideways = await inject("POST", "/tasks", outsider.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Do my filing",
@@ -208,6 +216,7 @@ describe("tasks", () => {
     // And a task in someone else's chain is not theirs to see.
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Replace the drive belt",
@@ -224,6 +233,7 @@ describe("tasks", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Replace the drive belt",
@@ -251,6 +261,7 @@ describe("tasks", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Replace the drive belt on Line 3",
@@ -273,6 +284,7 @@ describe("tasks", () => {
 
     const report = await inject("POST", "/journal", operator.cookie, {
       kind: "work",
+      locationId: siteId,
       title: prefill.json().title,
       workSummary: "Belt replaced, line back up.",
       workDetail: "Checked it over and ran it up.",
@@ -301,6 +313,7 @@ describe("tasks", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Grease the conveyor bearings",
@@ -316,6 +329,7 @@ describe("tasks", () => {
     // Filing it later closes it just the same.
     await inject("POST", "/journal", operator.cookie, {
       kind: "work",
+      locationId: siteId,
       title: "Greased the conveyor bearings",
       workSummary: "Done on the night shift.",
       workDetail: "Checked it over and ran it up.",
@@ -330,6 +344,7 @@ describe("tasks", () => {
     // A second entry against the same task leaves the completion date alone.
     await inject("POST", "/journal", operator.cookie, {
       kind: "work",
+      locationId: siteId,
       title: "Checked the bearings again",
       workSummary: "Still fine.",
       workDetail: "Checked it over and ran it up.",
@@ -348,6 +363,7 @@ describe("tasks", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Replace the drive belt",
@@ -376,6 +392,7 @@ describe("tasks", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Replace the drive belt",
@@ -399,6 +416,7 @@ describe("tasks", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Replace the drive belt",
@@ -408,6 +426,7 @@ describe("tasks", () => {
     const report = (
       await inject("POST", "/journal", operator.cookie, {
         kind: "work",
+        locationId: siteId,
         title: "Belt replaced",
         state: "submitted",
         taskId: task.id,
@@ -446,6 +465,7 @@ describe("tasks", () => {
 
     const mine = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Check the guard interlock",
@@ -454,6 +474,7 @@ describe("tasks", () => {
     ).json();
     const somebodyElses = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Grease the bearings",
@@ -490,6 +511,7 @@ describe("tasks", () => {
     expect(
       (
         await inject("POST", "/tasks", worker.cookie, {
+          locationId: siteId,
           // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
           dueAt: new Date(Date.now() + 86_400_000).toISOString(),
           title: "Do this for me",
@@ -508,6 +530,7 @@ describe("giving yourself work", () => {
     const { operator } = await buildChain(admin);
 
     const created = await inject("POST", "/tasks", operator.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Tidy the spares shelf",
@@ -524,6 +547,7 @@ describe("giving yourself work", () => {
     const { operator, lead } = await buildChain(admin);
 
     const refused = await inject("POST", "/tasks", operator.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "You do it",
@@ -554,6 +578,7 @@ describe("giving yourself work", () => {
     });
 
     const refused = await inject("POST", "/tasks", operator.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Down the line",
@@ -568,6 +593,7 @@ describe("giving yourself work", () => {
     const { lead, operator } = await buildChain(admin);
 
     const created = await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Please check the pump",
@@ -607,6 +633,7 @@ describe("who is on a task", () => {
     });
 
     const created = await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Strip and rebuild the gearbox",
@@ -633,6 +660,7 @@ describe("who is on a task", () => {
     const { lead } = await buildChain(admin);
 
     const created = await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Order the replacement seals",
@@ -654,6 +682,7 @@ describe("who is on a task", () => {
     // enqueues, and no worker runs here to drain it.
     const events = await captureNotifications(() =>
       inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Order the replacement seals, again",
@@ -667,12 +696,14 @@ describe("who is on a task", () => {
     const admin = await superadmin();
     const { lead, operator } = await buildChain(admin);
     await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Planned, nobody on it",
       assigneeIds: [],
     });
     await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Handed out",
@@ -704,6 +735,7 @@ describe("who is on a task", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Rewire the panel",
@@ -756,6 +788,7 @@ describe("who is on a task", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Change the bearing",
@@ -803,6 +836,7 @@ describe("what a task is worth", () => {
     const { lead, operator } = await buildChain(admin);
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Rebuild the gearbox",
@@ -820,6 +854,7 @@ describe("what a task is worth", () => {
     const { lead, operator } = await buildChain(admin);
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Something ordinary",
@@ -833,6 +868,7 @@ describe("what a task is worth", () => {
     const admin = await superadmin();
     const { lead, operator } = await buildChain(admin);
     const res = await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Worth a thousand, apparently",
@@ -850,6 +886,7 @@ describe("what a task is worth", () => {
     const { lead, operator } = await buildChain(admin);
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Swap the bearing",
@@ -872,6 +909,7 @@ describe("what a task is worth", () => {
     const { lead, operator } = await buildChain(admin);
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "A big job",
@@ -883,6 +921,7 @@ describe("what a task is worth", () => {
     const entry = (
       await inject("POST", "/journal", operator.cookie, {
         kind: "work",
+        locationId: siteId,
         title: "Did the big job",
         workSummary: "All of it.",
         workDetail: "Checked it over and ran it up.",
@@ -910,6 +949,7 @@ describe("what a task is worth", () => {
     const { lead, operator } = await buildChain(admin);
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Strip the gearbox",
@@ -938,6 +978,7 @@ describe("what a task is worth", () => {
     const { lead, operator } = await buildChain(admin);
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Check the guard",
@@ -960,6 +1001,7 @@ describe("what a task is worth", () => {
     const { lead, operator } = await buildChain(admin);
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Looked finished",
@@ -970,6 +1012,7 @@ describe("what a task is worth", () => {
     const entry = (
       await inject("POST", "/journal", operator.cookie, {
         kind: "work",
+        locationId: siteId,
         title: "Wrote it up",
         workSummary: "Done.",
         workDetail: "Checked it over and ran it up.",
@@ -1023,12 +1066,14 @@ describe("the raised-by filter", () => {
     const admin = await superadmin();
     const { lead, operator } = await buildChain(admin);
     await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Handed down",
       assigneeIds: [operator.id],
     });
     await inject("POST", "/tasks", operator.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "My own idea",
@@ -1054,6 +1099,7 @@ describe("the raised-by filter", () => {
     // handed to somebody with no date on it is the complaint, so it is refused at the
     // contract rather than nudged in the form — a browser is not the only client.
     const res = await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
       title: "Someday, maybe",
       assigneeIds: [operator.id],
     });
@@ -1067,6 +1113,7 @@ describe("the raised-by filter", () => {
     const dueIn = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
     const raise = (priority: string, days: number) =>
       inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         title: `A ${priority} job`,
         assigneeIds: [operator.id],
         priority,
@@ -1089,6 +1136,7 @@ describe("the raised-by filter", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         title: "Tidy the store",
         assigneeIds: [operator.id],
         priority: "low",
@@ -1111,6 +1159,7 @@ describe("the raised-by filter", () => {
     // way. What matters here is that the API *says* whether it applies, so a form
     // does not draw a limit that would not have been enforced.
     const far = await inject("POST", "/tasks", admin, {
+      locationId: siteId,
       title: "A long-range plan",
       assigneeIds: [operator.id],
       priority: "urgent",
@@ -1143,11 +1192,23 @@ describe("the raised-by filter", () => {
     expect(created.statusCode).toBe(201);
     expect(created.json().locationName).toBe(site.name);
 
+    // A second task at a different plant, so the filter has something to exclude.
+    // Both name one: every kind of entry does now.
     await inject("POST", "/tasks", lead.cookie, {
+      locationId: sites[1]!.id,
       title: "Paperwork",
       assigneeIds: [operator.id],
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
     });
+
+    // And a task with no site at all is refused, naming the field.
+    const siteless = await inject("POST", "/tasks", lead.cookie, {
+      title: "Belongs nowhere",
+      assigneeIds: [operator.id],
+      dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    expect(siteless.statusCode).toBe(400);
+    expect(Object.keys(siteless.json().error.fields)).toContain("locationId");
 
     const q = encodeURIComponent(
       JSON.stringify([{ field: "locationId", op: "eq", value: site.id }]),

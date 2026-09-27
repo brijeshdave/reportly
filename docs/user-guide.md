@@ -291,11 +291,12 @@ It uses the same `insights:view` permission as Insights.
 
 ### Routines belong to a site
 
-A routine now carries the **site** its duty is done at, chosen when you write it.
-The same rounds at two plants are two routines, and the monthly pack can only say
-which plant kept up if each duty says where it belongs. It is optional — leave it
-unset for a duty that is not about one site — and the routines table shows it as a
-column and filters by it.
+A routine carries the **site** its duty is done at, chosen when you write it. The
+same rounds at two plants are two routines, and the monthly pack can only say which
+plant kept up if each duty says where it belongs. It is **required**, as it is on a
+journal entry and a task: a routine with no site cannot be counted towards any
+plant's compliance. It can be moved to another site later but not cleared. The
+routines table shows it as a column and filters by it.
 
 A routine written before this existed has no site. The pack falls back to the site of
 whoever signed the occurrence off, so old duties still report somewhere sensible

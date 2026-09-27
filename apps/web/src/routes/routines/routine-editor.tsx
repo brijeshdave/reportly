@@ -103,7 +103,11 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
     mutationFn: () => {
       const input: CreateRoutine = {
         departmentId: effectiveDept,
-        ...(locationId ? { locationId } : {}),
+        // Always sent. A site is required on every kind of entry now — a routine with
+        // none cannot be counted towards any plant's compliance, and a rota cannot say
+        // who is there to do it. The Save button will not fire without one; this only
+        // stops an empty string being quietly dropped from the body on its way out.
+        locationId,
         title: title.trim(),
         description: description.trim() || undefined,
         cadence,
@@ -118,9 +122,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
       };
       // On an edit the site is sent even when blank, because clearing it is a real
       // answer: a duty that turns out not to be about one plant.
-      return mode === "edit"
-        ? updateRoutine(routine!.id, { ...input, locationId: locationId || null })
-        : createRoutine(input);
+      return mode === "edit" ? updateRoutine(routine!.id, input) : createRoutine(input);
     },
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({ queryKey: ["routines"] });
@@ -133,7 +135,11 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
     save.mutate();
   };
   const canSave =
-    title.trim() !== "" && effectiveDept !== "" && assigneeIds.length > 0 && !save.isPending;
+    title.trim() !== "" &&
+    effectiveDept !== "" &&
+    locationId !== "" &&
+    assigneeIds.length > 0 &&
+    !save.isPending;
 
   return (
     <>
@@ -197,13 +203,10 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
             }
           </Field>
 
-          <Field
-            label="Site"
-            hint="where the duty is done; leave it unset if it is not about one site"
-          >
+          <Field label="Site" required hint="where the duty is done">
             {(props) => (
               <Select {...props} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-                <option value="">Not set</option>
+                <option value="">Choose one</option>
                 {(sites.data ?? []).map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}

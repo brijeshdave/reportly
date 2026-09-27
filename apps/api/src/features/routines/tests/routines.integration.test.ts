@@ -8,6 +8,10 @@ import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { awardAllCompaniesBefore, awardAllCompaniesForMonth } from "@/features/routines/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -24,6 +28,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
@@ -108,6 +113,7 @@ async function fixture(admin: string) {
 }
 
 const daily = (departmentId: string, assigneeIds: string[]) => ({
+  locationId: siteId,
   title: "Boiler check",
   cadence: "daily",
   points: 2,
@@ -141,6 +147,7 @@ describe("routines", () => {
     // A daily routine starting a week ago, so there are past occurrences to miss.
     const id = (
       await inject("POST", "/routines", boss.cookie, {
+        locationId: siteId,
         title: "Boiler check",
         cadence: "daily",
         points: 2,
@@ -199,6 +206,7 @@ describe("routines", () => {
     const { boss, ravi, dept } = await fixture(admin);
     const id = (
       await inject("POST", "/routines", boss.cookie, {
+        locationId: siteId,
         title: "Boiler check",
         cadence: "daily",
         points: 2,
@@ -245,6 +253,7 @@ describe("routines", () => {
     const { boss, ravi, dept } = await fixture(admin);
     const id = (
       await inject("POST", "/routines", boss.cookie, {
+        locationId: siteId,
         title: "Boiler check",
         cadence: "daily",
         points: 2,
@@ -330,6 +339,7 @@ describe("routines", () => {
     const { boss, ravi, dept } = await fixture(admin);
     const id = (
       await inject("POST", "/routines", boss.cookie, {
+        locationId: siteId,
         title: "Boiler check",
         cadence: "daily",
         points: 2,
@@ -365,6 +375,7 @@ describe("routines", () => {
     // next-occurrence lock does not apply).
     const id = (
       await inject("POST", "/routines", boss.cookie, {
+        locationId: siteId,
         title: "Boiler check",
         cadence: "daily",
         points: 2,
@@ -450,12 +461,16 @@ describe("routines", () => {
       ],
     });
 
+    // Each at the plant its assignee works, which is what the site filter below is
+    // about — and every routine names one now, so the fixture has to say which.
     await inject("POST", "/routines", boss.cookie, {
       ...daily(dept.id, [ravi.id]),
+      locationId: kim.id,
       title: "Boiler check",
     });
     await inject("POST", "/routines", boss.cookie, {
       ...daily(dept.id, [priya.id]),
+      locationId: kosamba.id,
       title: "Air filter swap",
       cadence: "weekly",
       anchorWeekday: 1,
@@ -532,9 +547,13 @@ describe("a routine's site", () => {
     expect(created.statusCode).toBe(201);
     expect(created.json().locationName).toBe(site.name);
 
+    // A second routine at a different plant, so the filter below has something to
+    // exclude. Both have a site: every kind of entry names one now.
+    const other = sites[1]!;
     const elsewhere = await inject("POST", "/routines", boss.cookie, {
+      locationId: other.id,
       departmentId: dept.id,
-      title: "Not about one site",
+      title: "The other plant's round",
       cadence: "weekly",
       anchorWeekday: 1,
       points: 1,
@@ -542,7 +561,19 @@ describe("a routine's site", () => {
       assigneeIds: [boss.id],
     });
     expect(elsewhere.statusCode).toBe(201);
-    expect(elsewhere.json().locationId).toBeNull();
+    expect(elsewhere.json().locationId).toBe(other.id);
+
+    // And one with no site at all is refused outright.
+    const siteless = await inject("POST", "/routines", boss.cookie, {
+      departmentId: dept.id,
+      title: "Belongs nowhere",
+      cadence: "daily",
+      points: 1,
+      startDate: "2026-01-01",
+      assigneeIds: [boss.id],
+    });
+    expect(siteless.statusCode).toBe(400);
+    expect(Object.keys(siteless.json().error.fields)).toContain("locationId");
 
     const q = encodeURIComponent(
       JSON.stringify([{ field: "locationId", op: "eq", value: site.id }]),
@@ -551,12 +582,20 @@ describe("a routine's site", () => {
     expect(listed.statusCode).toBe(200);
     const titles = (listed.json().data as { title: string }[]).map((r) => r.title);
     expect(titles).toContain("Daily walk-round");
+    expect(titles).not.toContain("The other plant's round");
 
-    // Clearing it is a real answer — a duty that turns out not to be about one site.
-    const cleared = await inject("PATCH", `/routines/${created.json().id}`, boss.cookie, {
+    // Moved, not cleared. An edit that could set the site back to nothing would be a
+    // way round the rule the create path enforces, and the routine would drop out of
+    // its plant's compliance figures without anybody deciding that it should.
+    const moved = await inject("PATCH", `/routines/${created.json().id}`, boss.cookie, {
+      locationId: other.id,
+    });
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json().locationId).toBe(other.id);
+
+    const emptied = await inject("PATCH", `/routines/${created.json().id}`, boss.cookie, {
       locationId: null,
     });
-    expect(cleared.statusCode).toBe(200);
-    expect(cleared.json().locationId).toBeNull();
+    expect(emptied.statusCode).toBe(400);
   });
 });

@@ -114,6 +114,61 @@ test("shows a message under every work-done field", async ({ page }) => {
   await page.screenshot({ path: "test-results/work-done-errors.png", fullPage: true });
 });
 
+test("asks for the findings when resolving, and will not commit without them", async ({ page }) => {
+  // Set up through the API: this test is about the panel, not about filling a form
+  // that other tests already cover.
+  await pickCompany(page);
+  const companyId = await page.evaluate(() => localStorage.getItem("reportly.companyId"));
+  const headers = { "x-company-id": companyId! };
+  const severities = await (await page.request.get("/api/v1/severities")).json();
+  const depts = await (await page.request.get("/api/v1/me/departments", { headers })).json();
+  const sites = await (await page.request.get("/api/v1/me/locations", { headers })).json();
+
+  const filed = await page.request.post("/api/v1/journal", {
+    headers,
+    data: {
+      kind: "issue",
+      title: `Belt snapped ${unique("r").slice(0, 6)}`,
+      state: "submitted",
+      severityId: severities[3].id,
+      departmentId: depts[0]?.departmentId,
+      locationId: sites[0].id,
+      issueSummary: "It stopped mid-run",
+      issueDetail: "Came to a halt under load and would not restart.",
+      occurredAt: new Date(Date.now() - 600_000).toISOString(),
+    },
+  });
+  expect(filed.status(), await filed.text()).toBe(201);
+  const id = (await filed.json()).id as string;
+
+  await page.request.post(`/api/v1/journal/${id}/work`, {
+    headers,
+    data: {
+      summary: "Replaced the drive belt",
+      detail: "Spare from the east store, ran it up afterwards.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      finishedAt: new Date(Date.now() - 60_000).toISOString(),
+    },
+  });
+
+  await page.goto(`/journal/${id}`);
+  await page.getByLabel("Status").selectOption({ label: "Resolved" });
+
+  // The fields appear at the moment they are due, and the commit sits under them.
+  await expect(page.getByLabel("Root cause")).toBeVisible();
+  await expect(page.getByLabel("Preventive measures")).toBeVisible();
+  const resolve = page.getByRole("button", { name: "Resolve", exact: true });
+  await expect(resolve).toBeDisabled();
+
+  await page.getByLabel("Root cause").fill("The tensioner had backed off.");
+  await page.getByLabel("Preventive measures").fill("Added it to the weekly round.");
+  await expect(resolve).toBeEnabled();
+  await resolve.click();
+
+  // And the entry is finished, with the findings on it.
+  await expect(page.getByText("The tensioner had backed off.").first()).toBeVisible();
+});
+
 /** A `datetime-local` value, that many minutes ago. */
 function nowMinus(minutes: number): string {
   const d = new Date(Date.now() - minutes * 60_000);

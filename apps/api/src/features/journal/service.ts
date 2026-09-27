@@ -42,6 +42,7 @@ import {
   type JournalTarget,
   type JournalTargetInput,
   type JournalTimeline,
+  WORK_ON_ISSUE_REQUIRED,
   can,
 } from "@reportly/shared";
 
@@ -368,7 +369,11 @@ async function isVisible(
  */
 function assertMayFileAt(locationId: string | null, ctx: AuthContext): void {
   if (!mayUseLocation(ctx, locationId)) {
-    throw new AppError(403, ERROR_CODES.FORBIDDEN, "You cannot file a report at that location");
+    const message = "You cannot file a report at that site.";
+    // Named, because it is a field on the form: the picker offers only the sites this
+    // person reaches, so arriving here means a stale list or a hand-made request, and
+    // either way the site is the thing to correct.
+    throw new AppError(403, ERROR_CODES.FORBIDDEN, message, undefined, { locationId: message });
   }
 }
 
@@ -1682,11 +1687,13 @@ async function assertWorkOnSubmit(
       ? Boolean(work.typed && work.typed.trim() !== "")
       : (await workLogsFor(work.reportId)).length > 0;
   if (satisfied) return;
-  throw new AppError(
-    400,
-    ERROR_CODES.VALIDATION_ERROR,
-    "Say what was done about it before submitting — work done is required on this installation.",
-  );
+  const message = WORK_ON_ISSUE_REQUIRED;
+  // Against the summary, which is the field somebody fills to satisfy it. Without
+  // this the refusal could only be shown above the form, and the Work done section —
+  // the one place it was about — stayed unmarked. Reported exactly that way.
+  throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, message, undefined, {
+    workSummary: message,
+  });
 }
 
 /** Whether the caller may reject a report — a superior of its author holding the grant. */

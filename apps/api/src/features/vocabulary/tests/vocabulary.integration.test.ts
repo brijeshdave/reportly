@@ -15,7 +15,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
 import { anySeverityId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -30,6 +34,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
@@ -162,6 +167,7 @@ describe("tags", () => {
     const report = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        locationId: siteId,
         issueDetail: "Found it sheared on the drive side.",
         occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
@@ -199,6 +205,7 @@ describe("tags", () => {
     const tagged = (
       await inject("POST", "/journal", admin, {
         kind: "issue",
+        locationId: siteId,
         issueDetail: "Found it sheared on the drive side.",
         occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
@@ -211,6 +218,7 @@ describe("tags", () => {
     ).json();
     await inject("POST", "/journal", admin, {
       kind: "issue",
+      locationId: siteId,
       issueDetail: "Found it sheared on the drive side.",
       occurredAt: new Date().toISOString(),
       severityId: await anySeverityId(),
@@ -240,6 +248,7 @@ describe("tags", () => {
     // Silently ignoring it would look like the save failed.
     const rejected = await inject("POST", "/journal", admin, {
       kind: "work",
+      locationId: siteId,
       title: "Wrong department's label",
       state: "submitted",
       workSummary: "Done",
@@ -263,6 +272,7 @@ describe("tags", () => {
     const report = (
       await inject("POST", "/journal", admin, {
         kind: "work",
+        locationId: siteId,
         title: "Tagged before retirement",
         state: "submitted",
         workSummary: "Done",
@@ -283,6 +293,7 @@ describe("tags", () => {
     // ...but it can no longer be put on anything new.
     const refused = await inject("POST", "/journal", admin, {
       kind: "work",
+      locationId: siteId,
       title: "New work",
       state: "submitted",
       workSummary: "Done",
@@ -306,6 +317,7 @@ describe("tags", () => {
     const me = (await inject("GET", "/me", admin)).json();
     const task = (
       await inject("POST", "/tasks", admin, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Check the pump",
@@ -328,6 +340,7 @@ describe("tags", () => {
     ).json();
     await inject("POST", "/journal", admin, {
       kind: "work",
+      locationId: siteId,
       title: "Carries the tag",
       state: "submitted",
       workSummary: "Done",

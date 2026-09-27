@@ -15,7 +15,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
 import { anySeverityId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -32,6 +36,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
@@ -130,6 +135,7 @@ async function buildTeam(admin: string) {
 async function fileReport(cookie: string, title = "Belt snapped"): Promise<string> {
   const res = await inject("POST", "/journal", cookie, {
     kind: "issue",
+    locationId: siteId,
     issueDetail: "Found it sheared on the drive side.",
     occurredAt: new Date().toISOString(),
     severityId: await anySeverityId(),
@@ -367,6 +373,7 @@ describe("comments", () => {
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Check the tensioner",

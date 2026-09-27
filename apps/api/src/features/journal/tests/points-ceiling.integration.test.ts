@@ -18,6 +18,10 @@ import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { setCompanySetting } from "@/core/settings/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -34,6 +38,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
@@ -128,6 +133,7 @@ async function fileAndResolve(
 ) {
   const filed = await inject("POST", "/journal", author.cookie, {
     kind: "issue",
+    locationId: siteId,
     issueDetail: "Found it sheared on the drive side.",
     occurredAt: new Date().toISOString(),
     title: "Conveyor jam",
@@ -181,6 +187,7 @@ describe("what an entry may be worth", () => {
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Strip and rebuild the gearbox",
@@ -203,6 +210,7 @@ describe("what an entry may be worth", () => {
 
     const task = (
       await inject("POST", "/tasks", manager.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Tighten the guard",
@@ -233,6 +241,7 @@ describe("what an entry may be worth", () => {
     await setCompanySetting(TASK_POINTS, DEMO_COMPANY_ID, { maxPoints: 20 });
 
     const over = await inject("POST", "/tasks", manager.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "A thousand points, please",
@@ -243,6 +252,7 @@ describe("what an entry may be worth", () => {
     expect(over.json().error.message).toContain("at most 20");
 
     const ok = await inject("POST", "/tasks", manager.cookie, {
+      locationId: siteId,
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
       title: "Twenty is fine",
@@ -281,6 +291,7 @@ describe("submitting without a severity", () => {
     const { author } = await scene(5);
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       issueDetail: "Found it sheared on the drive side.",
       occurredAt: new Date().toISOString(),
       title: "Conveyor jam",
@@ -307,6 +318,7 @@ describe("submitting without a severity", () => {
     const { author } = await scene(5);
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "work",
+      locationId: siteId,
       title: "Greased the bearings",
       workSummary: "Night shift round.",
       workDetail: "Checked it over and ran it up.",

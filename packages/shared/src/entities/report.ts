@@ -275,6 +275,7 @@ function issueMustBeComplete(
     issueSummary?: string;
     issueDetail?: string;
     occurredAt?: string;
+    locationId?: string;
     workSummary?: string;
     workDetail?: string;
     startedAt?: string;
@@ -282,6 +283,20 @@ function issueMustBeComplete(
   },
   ctx: z.RefinementCtx,
 ): void {
+  // Where it happened, whatever kind it is.
+  //
+  // Asked for as "in journal create site is also mendatory", and then widened to
+  // every kind of entry. A site is what the reports, the rota and the whole access
+  // model hang off — an entry with none belongs to nobody's plant and drops out of
+  // every per-site figure. A draft is exempt, like everything else here.
+  if (value.state === "submitted" && !(value.locationId ?? "").trim()) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["locationId"],
+      message: "Choose the site this belongs to.",
+    });
+  }
+
   if (value.kind !== "issue" || value.state !== "submitted") return;
   workDoneMustBeComplete(value, ctx);
 
@@ -389,6 +404,33 @@ export const createJournalEntrySchema = z
 
 export type CreateJournalEntry = z.infer<typeof createJournalEntrySchema>;
 
+/**
+ * The message an installation that demands work on an issue refuses with.
+ *
+ * One string, because the browser raises it before the request and the server raises
+ * it after: two wordings for one rule reads as two different rules.
+ */
+export const WORK_ON_ISSUE_REQUIRED =
+  "Say what was done about it before submitting — work done is required on this installation.";
+
+/**
+ * The create schema this installation is actually running.
+ *
+ * `requireWorkOnIssue` is a stored setting, so it cannot live in a static schema —
+ * but a form that cannot see the rule it is about to break can only discover it on
+ * save, which is what happened: the refusal arrived as a sentence above a Work done
+ * section with no mark on it at all. The editor already fetches the rules for its own
+ * layout; this turns them into the schema it validates with.
+ */
+export function createJournalEntrySchemaFor(rules: { requireWorkOnIssue?: boolean }) {
+  if (!rules.requireWorkOnIssue) return createJournalEntrySchema;
+  return createJournalEntrySchema.superRefine((value, ctx) => {
+    if (value.kind !== "issue" || value.state !== "submitted") return;
+    if ((value.workSummary ?? "").trim() !== "") return;
+    ctx.addIssue({ code: "custom", path: ["workSummary"], message: WORK_ON_ISSUE_REQUIRED });
+  });
+}
+
 // Everything a create takes may be edited, plus the state (to submit a draft).
 // The server refuses edits to a locked report beyond re-opening it.
 export const updateJournalEntrySchema = z.object({
@@ -396,7 +438,8 @@ export const updateJournalEntrySchema = z.object({
   state: reportStateSchema.optional(),
   categoryId: uuidSchema.nullable().optional(),
   departmentId: uuidSchema.nullable().optional(),
-  locationId: uuidSchema.nullable().optional(),
+  /** Changed, but not cleared — an entry belongs to a site, like every other kind. */
+  locationId: uuidSchema.optional(),
   /** Omit to leave tags untouched; send [] to clear them. Same rule as scope
    *  targets — an edit that never mentions tags must not silently drop them. */
   tagIds: z.array(uuidSchema).optional(),

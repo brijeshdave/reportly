@@ -25,8 +25,8 @@ and a report still in progress has not finished being done — so move it to
 
 - **Issue / breakdown** — something went wrong. You give it a severity, describe what
   happened, the root cause, and what will stop it happening again, and set a status.
-  **A submitted breakdown has to say what happened.** Severity, status, the short
-  line, the full description and when it occurred are all required — a report nobody
+  **A submitted breakdown has to say what happened.** The site, severity, status, the
+  short line, the full description and when it occurred are all required — a report nobody
   can read is not a record, and one without a severity would be scored against a
   fallback nobody chose. A draft may still be incomplete; that is what a draft is for,
   and the rules apply the moment you submit it rather than while you are writing.
@@ -45,6 +45,12 @@ Fill in what fits, then either:
 - **Submit** — sends it up the line, where your managers see it and can score it.
 
 Only the **title** is required to **save a draft**. Submitting asks for the rest.
+
+> **Everything belongs to a site.** A journal entry, a task and a routine all name
+> the plant they are about, and the picker offers only the sites you are placed at —
+> so it cannot name one the save would refuse. It can be changed afterwards but not
+> cleared: an entry with no site drops out of every per-site figure, and a rota cannot
+> say who was there.
 
 > **A new issue starts at the beginning.** The status list on the filing form offers
 > only the working states — you cannot file something as _Resolved_ or _Duplicate_.

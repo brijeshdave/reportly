@@ -20,7 +20,7 @@ import type { StorageProvider } from "@/core/storage/provider.js";
 import { attachmentsOnBackend } from "@/features/attachments/repo.js";
 import type { StorageBackend } from "@reportly/shared";
 import { resetDb } from "../../../../test/reset-db.js";
-import { anySeverityId } from "../../../../test/seeded.js";
+import { anyLocationId, anySeverityId } from "../../../../test/seeded.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -82,6 +82,7 @@ async function seedFile(admin: string): Promise<{ id: string; key: string }> {
         issueDetail: "Found it sheared on the drive side.",
         occurredAt: new Date().toISOString(),
         severityId: await anySeverityId(),
+        locationId: await anyLocationId(),
         title: "Belt seized",
         state: "submitted",
       },

@@ -15,6 +15,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -31,6 +35,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
@@ -142,6 +147,7 @@ async function buildChain(admin: string) {
 async function fileIssue(authorCookie: string, severityId: string): Promise<string> {
   const res = await inject("POST", "/journal", authorCookie, {
     kind: "issue",
+    locationId: siteId,
     issueDetail: "Found it sheared on the drive side.",
     occurredAt: new Date().toISOString(),
     title: "Conveyor jam on line 3",
@@ -331,6 +337,7 @@ describe("reports and scoring", () => {
     // opens at the resolved end and can be scored straight away.
     const work = await inject("POST", "/journal", author.cookie, {
       kind: "work",
+      locationId: siteId,
       title: "Cleaned station 2",
       state: "submitted",
       severityId: critical.id,
@@ -344,6 +351,7 @@ describe("reports and scoring", () => {
     // An issue opens for triage.
     const issue = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       issueDetail: "Found it sheared on the drive side.",
       occurredAt: new Date().toISOString(),
       title: "Belt worn",
@@ -650,6 +658,7 @@ describe("reports and scoring", () => {
     const issue = (occurredAt?: string) =>
       inject("POST", "/journal", author.cookie, {
         kind: "issue",
+        locationId: siteId,
         issueDetail: "Found it sheared on the drive side.",
         occurredAt: new Date().toISOString(),
         title: "Belt seized",
@@ -661,6 +670,7 @@ describe("reports and scoring", () => {
     const work = (reportDate: string, cookie = author.cookie) =>
       inject("POST", "/journal", cookie, {
         kind: "work",
+        locationId: siteId,
         title: "Greased the line",
         state: "submitted",
         // Submitted entries carry a severity now, whatever their kind.
@@ -703,6 +713,7 @@ describe("reports and scoring", () => {
     // entry dated a year back, which is the backdating the rule exists to stop.
     const backdated = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       issueDetail: "Found it sheared on the drive side.",
       occurredAt: new Date().toISOString(),
       title: "Belt seized",
@@ -717,6 +728,7 @@ describe("reports and scoring", () => {
     // be a step to walk around.
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       issueDetail: "Found it sheared on the drive side.",
       occurredAt: new Date().toISOString(),
       title: "Belt seized",
@@ -737,6 +749,7 @@ describe("reports and scoring", () => {
     const raise = (workSummary?: string) =>
       inject("POST", "/journal", author.cookie, {
         kind: "issue",
+        locationId: siteId,
         issueDetail: "Found it sheared on the drive side.",
         occurredAt: new Date().toISOString(),
         title: "Belt seized",
@@ -798,6 +811,7 @@ describe("reports and scoring", () => {
     const file = () =>
       inject("POST", "/journal", admin, {
         kind: "work",
+        locationId: siteId,
         title: "Greased the line",
         state: "submitted",
         severityId: critical.id,
@@ -871,6 +885,7 @@ describe("reports and scoring", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       title: "Something happened",
       state: "submitted",
     });
@@ -928,6 +943,7 @@ describe("reports and scoring", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       title: "Belt will snap",
       state: "submitted",
       severityId: critical.id,
@@ -954,6 +970,7 @@ describe("reports and scoring", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       title: "Belt snapped",
       state: "submitted",
       severityId: critical.id,
@@ -975,6 +992,7 @@ describe("reports and scoring", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "work",
+      locationId: siteId,
       title: "Greased the line",
       state: "submitted",
       workSummary: "Greased every bearing on the run",
@@ -1027,6 +1045,7 @@ describe("reports and scoring", () => {
     const { author } = await buildChain(admin);
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "work",
+      locationId: siteId,
       title: "Greased the line",
       state: "submitted",
       workSummary: "Greased every bearing on the run",
@@ -1046,6 +1065,7 @@ describe("reports and scoring", () => {
 
     const res = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       title: "Belt snapped",
       state: "submitted",
       severityId: critical.id,
@@ -1077,6 +1097,7 @@ describe("reports and scoring", () => {
 
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       issueDetail: "Found it sheared on the drive side.",
       occurredAt: new Date().toISOString(),
       title: "Belt snapped",
@@ -1113,6 +1134,7 @@ describe("reports and scoring", () => {
 
     const filed = await inject("POST", "/journal", author.cookie, {
       kind: "issue",
+      locationId: siteId,
       issueDetail: "Found it sheared on the drive side.",
       occurredAt: new Date().toISOString(),
       title: "Belt snapped",

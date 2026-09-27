@@ -303,9 +303,18 @@ export function JournalEntryDetailPage({ reportId, tab }: { reportId: string; ta
               here to change. A work log has no triage workflow — it is a record of
               work already done — so it shows a plain "Done" badge, not the issue
               ladder. Only an issue is driven through statuses. */}
-            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">Status</span>
+            <Card className="flex flex-wrap items-start justify-between gap-3 p-4">
+              {/* `items-start`, and the label nudged down to meet the picker: the
+                  control grows a whole form under it when an issue is being resolved,
+                  and a centred label then floated halfway down a tall panel. */}
+              <div className="flex flex-1 items-start gap-3">
+                <span
+                  className={
+                    r.kind === "work" ? "text-sm font-medium" : "pt-2.5 text-sm font-medium"
+                  }
+                >
+                  Status
+                </span>
                 {r.kind === "work" ? (
                   <StatusBadge name={r.statusName} group={r.statusGroup} />
                 ) : (

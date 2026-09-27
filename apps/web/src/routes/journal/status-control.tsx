@@ -19,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { ApiError } from "@/services/http.js";
 import { Field, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Badge, Button } from "@/components/ui/primitives.js";
 import { statusTone } from "@/components/report-badges.js";
@@ -88,8 +89,13 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
   const resolving = dirty && needsFindings(choice || null);
   const findingsMissing = resolving && (rootCause.trim() === "" || preventive.trim() === "");
 
+  /** What the server said about one field, if it blamed one. */
+  function fieldError(key: string): string | undefined {
+    return change.error instanceof ApiError ? change.error.fields[key] : undefined;
+  }
+
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex w-full flex-col gap-1">
       <div className="flex items-center gap-2">
         <Select
           aria-label="Status"
@@ -111,50 +117,75 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
               </option>
             ))}
         </Select>
-        <Button
-          size="sm"
-          onClick={() => {
-            // Never null: the picker does not offer "no status", so an empty value
-            // could only be the placeholder, which is not a move.
-            if (dirty && choice) change.mutate(choice);
-          }}
-          disabled={!dirty || change.isPending || !choice || findingsMissing}
-        >
-          {change.isPending ? <Spinner /> : null}
-          {resolving ? "Resolve" : "Save"}
-        </Button>
+        {/* Hidden while resolving: the commit belongs under the fields it commits,
+            not above them. Leaving it here meant filling two boxes and then scrolling
+            back up to a button that had been sitting there the whole time. */}
+        {resolving ? null : (
+          <Button
+            size="sm"
+            onClick={() => {
+              // Never null: the picker does not offer "no status", so an empty value
+              // could only be the placeholder, which is not a move.
+              if (dirty && choice) change.mutate(choice);
+            }}
+            disabled={!dirty || change.isPending || !choice}
+          >
+            {change.isPending ? <Spinner /> : null}
+            Save
+          </Button>
+        )}
       </div>
 
       {/* Opened by the move itself rather than by a separate button: the fields appear
           at the moment they are due, already knowing which move needs them. */}
       {resolving ? (
-        <div className="mt-1 flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-3">
-          <p className="text-xs text-muted-foreground">
+        <div className="mt-2 flex w-full flex-col gap-4 border-t border-border pt-4">
+          <p className="text-sm text-muted-foreground">
             Closing this asks two things of it. They are what makes the entry worth reading a year
             from now.
           </p>
-          <Field label="Root cause" required>
+          <Field label="Root cause" required error={fieldError("rootCause")}>
             {(props) => (
               <Textarea
                 {...props}
-                rows={2}
+                rows={3}
                 value={rootCause}
                 onChange={(event) => setRootCause(event.target.value)}
                 placeholder="Why it happened — what actually failed."
               />
             )}
           </Field>
-          <Field label="Preventive measures" required>
+          <Field label="Preventive measures" required error={fieldError("preventiveMeasures")}>
             {(props) => (
               <Textarea
                 {...props}
-                rows={2}
+                rows={3}
                 value={preventive}
                 onChange={(event) => setPreventive(event.target.value)}
                 placeholder="What stops it happening again."
               />
             )}
           </Field>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setChoice(report.statusId ?? "")}
+              disabled={change.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (choice) change.mutate(choice);
+              }}
+              disabled={change.isPending || findingsMissing}
+            >
+              {change.isPending ? <Spinner /> : null}
+              Resolve
+            </Button>
+          </div>
         </div>
       ) : null}
 

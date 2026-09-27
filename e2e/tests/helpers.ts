@@ -331,6 +331,14 @@ export async function addMember(
  * the form offers only the working states, and the first is already selected.
  */
 export async function submitIssue(page: Page): Promise<void> {
+  // Every kind of entry names the site it belongs to now. Index 1, past the
+  // "Choose one" placeholder — whatever this installation has called its plants.
+  //
+  // By its `name`, not its label. "Site" is ambiguous on this form — the scope picker
+  // below is "Site or plant" — and a required field's label carries a marker, so an
+  // exact match on the word finds nothing either. The name is what the form posts
+  // under and does not move.
+  await page.locator('select[name="locationId"]').selectOption({ index: 1 });
   await page.getByLabel("Severity").selectOption({ index: 1 });
   await page.getByLabel("What happened (short)").fill("It stopped mid-run");
   await page
@@ -389,6 +397,9 @@ export async function fillDueDate(page: Page): Promise<void> {
   const pad = (n: number) => String(n).padStart(2, "0");
   const value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`;
   await page.getByLabel("Due").fill(value);
+  // The site is required on a task too, for the same reason it is on everything
+  // else: work with no site cannot be handed to whoever is actually there.
+  await page.locator('select[name="locationId"]').selectOption({ index: 1 });
 }
 
 export async function pickPeople(page: Page, label: string, ...names: string[]): Promise<void> {

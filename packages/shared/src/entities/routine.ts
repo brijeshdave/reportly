@@ -216,8 +216,12 @@ export const createRoutineSchema = z
   .object({
     /** The department its points are credited to — the creator picks one of theirs. */
     departmentId: uuidSchema,
-    /** The site the duty is done at. Optional: not every duty is about one site. */
-    locationId: uuidSchema.optional(),
+    /**
+     * The site the duty is done at. Required, as it is on every other kind of entry:
+     * a routine with no site cannot be counted towards any plant's compliance, and a
+     * rota cannot say who is there to do it.
+     */
+    locationId: uuidSchema,
     title: nameSchema,
     description: z.string().trim().max(2000).optional(),
     cadence: routineCadenceSchema,
@@ -284,7 +288,13 @@ export const updateRoutineSchema = z
   .object({
     departmentId: uuidSchema.optional(),
     /** Null clears it — a duty that turns out not to be about one site. */
-    locationId: uuidSchema.nullable().optional(),
+    /**
+     * Changed, but not cleared. A site is required on every kind of entry, so an edit
+     * that could set it back to nothing would be a way round the rule the create path
+     * enforces — and the routine would drop out of its plant's compliance figures
+     * without anybody deciding that it should.
+     */
+    locationId: uuidSchema.optional(),
     title: nameSchema.optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     cadence: routineCadenceSchema.optional(),

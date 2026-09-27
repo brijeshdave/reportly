@@ -9,8 +9,13 @@
 // task without any assign to so that i can create task in advance for my team and
 // only assign when i need to based on priority". A task with nobody on it stays on
 // its creator's list and notifies no one until it is handed out.
-import { PERMISSIONS, type TaskPriority, type CreateTask } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  PERMISSIONS,
+  createTaskSchema,
+  type CreateTask,
+  type TaskPriority,
+} from "@reportly/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
@@ -19,12 +24,39 @@ import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { MultiSelect } from "@/components/multi-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
+import { useForm } from "@/hooks/use-form.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchDownline } from "@/services/departments.js";
 import { fetchMyLocations } from "@/services/locations.js";
 import { createTask, fetchTask, fetchTaskLimits, updateTask } from "@/services/tasks.js";
 
 const PRIORITIES: TaskPriority[] = ["low", "normal", "high", "urgent"];
+
+/** What the form holds. Text as typed; the payload builder does the converting. */
+interface TaskForm {
+  title: string;
+  detail: string;
+  assigneeIds: string[];
+  priority: TaskPriority;
+  maxPoints: string;
+  dueAt: string;
+  locationId: string;
+}
+
+/** The request body this form's state becomes — the shape the schema judges. */
+function bodyFrom(v: TaskForm) {
+  return {
+    title: v.title.trim(),
+    assigneeIds: v.assigneeIds,
+    priority: v.priority,
+    maxPoints: Number(v.maxPoints) || 0,
+    // An empty box is left empty rather than turned into `Invalid Date`: the schema's
+    // message for a missing date reads better than its message for an unparseable one.
+    dueAt: v.dueAt ? new Date(v.dueAt).toISOString() : undefined,
+    locationId: v.locationId || undefined,
+    ...(v.detail.trim() ? { detail: v.detail.trim() } : {}),
+  };
+}
 
 /** The latest a task of this priority may be due, as `datetime-local` wants it. */
 function latestDue(days: number): string {
@@ -51,13 +83,37 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
   // themselves work and nobody else.
   const mayAssign = usePermission(PERMISSIONS.TASKS_CREATE);
 
-  const [title, setTitle] = useState("");
-  const [detail, setDetail] = useState("");
-  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-  const [priority, setPriority] = useState<TaskPriority>("normal");
-  const [maxPoints, setMaxPoints] = useState("10");
-  const [dueAt, setDueAt] = useState("");
-  const [locationId, setLocationId] = useState("");
+  const form = useForm<TaskForm, CreateTask>({
+    // The route's own schema. Its `locationId` is required now, like every other
+    // kind of entry: a task with no site belongs to nobody's plant, falls out of
+    // every per-site figure, and cannot be handed to whoever is actually there.
+    schema: createTaskSchema,
+    initial: {
+      title: "",
+      detail: "",
+      assigneeIds: [] as string[],
+      priority: "normal" as TaskPriority,
+      maxPoints: "10",
+      dueAt: "",
+      locationId: "",
+    },
+    toPayload: (v) => bodyFrom(v),
+    submit: async (payload: CreateTask) =>
+      mode === "create"
+        ? createTask(payload)
+        : updateTask(taskId!, {
+            ...payload,
+            // Explicitly null, because the builder omits an empty detail and an
+            // absent key leaves the stored one alone — so clearing it would not stick.
+            detail: payload.detail ?? null,
+          }),
+    onSuccess: async (task) => {
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await navigate({ to: "/tasks/$taskId", params: { taskId: (task as { id: string }).id } });
+    },
+  });
+  const values = form.values;
+  const { priority } = values;
 
   // How far ahead this priority may be due. Read from the server, which checks the
   // same numbers on save, so the form cannot offer a date the save will refuse — and
@@ -85,16 +141,20 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
 
   useEffect(() => {
     if (!existing.data) return;
-    setTitle(existing.data.title);
-    setDetail(existing.data.detail ?? "");
-    // Only the people still on it: somebody who handed the task over stays on the
-    // record for the points, but re-saving the form must not silently put them
-    // back to work.
-    setAssigneeIds(existing.data.assignees.filter((a) => !a.released).map((a) => a.id));
-    setPriority(existing.data.priority);
-    setMaxPoints(String(existing.data.maxPoints));
-    setDueAt(toLocalInput(existing.data.dueAt));
-    setLocationId(existing.data.locationId ?? "");
+    form.reset({
+      title: existing.data.title,
+      detail: existing.data.detail ?? "",
+      // Only the people still on it: somebody who handed the task over stays on the
+      // record for the points, but re-saving the form must not silently put them
+      // back to work.
+      assigneeIds: existing.data.assignees.filter((a) => !a.released).map((a) => a.id),
+      priority: existing.data.priority,
+      maxPoints: String(existing.data.maxPoints),
+      dueAt: toLocalInput(existing.data.dueAt),
+      locationId: existing.data.locationId ?? "",
+    });
+    // Deliberately keyed on the loaded record alone: re-seeding whenever the form
+    // handle changed identity would wipe whatever the person had typed.
   }, [existing.data]);
 
   // Somebody who may only create their own work starts with themselves on it, since
@@ -105,35 +165,8 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
   useEffect(() => {
     if (mode !== "create" || seeded || !me?.id) return;
     setSeeded(true);
-    if (!mayAssign) setAssigneeIds([me.id]);
+    if (!mayAssign) form.set("assigneeIds", [me.id]);
   }, [mode, seeded, me?.id, mayAssign]);
-
-  const save = useMutation({
-    mutationFn: async () => {
-      const body: CreateTask = {
-        title: title.trim(),
-        assigneeIds,
-        priority,
-        maxPoints: Number(maxPoints) || 0,
-        dueAt: new Date(dueAt).toISOString(),
-        ...(detail.trim() ? { detail: detail.trim() } : {}),
-        ...(locationId ? { locationId } : {}),
-      };
-      return mode === "create"
-        ? createTask(body)
-        : updateTask(taskId!, {
-            ...body,
-            detail: detail.trim() || null,
-            // Nullable on the way out, because clearing a site is a real answer —
-            // unlike clearing a due date, which the rule does not allow.
-            locationId: locationId || null,
-          });
-    },
-    onSuccess: async (task) => {
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      await navigate({ to: "/tasks/$taskId", params: { taskId: task.id } });
-    },
-  });
 
   if (mode === "edit" && existing.isLoading) return <Spinner />;
 
@@ -167,142 +200,138 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
         }
       />
 
-      <Card className="mt-4 flex flex-col gap-4 p-6">
-        {save.error ? <ErrorAlert error={save.error} /> : null}
+      <Card className="mt-4">
+        <form ref={form.formRef} onSubmit={form.handleSubmit} className="flex flex-col gap-4 p-6">
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
-        <Field label="Title">
-          {(props) => (
-            <Input
-              {...props}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Replace the drive belt on Line 3"
-            />
-          )}
-        </Field>
+          <Field label="Title" required error={form.errorFor("title")}>
+            {(props) => (
+              <Input
+                {...props}
+                {...form.register("title")}
+                placeholder="e.g. Replace the drive belt on Line 3"
+              />
+            )}
+          </Field>
 
-        <Field
-          label="Detail"
-          hint="What needs doing, where the parts are — anything that saves a question later."
-        >
-          {(props) => (
-            <Textarea
-              {...props}
-              rows={4}
-              value={detail}
-              onChange={(e) => setDetail(e.target.value)}
-            />
-          )}
-        </Field>
-
-        <div className="grid gap-4 sm:grid-cols-3">
           <Field
-            label="Assign to"
-            hint={
-              !mayAssign
-                ? "Work you are giving yourself. Your manager assigns work to anybody else."
-                : people.length <= 1
-                  ? "Nobody reports to you yet, so this is yours to do."
-                  : "Leave it empty to plan the work now and hand it out later."
-            }
+            label="Detail"
+            hint="What needs doing, where the parts are — anything that saves a question later."
           >
-            {(props) =>
-              // Without `tasks:create`, this person may only ever pick themselves.
-              // A picker that lists names and then answers 403 is worse than no
-              // picker: it offers a choice that was never on the table.
-              mayAssign ? (
-                <MultiSelect
-                  ariaLabel="Assign to"
-                  options={people}
-                  values={assigneeIds}
-                  onChange={setAssigneeIds}
-                  placeholder="Nobody yet"
+            {(props) => <Textarea {...props} rows={4} {...form.register("detail")} />}
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field
+              label="Assign to"
+              hint={
+                !mayAssign
+                  ? "Work you are giving yourself. Your manager assigns work to anybody else."
+                  : people.length <= 1
+                    ? "Nobody reports to you yet, so this is yours to do."
+                    : "Leave it empty to plan the work now and hand it out later."
+              }
+            >
+              {(props) =>
+                // Without `tasks:create`, this person may only ever pick themselves.
+                // A picker that lists names and then answers 403 is worse than no
+                // picker: it offers a choice that was never on the table.
+                mayAssign ? (
+                  <MultiSelect
+                    ariaLabel="Assign to"
+                    options={people}
+                    values={values.assigneeIds}
+                    onChange={(next) => form.set("assigneeIds", next)}
+                    placeholder="Nobody yet"
+                  />
+                ) : (
+                  <Input {...props} value={me ? `${me.name} (you)` : "You"} readOnly />
+                )
+              }
+            </Field>
+
+            <Field label="Priority" error={form.errorFor("priority")}>
+              {(props) => (
+                <Select {...props} {...form.register("priority")}>
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+
+            <Field
+              label="Worth"
+              hint="Points for the whole job, split between whoever does it. Your manager can change it."
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  inputMode="decimal"
+                  {...form.register("maxPoints")}
                 />
-              ) : (
-                <Input {...props} value={me ? `${me.name} (you)` : "You"} readOnly />
-              )
-            }
-          </Field>
+              )}
+            </Field>
 
-          <Field label="Priority">
-            {(props) => (
-              <Select
-                {...props}
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as TaskPriority)}
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+            <Field
+              label="Due"
+              required
+              error={form.errorFor("dueAt")}
+              hint={
+                limited
+                  ? `Required. ${priority === "urgent" ? "An" : "A"} ${priority} task must be due within ${limitDays} ${limitDays === 1 ? "day" : "days"}.`
+                  : "Required."
+              }
+            >
+              {(props) => (
+                <Input
+                  {...props}
+                  type="datetime-local"
+                  // The browser enforces the same ceiling the server does, so the
+                  // limit is visible in the picker rather than discovered on save.
+                  // Absent for somebody the rule exempts: a greyed-out date they are
+                  // allowed to pick would be the form lying about the rule.
+                  max={limited ? latestDue(limitDays) : undefined}
+                  {...form.register("dueAt")}
+                />
+              )}
+            </Field>
 
-          <Field
-            label="Worth"
-            hint="Points for the whole job, split between whoever does it. Your manager can change it."
-          >
-            {(props) => (
-              <Input
-                {...props}
-                type="number"
-                min="0"
-                step="0.5"
-                inputMode="decimal"
-                value={maxPoints}
-                onChange={(e) => setMaxPoints(e.target.value)}
-              />
-            )}
-          </Field>
+            <Field
+              label="Site"
+              required
+              error={form.errorFor("locationId")}
+              hint="Where the work is."
+            >
+              {(props) => (
+                <Select {...props} {...form.register("locationId")}>
+                  <option value="">Choose one</option>
+                  {(locations.data ?? []).map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </div>
 
-          <Field
-            label="Due"
-            hint={
-              limited
-                ? `Required. ${priority === "urgent" ? "An" : "A"} ${priority} task must be due within ${limitDays} ${limitDays === 1 ? "day" : "days"}.`
-                : "Required."
-            }
-          >
-            {(props) => (
-              <Input
-                {...props}
-                type="datetime-local"
-                value={dueAt}
-                // The browser enforces the same ceiling the server does, so the
-                // limit is visible in the picker rather than discovered on save.
-                // Absent for somebody the rule exempts: a greyed-out date they are
-                // allowed to pick would be the form lying about the rule.
-                max={limited ? latestDue(limitDays) : undefined}
-                onChange={(e) => setDueAt(e.target.value)}
-              />
-            )}
-          </Field>
-
-          <Field label="Site" hint="Where the work is. Leave it unset if it is not about one site.">
-            {(props) => (
-              <Select {...props} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-                <option value="">Not set</option>
-                {(locations.data ?? []).map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button
-            onClick={() => save.mutate()}
-            disabled={!title.trim() || !dueAt || save.isPending}
-          >
-            {save.isPending ? <Spinner /> : null}
-            {mode === "create" ? (assigneeIds.length > 0 ? "Assign" : "Save for later") : "Save"}
-          </Button>
-        </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="submit" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
+              {mode === "create"
+                ? values.assigneeIds.length > 0
+                  ? "Assign"
+                  : "Save for later"
+                : "Save"}
+            </Button>
+          </div>
+        </form>
       </Card>
     </>
   );

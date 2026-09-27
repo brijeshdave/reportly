@@ -16,6 +16,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { API_PREFIX, buildApp } from "@/core/app.js";
+import { db } from "@/core/db/index.js";
+import { journalEntries } from "@/core/db/schema.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
 
@@ -248,7 +250,7 @@ describe("SF-004: a person's location scope constrains what they can reach", () 
       ],
     });
 
-    const file = async (locationId: string | undefined) =>
+    const file = async (locationId: string) =>
       (
         await inject("POST", "/journal", author.cookie, {
           kind: "work",
@@ -258,13 +260,30 @@ describe("SF-004: a person's location scope constrains what they can reach", () 
           workDetail: "Checked it over and ran it up.",
           startedAt: new Date(Date.now() - 3_600_000).toISOString(),
           endedAt: new Date().toISOString(),
-          ...(locationId ? { locationId } : {}),
+          locationId,
         })
       ).json().id as string;
 
     const reportA = await file(plantA.id);
     const reportB = await file(plantB.id);
-    const reportNowhere = await file(undefined);
+
+    // Written straight to the table, because the API will not take it any more: an
+    // entry names its site now. Entries filed before that rule existed do not, and
+    // "not placed is not the same as hidden" still has to hold for them — otherwise
+    // turning the rule on would have quietly hidden a company's whole back catalogue.
+    const [nowhere] = await db
+      .insert(journalEntries)
+      .values({
+        companyId: DEMO_COMPANY_ID,
+        authorId: author.id,
+        kind: "work",
+        state: "submitted",
+        title: "Filed before sites were required",
+        reportDate: new Date(),
+        locationId: null,
+      })
+      .returning({ id: journalEntries.id });
+    const reportNowhere = nowhere!.id;
 
     const list = (await inject("GET", "/journal", scopedUser.cookie)).json().data;
     const ids = list.map((r: { id: string }) => r.id);

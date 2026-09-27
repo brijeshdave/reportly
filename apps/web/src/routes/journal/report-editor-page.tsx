@@ -6,7 +6,7 @@
 // measures and a status; a **work** log asks only what was done. You can **save a
 // draft** (private) or **submit** it (into the appraisal loop).
 import {
-  createJournalEntrySchema,
+  createJournalEntrySchemaFor,
   type CreateJournalEntry,
   type ReportKind,
   type Severity,
@@ -15,7 +15,7 @@ import {
 } from "@reportly/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
@@ -145,6 +145,9 @@ export function JournalEntryEditorPage({
           kind: prefill.data.kind,
           title: prefill.data.title,
           departmentId: prefill.data.departmentId ?? "",
+          // The plant the task was at. Asking for it again would be the form
+          // forgetting something it was just told.
+          locationId: prefill.data.locationId ?? "",
           // The brief becomes the starting point of the work log — the person edits
           // it into what they actually did rather than retyping the job from memory.
           workSummary: prefill.data.workSummary ?? "",
@@ -241,12 +244,23 @@ function Editor({
     targets: values.targets.map(({ kind, id }) => ({ kind, id })),
   });
 
+  const rules = useQuery({ queryKey: ["journal", "entry-rules"], queryFn: fetchEntryRules });
+  const workRequired = rules.data?.requireWorkOnIssue ?? false;
+  // The schema this installation is actually running. `requireWorkOnIssue` is a
+  // stored setting, so it cannot live in a static schema — and a form that cannot see
+  // the rule it is about to break can only discover it on save, which is what put a
+  // refusal above a Work done section with no mark on it at all.
+  const entrySchema = useMemo(
+    () => createJournalEntrySchemaFor({ requireWorkOnIssue: workRequired }),
+    [workRequired],
+  );
+
   const editor = useForm<FormState, unknown>({
     // The route's own schema, not a copy of it: a rule can only be enforced in two
     // places if it is written in one. A **draft** is checked for shape alone, which
     // is what the schema itself says — the required fields are conditioned on being
     // submitted.
-    schema: createJournalEntrySchema,
+    schema: entrySchema,
     initial: seed,
     toPayload: (values) => build(values, intent.current),
     // The parsed payload is deliberately not what gets sent. `createJournalEntrySchema`
@@ -313,8 +327,6 @@ function Editor({
   // mandatory, it is not offered: reported from use as the way people were skipping
   // the record entirely. The server refuses such a submit either way; this is what
   // stops somebody being refused by a form that offered them the choice.
-  const rules = useQuery({ queryKey: ["journal", "entry-rules"], queryFn: fetchEntryRules });
-  const workRequired = rules.data?.requireWorkOnIssue ?? false;
   const collapsible = isIssue && mode === "create" && !workRequired;
   const [workOpen, setWorkOpen] = useState(false);
   const activeSeverities = (severities.data ?? []).filter((s: Severity) => s.status === "active");
@@ -417,23 +429,20 @@ function Editor({
               )}
             </label>
 
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Site</span>
-              <select
-                value={form.locationId}
-                onChange={(e) => set("locationId", e.target.value)}
-                className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
-              >
-                {/* Only the sites this person's groups reach, so the picker cannot
-                    offer one the API would refuse. */}
-                <option value="">Not set</option>
-                {(locations.data ?? []).map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <Field label="Site" required error={editor.errorFor("locationId")}>
+              {(props) => (
+                <Select {...props} {...editor.register("locationId")}>
+                  {/* Only the sites this person's groups reach, so the picker cannot
+                      offer one the API would refuse. */}
+                  <option value="">Choose one</option>
+                  {(locations.data ?? []).map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
 
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">Category</span>

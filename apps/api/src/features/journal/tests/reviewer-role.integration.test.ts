@@ -17,6 +17,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -33,6 +37,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
@@ -120,6 +125,7 @@ async function chainWith(roleName: string, severityId?: string) {
   const severities = (await inject("GET", "/severities", admin)).json();
   const filed = await inject("POST", "/journal", author.cookie, {
     kind: "issue",
+    locationId: siteId,
     issueDetail: "Found it sheared on the drive side.",
     occurredAt: new Date().toISOString(),
     title: "Conveyor jam",

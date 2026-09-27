@@ -20,6 +20,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const COMPANY_A = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -36,6 +40,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
 });
 
 function cookieFrom(res: { headers: Record<string, unknown> }): string {
@@ -154,10 +159,19 @@ describe("a reporting line that bridges two companies", () => {
       ],
     });
 
-    // The junior files a work log in company B, with no site on it — the case
-    // where the location rule deliberately does not narrow anything.
+    // Company B's own site. Every entry names one, and it has to be a site of the
+    // company the entry belongs to — a company-A plant on a company-B entry would be
+    // the very leak this file exists to catch.
+    const siteB = (
+      await inject("POST", "/locations", admin, companyB.id, {
+        companyId: companyB.id,
+        name: "B Plant",
+      })
+    ).json();
+
     const filed = await inject("POST", "/journal", junior.cookie, companyB.id, {
       kind: "work",
+      locationId: siteB.id,
       title: "Company B internal work",
       // Submitted entries carry a severity now, whatever their kind.
       severityId: (await inject("GET", "/severities", admin, companyB.id)).json()[0].id,
@@ -216,9 +230,17 @@ describe("a reporting line that bridges two companies", () => {
       ],
     });
 
+    const siteB = (
+      await inject("POST", "/locations", admin, companyB.id, {
+        companyId: companyB.id,
+        name: "B Plant",
+      })
+    ).json();
+
     const made = await inject("POST", "/tasks", junior.cookie, companyB.id, {
       // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
       dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+      locationId: siteB.id,
       title: "Company B internal task",
       assigneeId: junior.id,
     });
@@ -310,6 +332,7 @@ describe("a reporting line that bridges two companies", () => {
 
     const filed = await inject("POST", "/journal", junior.cookie, companyB.id, {
       kind: "work",
+      locationId: siteId,
       title: "Company B work worth points",
       // Submitted entries carry a severity now, whatever their kind.
       severityId: (await inject("GET", "/severities", admin, companyB.id)).json()[0].id,

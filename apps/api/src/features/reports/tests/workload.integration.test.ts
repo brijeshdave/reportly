@@ -15,7 +15,11 @@ import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
 import { setCompanySetting } from "@/core/settings/service.js";
 import { resetDb } from "../../../../test/reset-db.js";
+import { anyLocationId } from "../../../../test/seeded.js";
 import { anySeverityId } from "../../../../test/seeded.js";
+
+/** A seeded site. Every kind of entry names the one it belongs to now. */
+let siteId = "";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
 const TEMP_PW = "Str0ngTempPass!x";
@@ -49,6 +53,7 @@ function inject(method: string, url: string, cookie: string, payload?: unknown) 
 
 beforeEach(async () => {
   await resetDb();
+  siteId = await anyLocationId();
   const password = await resetSuperadmin();
   admin = cookieFrom(
     await app.inject({
@@ -159,6 +164,7 @@ function rowsByPerson(body: {
 async function fileIssue(who: { cookie: string }, title: string) {
   const filed = await inject("POST", "/journal", who.cookie, {
     kind: "issue",
+    locationId: siteId,
     issueDetail: "Found it sheared on the drive side.",
     occurredAt: new Date().toISOString(),
     severityId: await anySeverityId(),
@@ -178,6 +184,7 @@ describe("the department workload report", () => {
 
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Grease the bearings",
@@ -203,6 +210,7 @@ describe("the department workload report", () => {
     const { lead, one, two } = await team();
     const task = (
       await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
         // Every task needs a date it is due by; tomorrow is inside every priority's ceiling.
         dueAt: new Date(Date.now() + 86_400_000).toISOString(),
         title: "Rewire the panel",

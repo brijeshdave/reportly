@@ -175,7 +175,12 @@ export const createTaskSchema = z.object({
    */
   assigneeIds: z.array(z.string().min(1)).default([]),
   departmentId: uuidSchema.optional(),
-  locationId: uuidSchema.optional(),
+  /**
+   * The site the work is at. Required, as it is on every other kind of entry: a task
+   * with no site belongs to nobody's plant, falls out of every per-site figure, and
+   * cannot be handed to the person who is actually there.
+   */
+  locationId: uuidSchema,
   /**
    * Required, unlike everywhere else a date appears: work handed to somebody with
    * no date on it is what the complaint was about. How far ahead it may be is the
@@ -197,7 +202,8 @@ export const updateTaskSchema = z.object({
   /** Replaced wholesale when sent; send [] to leave the task unassigned. */
   assigneeIds: z.array(z.string().min(1)).optional(),
   departmentId: uuidSchema.nullable().optional(),
-  locationId: uuidSchema.nullable().optional(),
+  /** Changed, but not cleared — see `createTaskSchema`. */
+  locationId: uuidSchema.optional(),
   /** Changeable, but not erasable: clearing a due date would be the way round the
    *  rule that a task has one. */
   dueAt: z.string().datetime().optional(),
@@ -221,6 +227,14 @@ export const taskPrefillSchema = z.object({
   title: z.string(),
   workSummary: z.string().nullable(),
   departmentId: uuidSchema.nullable(),
+  /**
+   * The task's own site, carried onto the entry.
+   *
+   * Every entry names one, and the task already knows which plant the work was at —
+   * asking the person to pick it again would be the form forgetting something it was
+   * just told.
+   */
+  locationId: uuidSchema.nullable(),
   /** Everybody who worked on the task, including anyone who handed it over. The
    *  entry starts with them on it and the author divides the points between them. */
   participantIds: z.array(z.string()).default([]),
