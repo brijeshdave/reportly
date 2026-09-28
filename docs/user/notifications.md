@@ -181,6 +181,34 @@ it quieter.
 Untick every channel on a row to stop that kind being sent at all. That is the answer
 to "stop telling me every time somebody files an entry".
 
+### Telling managers when somebody goes quiet
+
+**Off by default.** An installation that has not decided what "quiet" means for its
+own people should not start mailing managers about them — and the first run against
+an established database would otherwise post about everybody who has ever been on
+leave.
+
+Switch it on under **Settings → Notifications**, where four things are yours to set:
+
+| Setting          | What it does                                                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Enabled**      | Whether the alert runs at all.                                                                                                                                            |
+| **After days**   | How long somebody must have logged nothing before it fires. Seven by default.                                                                                             |
+| **Kinds**        | Which activity counts as logging something. Leave empty for all of it, or pick one — watching only routines finds the person who files entries and skips their rounds.    |
+| **Upline depth** | How far up that person's line the alert climbs. **Three** by default, unlike the general setting below: silence is exactly what the people further up want to know about. |
+
+It asks the same question the [Gone quiet report](workload.md) asks, on a timer
+instead of on demand, and uses that report's query — so a manager reading the report
+and a manager getting the alert can never disagree.
+
+**It says it once per silence, not once a day.** The alert is remembered against the
+date of the person's last activity, so a quiet fortnight is reported once. The moment
+they log anything, that changes, and a later silence earns a new alert. Repeating it
+daily is what teaches somebody to mute the channel, and then they miss the ones that
+mattered.
+
+Which channels it goes out on is the matrix above, like every other kind.
+
 ### How far up the line an event travels
 
 When somebody's work needs reviewing, the people told are their managers. **How far

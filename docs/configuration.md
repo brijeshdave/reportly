@@ -579,6 +579,19 @@ one of them, so somebody who works in two departments carries their team's event
 _both_ chains, and a head of department is told about work by people they have never
 managed.
 
+### Inactivity alerts (`notifications.inactivity`)
+
+Tells a person's managers when they have logged nothing for a while — the [Gone
+quiet](user/workload.md) report asked on a timer. **Off by default**: an installation
+that has not decided what "quiet" means should not start mailing managers, and a
+first run on an established database would post about everybody who was ever on
+leave.
+
+`afterDays` (7), `kinds` (all), and `uplineDepth` (**3**, deliberately further than
+the general setting — silence is what the people above want to know). Runs in the
+daily maintenance sweep, so it needs the queues switched on; see
+[Operations](operations.md).
+
 ### Lanes (`notifications.lanes`)
 
 The first column of the same grid: whether a type counts on the bell (**Needs you**)

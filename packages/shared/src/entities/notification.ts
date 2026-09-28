@@ -79,6 +79,10 @@ export const NOTIFICATION_CATEGORIES = [
   // module off, a whole section is easy to skip, whereas two cartridge rows
   // buried among the backup ones read as clutter nobody can switch off.
   "cartridges",
+  // About a person rather than a thing they did — who has gone quiet, and who
+  // should be told. Its own heading because the audience is different: these reach
+  // somebody's managers, not the person themselves.
+  "people",
   "system",
 ] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
@@ -215,6 +219,17 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     category: "journal",
     label: "An entry is waiting for your review",
     description: "Somebody in your reporting line filed work that needs appraising.",
+    audience: "upline",
+    defaultChannels: INAPP_AND_EMAIL,
+  },
+
+  {
+    type: "person.inactive",
+    category: "people",
+    lane: "action",
+    label: "Somebody in your team has gone quiet",
+    description:
+      "A person you manage has logged nothing — no entries, tasks, routines or cartridge work — for longer than the installation allows.",
     audience: "upline",
     defaultChannels: INAPP_AND_EMAIL,
   },

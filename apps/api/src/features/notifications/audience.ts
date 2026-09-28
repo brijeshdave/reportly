@@ -32,6 +32,18 @@ export interface NotificationEvent {
   departmentId?: string | null;
   /** Recipients the call site names itself, for `explicit` audiences. */
   userIds?: string[];
+  /**
+   * How far up the line this one event climbs, overriding the installation's
+   * default.
+   *
+   * There is one case for it and it is deliberate: the default is **one** because a
+   * filing at the bottom of a deep organisation should not land on a director.
+   * Silence is the opposite — somebody having logged nothing for a fortnight is
+   * exactly what the people further up want to know, and the ask was "his all upper
+   * managers". A type that needs a different reach says so rather than moving the
+   * number for everything.
+   */
+  uplineDepth?: number;
 }
 
 /**
@@ -93,7 +105,7 @@ async function candidatesFor(
     case "upline": {
       if (!event.subjectUserId) return [];
       const { depth, sameBranchOnly } = await uplineRules();
-      const chain = await uplineOf(event.subjectUserId, depth, {
+      const chain = await uplineOf(event.subjectUserId, event.uplineDepth ?? depth, {
         sameBranchOnly,
         // The department the event belongs to, where the emitter knows it. Starting
         // from the subject's membership *there* is the difference between "my team

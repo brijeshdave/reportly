@@ -10,10 +10,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
+import { runInactivitySweep } from "@/features/reminders/inactivity.js";
 import { runReminderSweep } from "@/features/reminders/service.js";
 import { alreadySent } from "@/features/reminders/repo.js";
 import { resetDb } from "../../../../test/reset-db.js";
-import { anyLocationId } from "../../../../test/seeded.js";
+import { anyLocationId, anySeverityId } from "../../../../test/seeded.js";
 
 /** A seeded site. Every kind of entry names the one it belongs to now. */
 let siteId = "";
@@ -124,5 +125,73 @@ describe("the reminder sweep", () => {
     expect(done.statusCode).toBe(200);
 
     expect((await runReminderSweep()).sent).toBe(0);
+  });
+});
+
+describe("the inactivity sweep", () => {
+  // Asked for from use: "need notification for such users to his all upper managers
+  // and those needs to be configurable channels of notifications."
+
+  /** Put the superadmin in a department so there is somebody to be quiet. */
+  async function aTeam(admin: { cookie: string; id: string }) {
+    const dept = (await inject("POST", "/departments", admin.cookie, { name: "Ops" })).json();
+    await inject("PUT", `/departments/${dept.id}/members`, admin.cookie, {
+      members: [{ userId: admin.id, rank: "member" }],
+    });
+    return dept;
+  }
+
+  const enable = (admin: string, value: Record<string, unknown>) =>
+    inject("PUT", "/settings/notifications/inactivity", admin, { value });
+
+  it("says nothing at all until an installation switches it on", async () => {
+    // Off by default and deliberately: the first run on an established database
+    // would otherwise post about everybody who has ever been on leave.
+    const admin = await superadmin();
+    await aTeam(admin);
+    expect((await runInactivitySweep()).sent).toBe(0);
+  });
+
+  it("tells the line about somebody who has logged nothing", async () => {
+    const admin = await superadmin();
+    await aTeam(admin);
+    await enable(admin.cookie, { enabled: true, afterDays: 7 });
+
+    const first = await runInactivitySweep();
+    expect(first.sent).toBeGreaterThan(0);
+  });
+
+  it("says it once per silence, not once a day", async () => {
+    // The failure that gets a feature muted. The mark is keyed on the date of the
+    // person's last activity, so the same quiet fortnight cannot be reported
+    // fourteen times.
+    const admin = await superadmin();
+    await aTeam(admin);
+    await enable(admin.cookie, { enabled: true, afterDays: 7 });
+
+    expect((await runInactivitySweep()).sent).toBeGreaterThan(0);
+    expect((await runInactivitySweep()).sent).toBe(0);
+    expect((await runInactivitySweep()).sent).toBe(0);
+  });
+
+  it("leaves alone somebody who has just logged something", async () => {
+    const admin = await superadmin();
+    await aTeam(admin);
+    // A threshold nothing recent can cross.
+    await enable(admin.cookie, { enabled: true, afterDays: 365 });
+
+    const filed = await inject("POST", "/journal", admin.cookie, {
+      kind: "issue",
+      locationId: siteId,
+      title: "Something today",
+      state: "submitted",
+      severityId: await anySeverityId(),
+      issueSummary: "It broke",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
+    });
+    expect(filed.statusCode, filed.body).toBe(201);
+
+    expect((await runInactivitySweep()).sent).toBe(0);
   });
 });

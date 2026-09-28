@@ -12,6 +12,7 @@ import { queueConnection } from "@/core/queue/connection.js";
 import { checkQueueHealth } from "@/core/queue/health.js";
 import { getSystemSetting } from "@/core/settings/service.js";
 import { pruneRead } from "@/features/notifications/repo.js";
+import { runInactivitySweep } from "@/features/reminders/inactivity.js";
 import { pruneReminderMarks, runReminderSweep } from "@/features/reminders/service.js";
 
 export const MAINTENANCE_QUEUE = "maintenance";
@@ -126,10 +127,17 @@ export function createMaintenanceWorker(): Worker {
       }
       if (job.name === REMINDER_SWEEP_JOB) {
         const result = await runReminderSweep();
+        // Same daily pass, and the same marks table, so a manager cannot be told
+        // about the same quiet fortnight fourteen times. Off unless an installation
+        // has switched it on.
+        const inactive = await runInactivitySweep();
         // Pruned in the same pass: the marks exist only to suppress this job, so
         // there is no other moment at which anybody would think to tidy them.
         const forgotten = await pruneReminderMarks();
-        logger.info({ feature: "maintenance", ...result, forgotten }, "Reminder sweep completed");
+        logger.info(
+          { feature: "maintenance", ...result, inactive: inactive.sent, forgotten },
+          "Reminder sweep completed",
+        );
       }
     },
     { connection: queueConnection() },

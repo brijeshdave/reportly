@@ -1064,6 +1064,48 @@ export const NOTIFICATION_LANE_OVERRIDES: SettingDef<typeof notificationLaneOver
   description: "Notification types moved out of the bell's count and into Activity",
 };
 
+/**
+ * Telling a person's managers when they have gone quiet.
+ *
+ * Asked for from use: "need notification for such users to his all upper managers
+ * and those needs to be configurable channels of notifications."
+ *
+ * **Off by default.** An installation that has not decided what "quiet" means for
+ * its own people should not start mailing managers about them, and the first run on
+ * an established database would otherwise post about everybody who was ever on leave.
+ */
+export const inactivityAlertSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** A person is quiet once they have logged nothing for this many days. */
+  afterDays: z.number().int().min(1).max(365).default(7),
+  /**
+   * Which kinds of activity count as logging something. Empty means all of them.
+   *
+   * The same list the Gone quiet report filters by, and for the same reason:
+   * somebody doing their routines and filing no entries is a different problem from
+   * somebody doing nothing, and an alert that counts any activity hides them.
+   */
+  kinds: z.array(z.enum(["journal", "tasks", "routines", "parts"])).default([]),
+  /**
+   * How far up that person's line the alert climbs.
+   *
+   * Its own number rather than the global `uplineDepth`, which defaults to one
+   * because a filing at the bottom of a deep organisation should not land on a
+   * director. Silence is the opposite case — it is exactly what somebody further up
+   * wants to know, and the ask was "his all upper managers".
+   */
+  uplineDepth: z.number().int().min(1).max(6).default(3),
+});
+export type InactivityAlertSettings = z.infer<typeof inactivityAlertSchema>;
+
+export const INACTIVITY_ALERTS: SettingDef<typeof inactivityAlertSchema> = {
+  namespace: "notifications",
+  key: "inactivity",
+  schema: inactivityAlertSchema,
+  userOverridable: false,
+  description: "Tell a person's managers when they have logged nothing for a while",
+};
+
 export const PARTS_MODULE: SettingDef<typeof partsModuleSchema> = {
   namespace: "parts",
   key: "module",
@@ -1150,6 +1192,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   CHANNEL_PROVIDERS,
   CHANNEL_VERIFICATION,
   NOTIFICATION_DELIVERY,
+  INACTIVITY_ALERTS,
   NOTIFICATION_LANE_OVERRIDES,
   NOTIFICATION_MATRIX,
   PARTS_MODULE,
