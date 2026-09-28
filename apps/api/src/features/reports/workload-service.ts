@@ -30,7 +30,7 @@ import {
 import {
   categoryBuckets,
   entriesByCategory,
-  issuesBySeverity,
+  entriesBySeverity,
   severityBuckets,
   type Bucket,
 } from "@/features/reports/workload-breakdown-repo.js";
@@ -337,17 +337,44 @@ async function runBreakdown(
   const [buckets, tallies, workingDays] = await Promise.all([
     kind === "severity" ? severityBuckets() : categoryBuckets(companyId),
     kind === "severity"
-      ? issuesBySeverity(ids, companyId, from, to)
+      ? entriesBySeverity(ids, companyId, from, to)
       : entriesByCategory(ids, companyId, from, to),
     workingDaysFor(ids, fromDay, toDay),
   ]);
 
   const counts = new Map<string, number>();
-  for (const row of tallies) counts.set(`${row.userId} ${row.bucketId ?? "none"}`, row.n);
+  const add = (userId: string, bucket: string, n: number) => {
+    const key = `${userId} ${bucket}`;
+    counts.set(key, (counts.get(key) ?? 0) + n);
+  };
+  for (const row of tallies) {
+    // On the severity report a **work log** goes in its own column rather than into
+    // "not set". It has no severity by design — completing a task opens one, and
+    // "nothing broke here" has nothing to rate — so filing it beside issues that are
+    // genuinely missing a severity would hide the only rows worth acting on.
+    const isPlannedWork = kind === "severity" && "kind" in row && row.kind === "work";
+    add(row.userId, isPlannedWork ? "work" : (row.bucketId ?? "none"), row.n);
+  }
 
-  const keys = [...buckets.map((b) => b.id), "none"];
+  // "Not set" earns its place only when something is in it. Since a submitted issue
+  // must name a severity, it can now only hold entries filed before that rule — which
+  // is exactly what an administrator wants to find, and a column of zeros forever
+  // afterwards is noise.
+  const anyUnset = [...counts].some(([key, n]) => key.endsWith(" none") && n > 0);
+  const keys = [
+    ...buckets.map((b) => b.id),
+    ...(kind === "severity" ? ["work"] : []),
+    ...(anyUnset ? ["none"] : []),
+  ];
   const columns = ["person", "workingDays", ...keys, "total"];
-  const columnLabels = ["Person", "Working days", ...bucketLabels(buckets), "Not set", "Total"];
+  const columnLabels = [
+    "Person",
+    "Working days",
+    ...bucketLabels(buckets),
+    ...(kind === "severity" ? ["Planned work"] : []),
+    ...(anyUnset ? ["Not set"] : []),
+    "Total",
+  ];
 
   const labels = new Map(people.map((p) => [p.userId, groupLabelFor(p, definition.grouping)]));
   const rows = people.map((person) => ({ person })).sort((a, b) => byName(a.person, b.person));

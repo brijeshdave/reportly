@@ -22,24 +22,40 @@ export interface BucketCount {
   n: number;
 }
 
+/** A tally that also says what kind of entry it counted. */
+export interface SeverityCount extends BucketCount {
+  kind: string;
+}
+
 /**
- * Issues per person per severity.
+ * Every submitted entry per person per severity, **with its kind**.
  *
- * **Issues only.** A work log has no severity — the editor does not draw the field
- * for one — so including them would put every work log in the "none" column and make
- * that column the largest thing on the page, saying nothing.
+ * Counting issues alone was wrong and quietly so. Completing a task opens a journal
+ * entry, and the server forces that entry to be a **work log** — which has no
+ * severity by design, because "nothing broke here, this is what I did" has nothing to
+ * rate. So a person who wrote up thirty tasks and raised two breakdowns appeared on
+ * this report as two, and the thirty were nowhere.
+ *
+ * The kind travels with the count so the report can put those in a column of their
+ * own rather than either dropping them or dumping them into "not set" beside issues
+ * that are genuinely missing a severity. Those two are different problems: one is how
+ * the product works, the other is a record somebody needs to fix.
+ *
+ * Routines are not here at all, and should not be: a routine completion is its own
+ * table and never becomes a journal entry.
  */
-export async function issuesBySeverity(
+export async function entriesBySeverity(
   userIds: string[],
   companyId: string,
   from: Date,
   to: Date,
-): Promise<BucketCount[]> {
+): Promise<SeverityCount[]> {
   if (userIds.length === 0) return [];
   return db
     .select({
       userId: journalEntries.authorId,
       bucketId: journalEntries.severityId,
+      kind: journalEntries.kind,
       n: sql<number>`count(*)::int`,
     })
     .from(journalEntries)
@@ -47,7 +63,6 @@ export async function issuesBySeverity(
       and(
         inArray(journalEntries.authorId, userIds),
         eq(journalEntries.companyId, companyId),
-        eq(journalEntries.kind, "issue"),
         // Drafts are private and unfinished; counting them would credit work that
         // nobody else can see and that may never be filed.
         eq(journalEntries.state, "submitted"),
@@ -55,7 +70,7 @@ export async function issuesBySeverity(
         lt(journalEntries.reportDate, to),
       ),
     )
-    .groupBy(journalEntries.authorId, journalEntries.severityId);
+    .groupBy(journalEntries.authorId, journalEntries.severityId, journalEntries.kind);
 }
 
 /**

@@ -63,22 +63,39 @@ The flat report says how _much_ somebody did. These two say what it **was** — 
 Critical breakdowns and ten Informational ones are the same number and a very
 different month.
 
-| Person       | Working days | Informational | Minor | Moderate | Major | Critical | Not set | Total |
-| ------------ | ------------ | ------------- | ----- | -------- | ----- | -------- | ------- | ----- |
-| Anil Fitter  | 4 / 4        | 0             | 2     | 1        | 0     | 0        | 0       | 3     |
-| Sam Operator | 2 / 4        | 1             | 0     | 0        | 1     | 2        | 0       | 4     |
+| Person       | Working days | Informational | Minor | Moderate | Major | Critical | Planned work | Total |
+| ------------ | ------------ | ------------- | ----- | -------- | ----- | -------- | ------------ | ----- |
+| Anil Fitter  | 4 / 4        | 0             | 2     | 1        | 0     | 0        | 6            | 9     |
+| Sam Operator | 2 / 4        | 1             | 0     | 0        | 1     | 2        | 3            | 7     |
 
 The columns come from your own configuration — whatever your severities and
 categories are called — and the severity columns are in the ladder's own order, so
 reading left to right is the work getting more serious.
 
-**Not set** is a column, not a gap. Entries filed without a severity or a category
-are usually the thing worth fixing, and folding them away would hide it.
+### Work that has no severity
 
-**Severity counts issues only.** A work log has no severity — the form does not ask
-for one — so including them would put every work log in _Not set_ and make it the
-largest number on the page. The **category** report counts both kinds, because "what
-kind of thing was this" is a fair question about any job.
+**Planned work** is its own column on the severity report, and it matters more than
+it looks. Completing a **task** opens a journal entry, and that entry is always a
+work log — which has no severity, because "nothing broke here, this is what I did"
+has nothing to rate. Without this column, somebody who wrote up thirty tasks and
+raised two breakdowns would read as **2** on this report.
+
+**Routines are not here at all**, and should not be: a routine completion is its own
+record and never becomes a journal entry. Use the routine compliance reports for
+those.
+
+### Not set
+
+**Not set** means an **issue** that is missing a severity. Since a submitted issue
+must name one, that can now only be an entry filed before that rule existed — which
+is exactly the kind of record worth going back and fixing.
+
+The column is drawn **only when something is in it**. Once the old entries are tidied
+up it disappears, rather than sitting there as a column of zeros for ever.
+
+The **category** report has no Planned work column, because a category fits a work
+log as well as an issue — "what kind of thing was this" is a fair question about any
+job — and its own Not set follows the same rule.
 
 ---
 

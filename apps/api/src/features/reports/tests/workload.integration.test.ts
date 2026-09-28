@@ -286,9 +286,10 @@ describe("the workload breakdowns", () => {
     expect(body.meta.columnLabels[0]).toBe("Person");
     expect(body.meta.columnLabels).toContain(low.name);
     expect(body.meta.columnLabels).toContain(high.name);
-    // And a column for the entries that named none: that is what an administrator
-    // reading this is looking for, so it is not folded away.
-    expect(body.meta.columnLabels).toContain("Not set");
+    // Nothing is missing a severity here — a submitted issue must name one — so the
+    // "Not set" column is not drawn at all. It appears only when it has something in
+    // it, which after that rule means entries filed before it existed.
+    expect(body.meta.columnLabels).not.toContain("Not set");
 
     const sam = rowsByPerson(body).get("Sam Operator");
     expect(sam?.[low.id]).toBe("2");
@@ -296,11 +297,12 @@ describe("the workload breakdowns", () => {
     expect(sam?.total).toBe("3");
   });
 
-  it("counts work logs in the category breakdown, which have no severity to count", async () => {
-    // The difference between the two: a category fits a work log as well as an
-    // issue — "what kind of thing was this" is a question about the job. A severity
-    // does not, and counting work logs there would put every one of them in the
-    // "not set" column and make it the largest thing on the page.
+  it("gives planned work its own column instead of dropping it", async () => {
+    // Reported from use: "for tasks or routines there is no sevirity and those are
+    // logged in same journal so what to do for that?" Completing a task opens a
+    // journal entry and the server forces it to be a work log, which has no severity
+    // by design. Counting issues alone meant somebody who wrote up thirty tasks and
+    // raised two breakdowns appeared on this report as two.
     const { lead, one } = await team();
     const logged = await inject("POST", "/journal", one.cookie, {
       kind: "work",
@@ -314,9 +316,19 @@ describe("the workload breakdowns", () => {
     });
     expect(logged.statusCode, logged.body).toBe(201);
 
-    const bySeverity = rowsByPerson((await run(lead.cookie, "dept_workload_severity")).json());
-    expect(bySeverity.get("Sam Operator")?.total).toBe("0");
+    const res = await run(lead.cookie, "dept_workload_severity");
+    const body = res.json();
+    // Its own column, not "Not set": having no severity by nature and being an issue
+    // that is missing one are different problems, and only the second wants fixing.
+    expect(body.meta.columnLabels).toContain("Planned work");
+    expect(body.meta.columnLabels).not.toContain("Not set");
 
+    const sam = rowsByPerson(body).get("Sam Operator");
+    expect(sam?.work).toBe("1");
+    expect(sam?.total).toBe("1");
+
+    // The category report counts it too, and always did: "what kind of thing was
+    // this" is a fair question about any job.
     const byCategory = rowsByPerson((await run(lead.cookie, "dept_workload_category")).json());
     expect(byCategory.get("Sam Operator")?.total).toBe("1");
   });
