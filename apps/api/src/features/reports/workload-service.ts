@@ -64,6 +64,18 @@ const activityTotal = (c: WorkloadCounts): number =>
   c.routines;
 
 /**
+ * What was due and did not happen — reported beside the total, never inside it.
+ *
+ * `total` is work done. Adding a miss to it would make somebody look busier for
+ * having failed to do something, which is the opposite of what these columns are
+ * for. Kept out for the same reason points are.
+ */
+const missedColumns = (c: WorkloadCounts): Record<string, string> => ({
+  tasksOverdue: String(c.tasksOverdue),
+  routinesMissed: String(c.routinesMissed),
+});
+
+/**
  * The local day an instant falls on.
  *
  * `tzOffsetMinutes` is minutes east of UTC, the same convention the range builder
@@ -175,6 +187,7 @@ export async function runDeptWorkload(
           partsRemoved: String(m.counts.partsRemoved),
           partsServiced: String(m.counts.partsServiced),
           routines: String(m.counts.routines),
+          ...missedColumns(m.counts),
           points: String(m.counts.points),
           total: String(total),
         },

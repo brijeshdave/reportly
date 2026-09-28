@@ -408,6 +408,11 @@ export const DEPT_WORKLOAD_COLUMNS = [
   "partsRemoved",
   "partsServiced",
   "routines",
+  // What was due and did not happen. A report of what somebody got through says
+  // nothing about what they did not, and the two together are the actual picture:
+  // six jobs finished reads very differently beside two missed and beside twenty.
+  "tasksOverdue",
+  "routinesMissed",
   "points",
   "total",
 ] as const;
@@ -722,6 +727,8 @@ export const ALL_REPORT_COLUMN_LABELS: Record<string, string> = {
   partsFitted: "Fitted",
   partsRemoved: "Removed",
   partsServiced: "Serviced",
+  tasksOverdue: "Tasks not done",
+  routinesMissed: "Routines missed",
   lastJournal: "Last entry",
   lastTask: "Last task",
   lastRoutine: "Last routine",

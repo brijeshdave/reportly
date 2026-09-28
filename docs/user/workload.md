@@ -24,21 +24,37 @@ clone; or build one from scratch with **New report** and pick them under
 The columns are the whole report, and a wrong attribution is invisible in the
 output — a job counted twice looks exactly like a busy month. So, precisely:
 
-| Column           | One unit is                                                              |
-| ---------------- | ------------------------------------------------------------------------ |
-| **Issues**       | A breakdown they **filed**, by its report date.                          |
-| **Planned work** | A planned-work entry they filed, same rule.                              |
-| **Tasks**        | A task **completed** in the window, counted for everybody who was on it. |
-| **Fitted**       | A cartridge they installed.                                              |
-| **Removed**      | A cartridge they took out.                                               |
-| **Serviced**     | A cartridge they serviced.                                               |
-| **Routines**     | A routine occurrence they completed, counted on the day it was **due**.  |
-| **Points**       | Points credited to them by a review.                                     |
-| **Total**        | The activity columns added together.                                     |
+| Column              | One unit is                                                              |
+| ------------------- | ------------------------------------------------------------------------ |
+| **Issues**          | A breakdown they **filed**, by its report date.                          |
+| **Planned work**    | A work entry they filed **with no task behind it** — see below.          |
+| **Tasks**           | A task **completed** in the window, counted for everybody who was on it. |
+| **Fitted**          | A cartridge they installed.                                              |
+| **Removed**         | A cartridge they took out.                                               |
+| **Serviced**        | A cartridge they serviced.                                               |
+| **Routines**        | A routine occurrence they completed, counted on the day it was **due**.  |
+| **Tasks not done**  | A task due in the window, assigned to them, still not done.              |
+| **Routines missed** | A routine occurrence due in the window that nobody completed.            |
+| **Points**          | Points credited to them by a review.                                     |
+| **Total**           | The activity columns added together.                                     |
 
 Those three used to be one **Cartridges** column with all of them added together,
 which meant "how many did this person refill" and "how many did they service" had
 the same answer. They are counted apart now, and **Total** still adds all three.
+
+**Planned work and Tasks are not the same jobs counted twice.** Completing a task
+opens a journal entry, so every completed task used to appear in both columns and
+inflate the total. A work entry filed **against a task** now counts only under
+_Tasks_. What is left in _Planned work_ is a work entry standing on its own —
+routine daily work somebody logged directly, with no task behind it.
+
+**What was due and not done is reported beside the total, never inside it.** _Tasks
+not done_ and _Routines missed_ are not activity: a total that grew when somebody
+missed something would make failure look like work. A missed routine is worked out
+from the routine's own schedule, since a miss leaves no record — only days that have
+**passed** count, so an occurrence due today is pending rather than missed. A
+**cancelled** task is not a miss either: calling work off is a decision somebody
+made.
 
 Three of those are worth spelling out.
 

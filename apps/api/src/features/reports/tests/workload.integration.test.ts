@@ -176,6 +176,91 @@ async function fileIssue(who: { cookie: string }, title: string) {
   return filed.json().id as string;
 }
 
+describe("what the workload report does not double-count", () => {
+  it("counts a task write-up once, as a task, not also as planned work", async () => {
+    // Reported from use: "what is diff between planned work and tasks? as planned
+    // work is the entry that are completed tasks so it should be shown for task
+    // only." Completing a task opens a pre-filled journal entry, so every completed
+    // task produced a row in both columns and `total` was inflated by exactly the
+    // number of tasks somebody wrote up.
+    const { lead, one } = await team();
+
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+        title: "Grease the bearings",
+        assigneeIds: [one.id],
+      })
+    ).json();
+
+    // Filing the entry against the task is what completes it — the same door a
+    // person goes through on the screen.
+    const filed = await inject("POST", "/journal", one.cookie, {
+      kind: "work",
+      taskId: task.id,
+      locationId: siteId,
+      title: "Greased the bearings",
+      state: "submitted",
+      workSummary: "Went round the whole line",
+      workDetail: "Everything as expected.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
+    });
+    expect(filed.statusCode, filed.body).toBe(201);
+
+    const sam = rowsByPerson((await run(lead.cookie, "dept_workload")).json()).get("Sam Operator");
+    expect(sam?.tasks).toBe("1");
+    // The write-up is the task, not a second job beside it.
+    expect(sam?.plannedWork).toBe("0");
+    expect(sam?.total).toBe("1");
+  });
+
+  it("still counts planned work that stands on its own", async () => {
+    // The column is not redundant — a work entry with no task behind it is routine
+    // daily work somebody logged directly, and it would vanish if the fix went too far.
+    const { lead, one } = await team();
+    const filed = await inject("POST", "/journal", one.cookie, {
+      kind: "work",
+      locationId: siteId,
+      title: "Daily walk-round",
+      state: "submitted",
+      workSummary: "Walked the line",
+      workDetail: "Nothing to report.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
+    });
+    expect(filed.statusCode, filed.body).toBe(201);
+
+    const sam = rowsByPerson((await run(lead.cookie, "dept_workload")).json()).get("Sam Operator");
+    expect(sam?.plannedWork).toBe("1");
+    expect(sam?.tasks).toBe("0");
+    expect(sam?.total).toBe("1");
+  });
+
+  it("reports what was due and not done, without adding it to the total", async () => {
+    // Asked for from use: "we should also have tasks and routines that were not
+    // completed and due is done." A total that grew when somebody missed something
+    // would make failure look like activity.
+    const { lead, one } = await team();
+    await inject("POST", "/tasks", lead.cookie, {
+      locationId: siteId,
+      // Due inside the report's window and never touched.
+      dueAt: new Date(Date.now() - 3_600_000).toISOString(),
+      title: "Never got to it",
+      assigneeIds: [one.id],
+    });
+
+    const body = (await run(lead.cookie, "dept_workload")).json();
+    expect(body.meta.columnLabels).toContain("Tasks not done");
+    expect(body.meta.columnLabels).toContain("Routines missed");
+
+    const sam = rowsByPerson(body).get("Sam Operator");
+    expect(sam?.tasksOverdue).toBe("1");
+    expect(sam?.total).toBe("0");
+  });
+});
+
 describe("the silence report", () => {
   // Asked for from use: "a report that can show if any user is not logging anything
   // since last N number of days based on filters applied. i.e. like no journal, no
