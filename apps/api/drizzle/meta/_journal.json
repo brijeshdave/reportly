@@ -232,6 +232,13 @@
       "when": 1786791600023,
       "tag": "0032_workload_breakdown_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786791600024,
+      "tag": "0033_silence_report_permission",
+      "breakpoints": true
     }
   ]
 }

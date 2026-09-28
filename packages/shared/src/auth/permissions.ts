@@ -229,6 +229,7 @@ export const PERMISSIONS = {
   REPORTS_VIEW_DEPT_WORKLOAD_DAILY: "reports:view:dept_workload_daily",
   REPORTS_VIEW_DEPT_WORKLOAD_SEVERITY: "reports:view:dept_workload_severity",
   REPORTS_VIEW_DEPT_WORKLOAD_CATEGORY: "reports:view:dept_workload_category",
+  REPORTS_VIEW_DEPT_SILENCE: "reports:view:dept_silence",
   REPORTS_VIEW_DEPT_IRREGULARITY: "reports:view:dept_irregularity",
   // Who the work was about rather than who did it — the two end-user reports. Their
   // own keys because they name the people the team supports, which is a different

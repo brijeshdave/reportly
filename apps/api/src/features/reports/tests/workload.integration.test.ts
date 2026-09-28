@@ -176,6 +176,73 @@ async function fileIssue(who: { cookie: string }, title: string) {
   return filed.json().id as string;
 }
 
+describe("the silence report", () => {
+  // Asked for from use: "a report that can show if any user is not logging anything
+  // since last N number of days based on filters applied. i.e. like no journal, no
+  // tasks, no refill or service or no routines. need for each of these."
+  //
+  // Deliberately not the irregularity report in different clothes: that asks "did
+  // less than N in a window", and somebody who filed forty entries on the 1st and
+  // nothing since scores well on volume and is exactly who this is for.
+
+  async function silence(cookie: string, extra: Record<string, unknown> = {}) {
+    return run(cookie, "dept_silence", extra);
+  }
+
+  /** Every listed person, as name → cells. */
+  function listed(body: { groups: { rows: { cells: Record<string, string> }[] }[] }) {
+    return rowsByPerson(body);
+  }
+
+  it("lists the people who have logged nothing, and says how long", async () => {
+    const { lead, one } = await team();
+    // One person files something today; the rest of the fixture has never logged
+    // anything at all, which is the loudest answer the report has.
+    await fileIssue(one, "Something today");
+
+    const res = await silence(lead.cookie);
+    expect(res.statusCode, res.body).toBe(200);
+    const rows = listed(res.json());
+
+    // Active today, so below any sane threshold and not listed.
+    expect(rows.has("Sam Operator")).toBe(false);
+    // Never did anything: listed, and said as "never" rather than a made-up number.
+    expect(rows.get("Anil Fitter")?.silentDays).toBe("never");
+    expect(rows.get("Anil Fitter")?.lastJournal).toBe("never");
+  });
+
+  it("watches one kind of activity when asked, which is the point of the filter", async () => {
+    // Somebody doing routines and no journal entries is a different problem from
+    // somebody doing nothing, and a report that counts any activity hides them.
+    const { lead, one } = await team();
+    await fileIssue(one, "An entry but no routines");
+
+    // Watching journals only: they are active, so not listed.
+    const byJournal = listed((await silence(lead.cookie, { silenceKinds: ["journal"] })).json());
+    expect(byJournal.has("Sam Operator")).toBe(false);
+
+    // Watching routines only: they have never completed one, so they are.
+    const byRoutine = listed((await silence(lead.cookie, { silenceKinds: ["routines"] })).json());
+    expect(byRoutine.get("Sam Operator")?.silentDays).toBe("never");
+  });
+
+  it("honours the threshold, so a quiet day is not a quiet month", async () => {
+    const { lead, one } = await team();
+    await fileIssue(one, "Filed today");
+
+    // A very long threshold lists nobody who has ever been active recently, and the
+    // never-active still appear: no activity at all is past every threshold.
+    const strict = listed((await silence(lead.cookie, { silentForDays: 365 })).json());
+    expect(strict.has("Sam Operator")).toBe(false);
+    expect(strict.has("Anil Fitter")).toBe(true);
+  });
+
+  it("is closed to somebody who may not read it", async () => {
+    const { one } = await team();
+    expect((await silence(one.cookie)).statusCode).toBe(403);
+  });
+});
+
 describe("the workload breakdowns", () => {
   // Asked for from use: "also need a same report with severity wise for all users,
   // one with category wise for all users." The flat report says how much somebody

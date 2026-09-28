@@ -186,6 +186,10 @@ export const REPORT_SOURCES = [
   "dept_workload_severity",
   "dept_workload_category",
   "dept_irregularity",
+  // "Has done nothing at all since when", which is a different question from
+  // "did less than N in a window" — somebody who filed forty entries on the 1st and
+  // nothing since is invisible to the irregularity report and the point of this one.
+  "dept_silence",
   // Who the work was *about*. `end_user_issues` is a row per entry naming somebody,
   // `end_user_summary` a row per person — which is the question management actually
   // asks: whose equipment keeps failing, and who keeps needing help.
@@ -223,6 +227,7 @@ export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
   dept_workload_daily: "reports:view:dept_workload_daily",
   dept_workload_severity: "reports:view:dept_workload_severity",
   dept_workload_category: "reports:view:dept_workload_category",
+  dept_silence: "reports:view:dept_silence",
   dept_irregularity: "reports:view:dept_irregularity",
   end_user_issues: "reports:view:end_user_issues",
   end_user_summary: "reports:view:end_user_summary",
@@ -278,6 +283,7 @@ export const REPORT_SCOPE: Record<ReportSource, ReportScopeShape> = {
   dept_workload_daily: "people",
   dept_workload_severity: "people",
   dept_workload_category: "people",
+  dept_silence: "people",
   dept_irregularity: "people",
   // Every row is still made of somebody's entries, so the reporting line decides
   // what may be read. An end user is not a person in the hierarchy, but the entry
@@ -315,6 +321,7 @@ export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
   dept_workload_daily: "Department workload by day — each person, day by day",
   dept_workload_severity: "Workload by severity — each person, how bad the issues were",
   dept_workload_category: "Workload by category — each person, what kind of work",
+  dept_silence: "Gone quiet — who has logged nothing, and for how long",
   dept_irregularity: "Irregularity — who did little or nothing",
   end_user_issues: "End users — every issue, by person affected",
   end_user_summary: "End users — summary per person",
@@ -410,6 +417,21 @@ export const DEPT_WORKLOAD_COLUMNS = [
  * being judged against, all on the row. Asked for that way ("both, side by side"):
  * a threshold with no context is a number somebody has to take on trust.
  */
+/**
+ * Columns for the silence report: when each kind of thing last happened, and how
+ * long ago. The date and the gap both on the row, because "18 days" is what sorts
+ * and "12 Sep" is what a person recognises.
+ */
+export const DEPT_SILENCE_COLUMNS = [
+  "person",
+  "lastJournal",
+  "lastTask",
+  "lastRoutine",
+  "lastPart",
+  "quietest",
+  "silentDays",
+] as const;
+
 export const DEPT_IRREGULARITY_COLUMNS = [
   "person",
   "workingDays",
@@ -700,6 +722,12 @@ export const ALL_REPORT_COLUMN_LABELS: Record<string, string> = {
   partsFitted: "Fitted",
   partsRemoved: "Removed",
   partsServiced: "Serviced",
+  lastJournal: "Last entry",
+  lastTask: "Last task",
+  lastRoutine: "Last routine",
+  lastPart: "Last cartridge",
+  quietest: "Last of anything",
+  silentDays: "Days quiet",
   cameBack: "Came back faulty",
   removedBy: "Taken out by",
   reversed: "Points",
@@ -791,6 +819,10 @@ export const MAX_CUSTOM_RANGE_DAYS: Record<ReportSource, number> = {
   // categories rather than days, so a long window adds rows and not width.
   dept_workload_severity: 366,
   dept_workload_category: 366,
+  // The window is not what this report reads — it looks at the whole history to
+  // find each person's last activity — but the range picker still has to offer
+  // something, and a year matches its neighbours.
+  dept_silence: 366,
   dept_irregularity: 366,
   // A year of somebody's history is the point of asking — "this keeps happening to
   // them" is not a statement about one month. The detail report is a row per entry,
@@ -1012,6 +1044,23 @@ export const reportDefinitionSchema = z.object({
    * little differs by department, and the person reading knows their own.
    */
   irregularityThreshold: z.number().int().min(0).max(1000).optional(),
+  /**
+   * Silence only: list people who have logged nothing for at least this many days.
+   *
+   * Seven by default — a working week with nothing in it is the first thing worth a
+   * second look, and shorter than that catches everybody who was on leave.
+   */
+  silentForDays: z.number().int().min(1).max(365).optional(),
+  /**
+   * Silence only: which kinds of activity count as "logging something".
+   *
+   * Empty or absent means all of them, which answers "who has gone completely
+   * quiet". Naming one answers the narrower question the report was asked for —
+   * "no journal, no tasks, no refill or service or no routines... need for each of
+   * these" — because somebody doing routines and no journal entries is a different
+   * problem from somebody doing nothing.
+   */
+  silenceKinds: z.array(z.enum(["journal", "tasks", "routines", "parts"])).optional(),
 });
 export type ReportDefinition = z.infer<typeof reportDefinitionSchema>;
 

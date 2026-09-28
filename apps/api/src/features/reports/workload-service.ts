@@ -8,6 +8,8 @@
 // answers to "how many issues did Sam file in September".
 import {
   DEPT_IRREGULARITY_COLUMNS,
+  DEPT_SILENCE_COLUMNS,
+  formatDate,
   DEPT_WORKLOAD_COLUMNS,
   type AuthContext,
   type ReportDefinition,
@@ -33,6 +35,11 @@ import {
   type Bucket,
 } from "@/features/reports/workload-breakdown-repo.js";
 import { groupLabelFor, peopleInScope } from "@/features/reports/workload-people.js";
+import {
+  SILENCE_KINDS,
+  lastActivityFor,
+  type SilenceKind,
+} from "@/features/reports/silence-repo.js";
 
 const EMPTY_TOTALS: ReportTotals = { count: 0, durationMinutes: 0, downtimeMinutes: 0, points: 0 };
 
@@ -401,7 +408,117 @@ export const runDeptWorkloadCategory = (
   tz: number,
 ) => runBreakdown(ctx, definition, from, to, tz, "category");
 
-// --- 4. who did little or nothing --------------------------------------------
+// --- 4. who has gone quiet ----------------------------------------------------
+
+/** Seven days: a working week with nothing in it is the first thing worth a look. */
+export const DEFAULT_SILENT_DAYS = 7;
+
+/** Whole days between a moment and now, never negative. */
+function daysSince(at: Date, now: Date): number {
+  return Math.max(0, Math.floor((now.getTime() - at.getTime()) / 86_400_000));
+}
+
+/**
+ * Who has logged nothing, and for how long.
+ *
+ * Asked for from use: "a report that can show if any user is not logging anything
+ * since last N number of days based on filters applied. i.e. like no journal, no
+ * tasks, no refill or service or no routines. need for each of these."
+ *
+ * Not the irregularity report wearing a different hat. That asks "did less than N in
+ * a window" — a question about volume, answered per window. This asks "has done
+ * nothing at all since when", which the window cannot answer: somebody who filed
+ * forty entries on the 1st and nothing since scores well on volume and is exactly
+ * who this is for.
+ *
+ * `silenceKinds` is what makes it "for each of these": watching only routines finds
+ * the person who files entries and skips their rounds, who is invisible to a report
+ * that counts any activity at all.
+ */
+export async function runDeptSilence(
+  ctx: AuthContext,
+  definition: ReportDefinition,
+  _from: Date,
+  _to: Date,
+  _tzOffsetMinutes: number,
+  now = new Date(),
+): Promise<WorkloadSourceResult> {
+  const companyId = requireCompany(ctx);
+  const threshold = definition.silentForDays ?? DEFAULT_SILENT_DAYS;
+  const watched: readonly SilenceKind[] =
+    definition.silenceKinds && definition.silenceKinds.length > 0
+      ? definition.silenceKinds
+      : SILENCE_KINDS;
+
+  const people = await peopleInScope(ctx, companyId);
+  const last = await lastActivityFor(
+    people.map((p) => p.userId),
+    companyId,
+  );
+
+  const labels = new Map(people.map((p) => [p.userId, groupLabelFor(p, definition.grouping)]));
+  const rows = people.map((person) => ({ person })).sort((a, b) => byName(a.person, b.person));
+
+  const groups: ReportGroup[] = [];
+  let listed = 0;
+
+  for (const [label, members] of grouped(rows, labels)) {
+    const reportRows: ReportRow[] = [];
+
+    for (const m of members) {
+      const seen = last.get(m.person.userId) ?? {};
+      // The most recent thing they did **of a watched kind**. Never done one at all
+      // is the loudest answer of the lot, and it is not the same as a long gap.
+      const newest = watched
+        .map((kind) => seen[kind])
+        .filter((at): at is Date => at !== undefined)
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+
+      const quiet = newest ? daysSince(newest, now) : null;
+      if (quiet !== null && quiet < threshold) continue;
+
+      const cell = (at: Date | undefined) => (at ? formatDate(at.toISOString()) : "never");
+      listed += 1;
+      reportRows.push({
+        id: m.person.userId,
+        reportId: null,
+        cells: {
+          person: m.person.name,
+          lastJournal: cell(seen.journal),
+          lastTask: cell(seen.tasks),
+          lastRoutine: cell(seen.routines),
+          lastPart: cell(seen.parts),
+          quietest: newest ? formatDate(newest.toISOString()) : "never",
+          silentDays: quiet === null ? "never" : String(quiet),
+        },
+      });
+    }
+
+    // Longest silence first, and never-at-all above all of it: the top of this
+    // report is the point of reading it.
+    reportRows.sort((a, b) => {
+      const av = a.cells.silentDays === "never" ? Infinity : Number(a.cells.silentDays);
+      const bv = b.cells.silentDays === "never" ? Infinity : Number(b.cells.silentDays);
+      return bv - av;
+    });
+    if (reportRows.length === 0) continue;
+    groups.push({
+      key: label || null,
+      label: label || "Everyone",
+      rows: reportRows,
+      totals: { ...EMPTY_TOTALS, count: reportRows.length },
+    });
+  }
+
+  return {
+    groups,
+    totals: { ...EMPTY_TOTALS, count: listed },
+    columns: DEPT_SILENCE_COLUMNS,
+    assetName: null,
+  };
+}
+
+// --- 5. who did little or nothing --------------------------------------------
 
 /** Below this much activity, a person is listed. One by default, so the report opens
  *  on "did nothing at all" and is tightened by hand from there. */

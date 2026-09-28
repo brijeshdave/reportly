@@ -1,6 +1,6 @@
 # Workload reports
 
-Five reports that answer one question from five sides: **who in my department did
+Six reports that answer one question from six sides: **who in my department did
 how much, over a period.**
 
 - **Department workload** — one row per person, with a column per kind of work.
@@ -8,6 +8,7 @@ how much, over a period.**
 - **Workload by severity** — a grid: one row per person, one column per severity.
 - **Workload by category** — a grid: one row per person, one column per category.
 - **Irregularity** — the people who did little or nothing.
+- **Gone quiet** — the people who have logged nothing at all, and for how long.
 
 They share a filter set, a grouping and a sort, because they are three views of one
 query. A window you set on one means the same thing on the next.
@@ -190,3 +191,39 @@ month for the grid — past that the columns stop fitting on any page.
 
 Both export to Excel and to a printable page like every other report, and both can
 be saved as a view and shared.
+
+---
+
+## Gone quiet
+
+**Irregularity** asks "who did less than N in this period". **Gone quiet** asks a
+different question: "who has logged nothing at all, and since when".
+
+They catch different people. Somebody who filed forty entries on the 1st and nothing
+since looks busy to the irregularity report — their total for the month is fine — and
+is exactly who this one is for.
+
+| Person       | Last entry | Last task | Last routine | Last cartridge | Last of anything | Days quiet |
+| ------------ | ---------- | --------- | ------------ | -------------- | ---------------- | ---------- |
+| Anil Fitter  | never      | never     | never        | never          | never            | never      |
+| Sam Operator | 12 Sep     | 28 Aug    | never        | 12 Sep         | 12 Sep           | 16         |
+
+Longest silence first, and **never** above all of it — somebody who has never logged
+anything is not the same as somebody with a long gap, and the top of this report is
+the point of reading it.
+
+### Two settings
+
+**Days quiet** — how long a gap has to be before somebody is listed. Seven by
+default: a working week with nothing in it is the first thing worth a second look,
+and anything shorter catches everybody who was on leave.
+
+**What counts as logging something** — leave it on everything to ask "who has gone
+completely quiet", or pick one kind to ask a narrower question. That is what makes it
+usable per kind, as asked: somebody doing their routines and filing no journal entries
+is a different problem from somebody doing nothing, and a report counting any
+activity at all hides them.
+
+> This report reads the **whole history** to find each person's last activity, not
+> just the window you picked. A date range that ended last month would otherwise
+> report everybody as silent since then, which is true and useless.
