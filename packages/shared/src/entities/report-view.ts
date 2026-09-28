@@ -179,6 +179,12 @@ export const REPORT_SOURCES = [
   // or nothing — which is why they share a filter set and a sort.
   "dept_workload",
   "dept_workload_daily",
+  // The same people and the same window, cut by what the work *was*: a column per
+  // severity and a column per category. Asked for as "a same report severity wise
+  // for all users, one with category wise for all users" — the flat totals say how
+  // much somebody did and nothing about what kind of thing it was.
+  "dept_workload_severity",
+  "dept_workload_category",
   "dept_irregularity",
   // Who the work was *about*. `end_user_issues` is a row per entry naming somebody,
   // `end_user_summary` a row per person — which is the question management actually
@@ -215,6 +221,8 @@ export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
   part_workload: "reports:view:part_workload",
   dept_workload: "reports:view:dept_workload",
   dept_workload_daily: "reports:view:dept_workload_daily",
+  dept_workload_severity: "reports:view:dept_workload_severity",
+  dept_workload_category: "reports:view:dept_workload_category",
   dept_irregularity: "reports:view:dept_irregularity",
   end_user_issues: "reports:view:end_user_issues",
   end_user_summary: "reports:view:end_user_summary",
@@ -268,6 +276,8 @@ export const REPORT_SCOPE: Record<ReportSource, ReportScopeShape> = {
   // department sees their nested organisation and nobody else's.
   dept_workload: "people",
   dept_workload_daily: "people",
+  dept_workload_severity: "people",
+  dept_workload_category: "people",
   dept_irregularity: "people",
   // Every row is still made of somebody's entries, so the reporting line decides
   // what may be read. An end user is not a person in the hierarchy, but the entry
@@ -303,6 +313,8 @@ export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
   part_workload: "Cartridge workload — who serviced how many, and what came back",
   dept_workload: "Department workload — what each person did",
   dept_workload_daily: "Department workload by day — each person, day by day",
+  dept_workload_severity: "Workload by severity — each person, how bad the issues were",
+  dept_workload_category: "Workload by category — each person, what kind of work",
   dept_irregularity: "Irregularity — who did little or nothing",
   end_user_issues: "End users — every issue, by person affected",
   end_user_summary: "End users — summary per person",
@@ -382,7 +394,12 @@ export const DEPT_WORKLOAD_COLUMNS = [
   "issues",
   "plannedWork",
   "tasks",
-  "cartridges",
+  // Split from a single "cartridges" number. Fitting a part, taking one out and
+  // servicing one were added together, so "cartridge refilled" and "cartridge
+  // serviced" could not be told apart — which is what the report was being read for.
+  "partsFitted",
+  "partsRemoved",
+  "partsServiced",
   "routines",
   "points",
   "total",
@@ -680,6 +697,9 @@ export const ALL_REPORT_COLUMN_LABELS: Record<string, string> = {
   services: "Services",
   breakdown: "Of which",
   cartridges: "Cartridges",
+  partsFitted: "Fitted",
+  partsRemoved: "Removed",
+  partsServiced: "Serviced",
   cameBack: "Came back faulty",
   removedBy: "Taken out by",
   reversed: "Points",
@@ -767,6 +787,10 @@ export const MAX_CUSTOM_RANGE_DAYS: Record<ReportSource, number> = {
   // row per person per day, which is a data dump past a month.
   dept_workload: 366,
   dept_workload_daily: 31,
+  // A year, like the flat workload report: the columns are severities and
+  // categories rather than days, so a long window adds rows and not width.
+  dept_workload_severity: 366,
+  dept_workload_category: 366,
   dept_irregularity: 366,
   // A year of somebody's history is the point of asking — "this keeps happening to
   // them" is not a statement about one month. The detail report is a row per entry,

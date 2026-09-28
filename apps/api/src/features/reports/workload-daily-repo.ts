@@ -120,7 +120,7 @@ export async function dailyCountsFor(
       ),
     )
     .groupBy(partPlacements.installedBy, localDay(partPlacements.installedAt));
-  for (const row of installs) if (row.userId) at(row.userId, row.day).cartridges += row.n;
+  for (const row of installs) if (row.userId) at(row.userId, row.day).partsFitted += row.n;
 
   const returns = await db
     .select({
@@ -138,7 +138,7 @@ export async function dailyCountsFor(
       ),
     )
     .groupBy(partPlacements.removedBy, localDay(partPlacements.removedAt));
-  for (const row of returns) if (row.userId) at(row.userId, row.day).cartridges += row.n;
+  for (const row of returns) if (row.userId) at(row.userId, row.day).partsRemoved += row.n;
 
   const services = await db
     .select({
@@ -156,7 +156,7 @@ export async function dailyCountsFor(
       ),
     )
     .groupBy(serviceEvents.performedBy, localDay(serviceEvents.performedAt));
-  for (const row of services) if (row.userId) at(row.userId, row.day).cartridges += row.n;
+  for (const row of services) if (row.userId) at(row.userId, row.day).partsServiced += row.n;
 
   // `occurrence_date` and `earned_on` are already days, so they take no offset:
   // shifting a date that was never a moment would move it by a day for no reason.

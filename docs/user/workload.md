@@ -1,10 +1,12 @@
 # Workload reports
 
-Three reports that answer one question from three sides: **who in my department did
+Five reports that answer one question from five sides: **who in my department did
 how much, over a period.**
 
 - **Department workload** — one row per person, with a column per kind of work.
 - **Department workload by day** — a grid: one row per person, one column per day.
+- **Workload by severity** — a grid: one row per person, one column per severity.
+- **Workload by category** — a grid: one row per person, one column per category.
 - **Irregularity** — the people who did little or nothing.
 
 They share a filter set, a grouping and a sort, because they are three views of one
@@ -26,10 +28,16 @@ output — a job counted twice looks exactly like a busy month. So, precisely:
 | **Issues**       | A breakdown they **filed**, by its report date.                          |
 | **Planned work** | A planned-work entry they filed, same rule.                              |
 | **Tasks**        | A task **completed** in the window, counted for everybody who was on it. |
-| **Cartridges**   | A cartridge they installed, took out, or serviced.                       |
+| **Fitted**       | A cartridge they installed.                                              |
+| **Removed**      | A cartridge they took out.                                               |
+| **Serviced**     | A cartridge they serviced.                                               |
 | **Routines**     | A routine occurrence they completed, counted on the day it was **due**.  |
 | **Points**       | Points credited to them by a review.                                     |
 | **Total**        | The activity columns added together.                                     |
+
+Those three used to be one **Cartridges** column with all of them added together,
+which meant "how many did this person refill" and "how many did they service" had
+the same answer. They are counted apart now, and **Total** still adds all three.
 
 Three of those are worth spelling out.
 
@@ -45,6 +53,31 @@ quietly erase the first person's shift.
 points are different units; a total mixing them would be a number that means
 nothing. Only _direct_ points count here — a manager's share of what their team
 earned is theirs on the leaderboard, not activity of their own.
+
+---
+
+## By severity, and by category
+
+The flat report says how _much_ somebody did. These two say what it **was** — ten
+Critical breakdowns and ten Informational ones are the same number and a very
+different month.
+
+| Person       | Working days | Informational | Minor | Moderate | Major | Critical | Not set | Total |
+| ------------ | ------------ | ------------- | ----- | -------- | ----- | -------- | ------- | ----- |
+| Anil Fitter  | 4 / 4        | 0             | 2     | 1        | 0     | 0        | 0       | 3     |
+| Sam Operator | 2 / 4        | 1             | 0     | 0        | 1     | 2        | 0       | 4     |
+
+The columns come from your own configuration — whatever your severities and
+categories are called — and the severity columns are in the ladder's own order, so
+reading left to right is the work getting more serious.
+
+**Not set** is a column, not a gap. Entries filed without a severity or a category
+are usually the thing worth fixing, and folding them away would hide it.
+
+**Severity counts issues only.** A work log has no severity — the form does not ask
+for one — so including them would put every work log in _Not set_ and make it the
+largest number on the page. The **category** report counts both kinds, because "what
+kind of thing was this" is a fair question about any job.
 
 ---
 

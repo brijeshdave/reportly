@@ -25,6 +25,13 @@ import {
   workingDaysFor,
   type WorkloadCounts,
 } from "@/features/reports/workload-repo.js";
+import {
+  categoryBuckets,
+  entriesByCategory,
+  issuesBySeverity,
+  severityBuckets,
+  type Bucket,
+} from "@/features/reports/workload-breakdown-repo.js";
 import { groupLabelFor, peopleInScope } from "@/features/reports/workload-people.js";
 
 const EMPTY_TOTALS: ReportTotals = { count: 0, durationMinutes: 0, downtimeMinutes: 0, points: 0 };
@@ -41,7 +48,13 @@ export interface WorkloadSourceResult {
 /** The activity columns, summed. Points are deliberately not among them: counts and
  *  points are different units, and a total mixing them would mean nothing. */
 const activityTotal = (c: WorkloadCounts): number =>
-  c.issues + c.plannedWork + c.tasks + c.cartridges + c.routines;
+  c.issues +
+  c.plannedWork +
+  c.tasks +
+  c.partsFitted +
+  c.partsRemoved +
+  c.partsServiced +
+  c.routines;
 
 /**
  * The local day an instant falls on.
@@ -151,7 +164,9 @@ export async function runDeptWorkload(
           issues: String(m.counts.issues),
           plannedWork: String(m.counts.plannedWork),
           tasks: String(m.counts.tasks),
-          cartridges: String(m.counts.cartridges),
+          partsFitted: String(m.counts.partsFitted),
+          partsRemoved: String(m.counts.partsRemoved),
+          partsServiced: String(m.counts.partsServiced),
           routines: String(m.counts.routines),
           points: String(m.counts.points),
           total: String(total),
@@ -269,7 +284,124 @@ export async function runDeptWorkloadDaily(
   };
 }
 
-// --- 3. who did little or nothing --------------------------------------------
+// --- 3. one row per person, one column per severity or category ---------------
+
+/**
+ * Column headers that tell two same-named categories apart.
+ *
+ * Two departments may each have an "Electrical" category, and two columns with the
+ * same heading is a table nobody can read. Only the ambiguous ones are qualified —
+ * putting the department on every column would make the common case wordier to
+ * solve a problem it does not have.
+ */
+function bucketLabels(buckets: Bucket[]): string[] {
+  const seen = new Map<string, number>();
+  for (const b of buckets) seen.set(b.name, (seen.get(b.name) ?? 0) + 1);
+  return buckets.map((b) =>
+    (seen.get(b.name) ?? 0) > 1 && b.departmentName ? `${b.name} (${b.departmentName})` : b.name,
+  );
+}
+
+/**
+ * A person per row, a severity or a category per column.
+ *
+ * The flat workload report says how much somebody did; this says what it was. Ten
+ * Critical breakdowns and ten Informational ones are the same number and a different
+ * month, and the same is true of ten electrical jobs against ten paperwork ones.
+ *
+ * `none` is a real column, not a gap: entries filed without a severity or a category
+ * are exactly what an administrator is looking for when they read this, and folding
+ * them into nothing would hide the thing worth fixing.
+ */
+async function runBreakdown(
+  ctx: AuthContext,
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+  tzOffsetMinutes: number,
+  kind: "severity" | "category",
+): Promise<WorkloadSourceResult> {
+  const companyId = requireCompany(ctx);
+  const fromDay = dayOf(from, tzOffsetMinutes);
+  const toDay = lastDayOf(to, tzOffsetMinutes);
+
+  const people = await peopleInScope(ctx, companyId);
+  const ids = people.map((p) => p.userId);
+  const [buckets, tallies, workingDays] = await Promise.all([
+    kind === "severity" ? severityBuckets() : categoryBuckets(companyId),
+    kind === "severity"
+      ? issuesBySeverity(ids, companyId, from, to)
+      : entriesByCategory(ids, companyId, from, to),
+    workingDaysFor(ids, fromDay, toDay),
+  ]);
+
+  const counts = new Map<string, number>();
+  for (const row of tallies) counts.set(`${row.userId} ${row.bucketId ?? "none"}`, row.n);
+
+  const keys = [...buckets.map((b) => b.id), "none"];
+  const columns = ["person", "workingDays", ...keys, "total"];
+  const columnLabels = ["Person", "Working days", ...bucketLabels(buckets), "Not set", "Total"];
+
+  const labels = new Map(people.map((p) => [p.userId, groupLabelFor(p, definition.grouping)]));
+  const rows = people.map((person) => ({ person })).sort((a, b) => byName(a.person, b.person));
+
+  const groups: ReportGroup[] = [];
+  let rowCount = 0;
+
+  for (const [label, members] of grouped(rows, labels)) {
+    const high = Math.max(0, ...members.map((m) => workingDays.get(m.person.userId) ?? 0));
+    const reportRows: ReportRow[] = members.map((m) => {
+      const cells: Record<string, string> = {
+        person: m.person.name,
+        workingDays: workingDaysCell(workingDays.get(m.person.userId) ?? 0, high),
+      };
+      let total = 0;
+      for (const key of keys) {
+        const n = counts.get(`${m.person.userId} ${key}`) ?? 0;
+        total += n;
+        // A zero is written out rather than dashed. Unlike the daily grid there is no
+        // "they were not here" to distinguish it from: nobody filed a Critical this
+        // month is a fact about the work, and a dash would read as missing data.
+        cells[key] = String(n);
+      }
+      cells.total = String(total);
+      rowCount += 1;
+      return { id: m.person.userId, reportId: null, cells };
+    });
+    groups.push({
+      key: label || null,
+      label: label || "Everyone",
+      rows: reportRows,
+      totals: { ...EMPTY_TOTALS, count: reportRows.length },
+    });
+  }
+
+  return {
+    groups,
+    totals: { ...EMPTY_TOTALS, count: rowCount },
+    columns,
+    columnLabels,
+    assetName: null,
+  };
+}
+
+export const runDeptWorkloadSeverity = (
+  ctx: AuthContext,
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+  tz: number,
+) => runBreakdown(ctx, definition, from, to, tz, "severity");
+
+export const runDeptWorkloadCategory = (
+  ctx: AuthContext,
+  definition: ReportDefinition,
+  from: Date,
+  to: Date,
+  tz: number,
+) => runBreakdown(ctx, definition, from, to, tz, "category");
+
+// --- 4. who did little or nothing --------------------------------------------
 
 /** Below this much activity, a person is listed. One by default, so the report opens
  *  on "did nothing at all" and is tightened by hand from there. */

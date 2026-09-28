@@ -28,7 +28,16 @@ export interface WorkloadCounts {
   issues: number;
   plannedWork: number;
   tasks: number;
-  cartridges: number;
+  /**
+   * Parts work, told apart.
+   *
+   * These were one `cartridges` number — fits, removals and services added together
+   * — so the report could not answer "how many did this person refill" separately
+   * from "how many did they service", which is what it was being read for.
+   */
+  partsFitted: number;
+  partsRemoved: number;
+  partsServiced: number;
   routines: number;
   points: number;
 }
@@ -40,7 +49,9 @@ export const emptyCounts = (userId: string, day?: string): WorkloadCounts => ({
   issues: 0,
   plannedWork: 0,
   tasks: 0,
-  cartridges: 0,
+  partsFitted: 0,
+  partsRemoved: 0,
+  partsServiced: 0,
   routines: 0,
   points: 0,
 });
@@ -167,7 +178,7 @@ export async function countsFor(
       ),
     )
     .groupBy(partPlacements.installedBy);
-  for (const row of installs) if (row.userId) at(row.userId).cartridges += row.n;
+  for (const row of installs) if (row.userId) at(row.userId).partsFitted += row.n;
 
   const returns = await db
     .select({ userId: partPlacements.removedBy, n: sql<number>`count(*)::int` })
@@ -181,7 +192,7 @@ export async function countsFor(
       ),
     )
     .groupBy(partPlacements.removedBy);
-  for (const row of returns) if (row.userId) at(row.userId).cartridges += row.n;
+  for (const row of returns) if (row.userId) at(row.userId).partsRemoved += row.n;
 
   const services = await db
     .select({ userId: serviceEvents.performedBy, n: sql<number>`count(*)::int` })
@@ -195,7 +206,7 @@ export async function countsFor(
       ),
     )
     .groupBy(serviceEvents.performedBy);
-  for (const row of services) if (row.userId) at(row.userId).cartridges += row.n;
+  for (const row of services) if (row.userId) at(row.userId).partsServiced += row.n;
 
   // Counted on the day the occurrence was *for*, not the moment somebody ticked it
   // off: a routine logged late still belongs to the day it was due, which is the

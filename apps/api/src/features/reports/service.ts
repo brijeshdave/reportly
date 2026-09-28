@@ -69,7 +69,9 @@ import * as partsRepo from "@/features/reports/parts-repo.js";
 import {
   runDeptIrregularity,
   runDeptWorkload,
+  runDeptWorkloadCategory,
   runDeptWorkloadDaily,
+  runDeptWorkloadSeverity,
 } from "@/features/reports/workload-service.js";
 import { db } from "@/core/db/index.js";
 import { companies, journalEntries } from "@/core/db/schema.js";
@@ -189,15 +191,43 @@ export async function runReport(
                         ? await runDeptWorkload(ctx, definition, from, to, tzOffsetMinutes)
                         : definition.source === "dept_workload_daily"
                           ? await runDeptWorkloadDaily(ctx, definition, from, to, tzOffsetMinutes)
-                          : definition.source === "dept_irregularity"
-                            ? await runDeptIrregularity(ctx, definition, from, to, tzOffsetMinutes)
-                            : definition.source === "end_user_issues"
-                              ? await runEndUserIssues(ctx, definition, from, to)
-                              : definition.source === "end_user_summary"
-                                ? await runEndUserSummary(ctx, definition, from, to)
-                                : isPartSource(definition.source)
-                                  ? await runCartridges(ctx, definition, from, to)
-                                  : await runJournal(ctx, definition, from, to, tzOffsetMinutes);
+                          : definition.source === "dept_workload_severity"
+                            ? await runDeptWorkloadSeverity(
+                                ctx,
+                                definition,
+                                from,
+                                to,
+                                tzOffsetMinutes,
+                              )
+                            : definition.source === "dept_workload_category"
+                              ? await runDeptWorkloadCategory(
+                                  ctx,
+                                  definition,
+                                  from,
+                                  to,
+                                  tzOffsetMinutes,
+                                )
+                              : definition.source === "dept_irregularity"
+                                ? await runDeptIrregularity(
+                                    ctx,
+                                    definition,
+                                    from,
+                                    to,
+                                    tzOffsetMinutes,
+                                  )
+                                : definition.source === "end_user_issues"
+                                  ? await runEndUserIssues(ctx, definition, from, to)
+                                  : definition.source === "end_user_summary"
+                                    ? await runEndUserSummary(ctx, definition, from, to)
+                                    : isPartSource(definition.source)
+                                      ? await runCartridges(ctx, definition, from, to)
+                                      : await runJournal(
+                                          ctx,
+                                          definition,
+                                          from,
+                                          to,
+                                          tzOffsetMinutes,
+                                        );
 
   const companyName = ctx.companyId ? await companyNameOf(ctx.companyId) : null;
 

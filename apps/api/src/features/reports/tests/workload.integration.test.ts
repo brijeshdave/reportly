@@ -176,6 +176,93 @@ async function fileIssue(who: { cookie: string }, title: string) {
   return filed.json().id as string;
 }
 
+describe("the workload breakdowns", () => {
+  // Asked for from use: "also need a same report with severity wise for all users,
+  // one with category wise for all users." The flat report says how much somebody
+  // did; ten Critical breakdowns and ten Informational ones are the same number and
+  // a different month.
+
+  /** File an issue at a named severity. */
+  async function fileAt(who: { cookie: string }, title: string, severityId: string) {
+    const filed = await inject("POST", "/journal", who.cookie, {
+      kind: "issue",
+      locationId: siteId,
+      severityId,
+      title,
+      state: "submitted",
+      issueSummary: "It broke",
+      issueDetail: "Found it sheared on the drive side.",
+      occurredAt: new Date().toISOString(),
+    });
+    expect(filed.statusCode, filed.body).toBe(201);
+  }
+
+  it("gives each severity its own column, and counts a person's issues into them", async () => {
+    const { lead, one } = await team();
+    const severities = (await inject("GET", "/severities", lead.cookie)).json() as {
+      id: string;
+      name: string;
+    }[];
+    const low = severities[0]!;
+    const high = severities[severities.length - 1]!;
+
+    await fileAt(one, "Minor thing", low.id);
+    await fileAt(one, "Another minor thing", low.id);
+    await fileAt(one, "Serious thing", high.id);
+
+    const res = await run(lead.cookie, "dept_workload_severity");
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json();
+
+    // A column per rung, in the ladder's own order — left to right is the work
+    // getting more serious, which is the whole reason to read it this way.
+    expect(body.meta.columnLabels[0]).toBe("Person");
+    expect(body.meta.columnLabels).toContain(low.name);
+    expect(body.meta.columnLabels).toContain(high.name);
+    // And a column for the entries that named none: that is what an administrator
+    // reading this is looking for, so it is not folded away.
+    expect(body.meta.columnLabels).toContain("Not set");
+
+    const sam = rowsByPerson(body).get("Sam Operator");
+    expect(sam?.[low.id]).toBe("2");
+    expect(sam?.[high.id]).toBe("1");
+    expect(sam?.total).toBe("3");
+  });
+
+  it("counts work logs in the category breakdown, which have no severity to count", async () => {
+    // The difference between the two: a category fits a work log as well as an
+    // issue — "what kind of thing was this" is a question about the job. A severity
+    // does not, and counting work logs there would put every one of them in the
+    // "not set" column and make it the largest thing on the page.
+    const { lead, one } = await team();
+    const logged = await inject("POST", "/journal", one.cookie, {
+      kind: "work",
+      locationId: siteId,
+      title: "Daily round",
+      state: "submitted",
+      workSummary: "Walked the line",
+      workDetail: "Everything as expected.",
+      startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+      endedAt: new Date().toISOString(),
+    });
+    expect(logged.statusCode, logged.body).toBe(201);
+
+    const bySeverity = rowsByPerson((await run(lead.cookie, "dept_workload_severity")).json());
+    expect(bySeverity.get("Sam Operator")?.total).toBe("0");
+
+    const byCategory = rowsByPerson((await run(lead.cookie, "dept_workload_category")).json());
+    expect(byCategory.get("Sam Operator")?.total).toBe("1");
+  });
+
+  it("is closed to somebody who may not read it", async () => {
+    // A new report surface is a new permission, and a permission nothing enforces is
+    // a report that shows itself to everybody.
+    const { one } = await team();
+    expect((await run(one.cookie, "dept_workload_severity")).statusCode).toBe(403);
+    expect((await run(one.cookie, "dept_workload_category")).statusCode).toBe(403);
+  });
+});
+
 describe("the department workload report", () => {
   it("counts each kind of work in its own column, with a total", async () => {
     const { lead, one } = await team();

@@ -225,6 +225,13 @@
       "when": 1786791600022,
       "tag": "0031_notification_lanes",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786791600023,
+      "tag": "0032_workload_breakdown_permissions",
+      "breakpoints": true
     }
   ]
 }
