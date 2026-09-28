@@ -42,11 +42,17 @@ export function NotificationBell() {
   const queryClient = useQueryClient();
 
   const { data: count } = useQuery(unreadCountQuery);
-  const unread = count?.unread ?? 0;
+  // The badge counts what is **waiting on this person**, not everything unread.
+  // Reported from use: "currently it is being cluttered with many and I am not able
+  // to find on which I should be focusing." A number that counts all twenty-six
+  // types is a number nobody acts on.
+  const needsYou = count?.needsYou ?? 0;
+  const activity = count?.activity ?? 0;
 
   const { data, isPending, isError } = useQuery({
     queryKey: [...queryKeys.notifications, "panel"],
-    queryFn: () => fetchNotifications({ limit: PANEL_SIZE }),
+    // The panel shows the lane the badge counts. Everything else is on the page.
+    queryFn: () => fetchNotifications({ limit: PANEL_SIZE, lane: "action" }),
     // Only once the panel is open. A closed dropdown fetching a list is work
     // nobody asked for, on every page load, for every user.
     enabled: open,
@@ -66,17 +72,17 @@ export function NotificationBell() {
         onClick={() => setOpen((value) => !value)}
         // Named with the count, not just "Notifications": a screen reader user
         // gets the badge's information, which is the only reason the badge exists.
-        aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+        aria-label={needsYou > 0 ? `Notifications, ${needsYou} waiting for you` : "Notifications"}
         aria-haspopup="menu"
         aria-expanded={open}
         className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-border hover:bg-muted"
       >
         <Bell className="h-4 w-4" aria-hidden />
-        {unread > 0 ? (
+        {needsYou > 0 ? (
           // Capped at 9+. The badge is a "there is something waiting" signal, and
           // past a point the exact number changes nothing a reader would do.
           <span className="brand-gradient absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-primary-foreground">
-            {unread > 9 ? "9+" : unread}
+            {needsYou > 9 ? "9+" : needsYou}
           </span>
         ) : null}
       </button>
@@ -91,8 +97,17 @@ export function NotificationBell() {
             className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-border bg-card shadow-lg sm:w-96"
           >
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <p className="text-sm font-medium">Notifications</p>
-              {unread > 0 ? (
+              <p className="text-sm font-medium">
+                Waiting for you
+                {activity > 0 ? (
+                  // Said, not shown as a second badge: the other lane is a record,
+                  // and a second number on the bell would undo the point of the first.
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {activity} more in Activity
+                  </span>
+                ) : null}
+              </p>
+              {needsYou > 0 ? (
                 <button
                   type="button"
                   onClick={() => markRead.mutate(undefined)}
@@ -118,7 +133,7 @@ export function NotificationBell() {
                 // In words, not an empty box. An empty list looks like a screen
                 // that failed to load.
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  Nothing new. You are up to date.
+                  Nothing is waiting on you.
                 </p>
               ) : (
                 <ul>

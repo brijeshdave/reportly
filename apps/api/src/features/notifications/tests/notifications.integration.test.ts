@@ -178,6 +178,103 @@ describe("who a notification reaches", () => {
     expect(await unreadOf(author.cookie)).toBe(0);
   });
 
+  it("stops at the direct manager, and reaches further only when told to", async () => {
+    // Reported from use: "as HOD I am being shown this type of applications from even
+    // the team that is not in my direct reporting line." The depth was a constant of
+    // three, so a filing at the bottom of a deep organisation landed on a director.
+    const admin = await superadmin();
+    const memberGroup = await makeGroup(admin, "Reporters", "Member");
+    const managerGroup = await makeGroup(admin, "Line managers", "Manager");
+    const hod = await makeUser(admin, "Dee Head", "dee", managerGroup);
+    const supervisor = await makeUser(admin, "Ravi Lead", "ravi2", managerGroup);
+    const author = await makeUser(admin, "Sam Operator", "sam2", memberGroup);
+
+    const dept = (await inject("POST", "/departments", admin, { name: "Assembly" })).json();
+    await inject("PUT", `/departments/${dept.id}/members`, admin, {
+      members: [
+        { userId: hod.id, rank: "lead" },
+        { userId: supervisor.id, rank: "lead", reportsToId: hod.id },
+        { userId: author.id, rank: "member", reportsToId: supervisor.id },
+      ],
+    });
+
+    const fire = () =>
+      dispatch({
+        type: "journal.awaiting-review",
+        companyId: DEMO_COMPANY_ID,
+        actorUserId: author.id,
+        subjectUserId: author.id,
+        departmentId: dept.id,
+        title: "An entry is ready for your review",
+      });
+
+    await fire();
+    // One hop by default: the supervisor the author actually reports to.
+    expect(await unreadOf(supervisor.cookie)).toBe(1);
+    expect(await unreadOf(hod.cookie)).toBe(0);
+
+    // An installation that wants the skip-level can say so. That is the difference
+    // this change is about: it is a decision now, not a constant.
+    await inject("PUT", "/settings/notifications/delivery", admin, {
+      value: { uplineDepth: 2 },
+    });
+    await fire();
+    expect(await unreadOf(hod.cookie)).toBe(1);
+  });
+
+  it("does not climb a second chain a shared manager happens to sit in", async () => {
+    // The other half of the same complaint. A person may hold more than one
+    // membership, each with its own `reports_to`. The walk followed all of them at
+    // every hop, so a supervisor who sits in two departments carried their team's
+    // events up **both** — and the head of the unrelated one was told about work by
+    // somebody they have never managed.
+    const admin = await superadmin();
+    const memberGroup = await makeGroup(admin, "Reporters", "Member");
+    const managerGroup = await makeGroup(admin, "Line managers", "Manager");
+    const ownHod = await makeUser(admin, "Ann Head", "ann", managerGroup);
+    const otherHod = await makeUser(admin, "Bob Head", "bob", managerGroup);
+    const supervisor = await makeUser(admin, "Ravi Lead", "ravi3", managerGroup);
+    const author = await makeUser(admin, "Sam Operator", "sam3", memberGroup);
+
+    const assembly = (await inject("POST", "/departments", admin, { name: "Assembly" })).json();
+    const facilities = (await inject("POST", "/departments", admin, { name: "Facilities" })).json();
+
+    // The supervisor works in both. In Assembly they run the author; in Facilities
+    // they answer to a head of department with no connection to the author at all.
+    await inject("PUT", `/departments/${assembly.id}/members`, admin, {
+      members: [
+        { userId: ownHod.id, rank: "lead" },
+        { userId: supervisor.id, rank: "lead", reportsToId: ownHod.id },
+        { userId: author.id, rank: "member", reportsToId: supervisor.id },
+      ],
+    });
+    await inject("PUT", `/departments/${facilities.id}/members`, admin, {
+      members: [
+        { userId: otherHod.id, rank: "lead" },
+        { userId: supervisor.id, rank: "member", reportsToId: otherHod.id },
+      ],
+    });
+
+    await inject("PUT", "/settings/notifications/delivery", admin, {
+      value: { uplineDepth: 3 },
+    });
+
+    await dispatch({
+      type: "journal.awaiting-review",
+      companyId: DEMO_COMPANY_ID,
+      actorUserId: author.id,
+      subjectUserId: author.id,
+      departmentId: assembly.id,
+      title: "An entry is ready for your review",
+    });
+
+    // The author's own line hears about it, three hops deep.
+    expect(await unreadOf(supervisor.cookie)).toBe(1);
+    expect(await unreadOf(ownHod.cookie)).toBe(1);
+    // The other department's head does not. They have never managed this person.
+    expect(await unreadOf(otherHod.cookie)).toBe(0);
+  });
+
   it("reaches a whole department", async () => {
     const admin = await superadmin();
     const { manager, author, mate, dept } = await buildTeam(admin);
@@ -215,6 +312,83 @@ describe("who a notification reaches", () => {
     // Under the event's company they cannot even reach the endpoint, so asserting
     // zero there would pass for the wrong reason.
     expect(await unreadOf(outsider.cookie, other.id)).toBe(0);
+  });
+});
+
+describe("the bell counts what is waiting on you", () => {
+  // Reported from use: "for in app notifications it should differ from other as
+  // currently it is being cluttered with many and I am not able to find on which I
+  // should be focusing." Everything still arrives — the bell is meant to be a
+  // complete record — but the number on it now means something a person can act on.
+  it("separates a job from a record, and counts only the jobs", async () => {
+    const admin = await superadmin();
+    const { author, manager } = await buildTeam(admin);
+
+    // Something waiting on the author: work handed to them.
+    await dispatch({
+      type: "journal.assigned",
+      companyId: DEMO_COMPANY_ID,
+      actorUserId: manager.id,
+      subjectUserId: author.id,
+      title: "An entry was assigned to you",
+    });
+    // And two records: things that happened around them.
+    await dispatch({
+      type: "journal.status-changed",
+      companyId: DEMO_COMPANY_ID,
+      actorUserId: manager.id,
+      subjectUserId: author.id,
+      title: "Your entry is now In progress",
+    });
+    await dispatch({
+      type: "journal.commented",
+      companyId: DEMO_COMPANY_ID,
+      actorUserId: manager.id,
+      subjectUserId: author.id,
+      title: "Someone commented on your entry",
+    });
+
+    const counts = (await inject("GET", "/me/notifications/unread-count", author.cookie)).json();
+    expect(counts.needsYou).toBe(1);
+    expect(counts.activity).toBe(2);
+    // The total is still available for anything that wants it — it is the badge that
+    // changed, not the record.
+    expect(counts.unread).toBe(3);
+
+    // And each lane can be read on its own, which is what the page's tabs do.
+    const waiting = (await inject("GET", "/me/notifications?lane=action", author.cookie)).json();
+    expect(waiting.items).toHaveLength(1);
+    expect(waiting.items[0].lane).toBe("action");
+    const activity = (await inject("GET", "/me/notifications?lane=activity", author.cookie)).json();
+    expect(activity.items).toHaveLength(2);
+  });
+
+  it("lets an installation move a noisy type into Activity, but never the reverse", async () => {
+    const admin = await superadmin();
+    const { author, manager } = await buildTeam(admin);
+
+    await inject("PUT", "/settings/notifications/lanes", admin, {
+      value: { "journal.assigned": "activity" },
+    });
+
+    await dispatch({
+      type: "journal.assigned",
+      companyId: DEMO_COMPANY_ID,
+      actorUserId: manager.id,
+      subjectUserId: author.id,
+      title: "An entry was assigned to you",
+    });
+
+    const counts = (await inject("GET", "/me/notifications/unread-count", author.cookie)).json();
+    expect(counts.needsYou).toBe(0);
+    expect(counts.activity).toBe(1);
+
+    // Promotion is not on the table: the catalogue says what a type is at most, and a
+    // local decision can only make it quieter.
+    const promoted = await inject("PUT", "/settings/notifications/lanes", admin, {
+      value: { "journal.commented": "action" },
+    });
+    expect(promoted.statusCode).toBe(400);
   });
 });
 

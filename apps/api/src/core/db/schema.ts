@@ -1768,6 +1768,13 @@ export const notifications = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     type: text("type").notNull(),
     category: text("category").notNull(),
+    /**
+     * `action` (something is waiting on you) or `activity` (a record that something
+     * happened). Stored on the row rather than looked up from the catalogue at read
+     * time: the catalogue can be re-edited, and a notification has to keep the
+     * meaning it was sent with — the same reason a message is redacted at write time.
+     */
+    lane: text("lane").notNull().default("activity"),
     title: text("title").notNull(),
     body: text("body").notNull().default(""),
     link: text("link"),

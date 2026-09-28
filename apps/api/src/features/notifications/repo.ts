@@ -36,6 +36,8 @@ export interface NewNotification {
   userId: string;
   type: string;
   category: string;
+  /** `action` or `activity` — stored, not looked up, so the row keeps its meaning. */
+  lane: string;
   title: string;
   body: string;
   link: string | null;
@@ -48,6 +50,7 @@ export interface NotificationRow {
   id: string;
   type: string;
   category: string;
+  lane: string;
   title: string;
   body: string;
   link: string | null;
@@ -70,13 +73,14 @@ export async function insertNotifications(rows: NewNotification[]): Promise<numb
 export async function listInbox(
   userId: string,
   companyId: string | null,
-  options: { unreadOnly?: boolean; limit: number; offset: number },
+  options: { unreadOnly?: boolean; lane?: string; limit: number; offset: number },
 ): Promise<NotificationRow[]> {
   const where = and(
     eq(notifications.userId, userId),
     inCompany(companyId),
     isNull(notifications.archivedAt),
     options.unreadOnly ? isNull(notifications.readAt) : undefined,
+    options.lane ? eq(notifications.lane, options.lane) : undefined,
   );
 
   return (
@@ -85,6 +89,7 @@ export async function listInbox(
         id: notifications.id,
         type: notifications.type,
         category: notifications.category,
+        lane: notifications.lane,
         title: notifications.title,
         body: notifications.body,
         link: notifications.link,
@@ -110,6 +115,7 @@ export async function countInbox(
   userId: string,
   companyId: string | null,
   unreadOnly: boolean,
+  lane?: string,
 ): Promise<number> {
   const [row] = await db
     .select({ n: count() })
@@ -120,15 +126,30 @@ export async function countInbox(
         inCompany(companyId),
         isNull(notifications.archivedAt),
         unreadOnly ? isNull(notifications.readAt) : undefined,
+        lane ? eq(notifications.lane, lane) : undefined,
       ),
     );
   return Number(row?.n ?? 0);
 }
 
-/** How many unread the bell shows. Hit by every client on a timer, so it counts
- *  nothing it does not have to: the index is (user, company, read_at). */
-export async function unreadCount(userId: string, companyId: string | null): Promise<number> {
-  return countInbox(userId, companyId, true);
+/**
+ * What the bell shows, and what sits behind it.
+ *
+ * `needsYou` is the number on the badge: unread things waiting on this person. It
+ * used to be every unread notification, which is why the badge stopped meaning
+ * anything — twenty-six types land in one list and a number counting all of them is
+ * a number nobody acts on. `activity` is still counted, so the other lane can show
+ * its own quiet total without a second round trip.
+ */
+export async function unreadCounts(
+  userId: string,
+  companyId: string | null,
+): Promise<{ needsYou: number; activity: number }> {
+  const [needsYou, activity] = await Promise.all([
+    countInbox(userId, companyId, true, "action"),
+    countInbox(userId, companyId, true, "activity"),
+  ]);
+  return { needsYou, activity };
 }
 
 /** Mark specific ids read, or the whole company inbox when `ids` is omitted. */

@@ -546,7 +546,7 @@ and filters you are looking at.
 
 ## Notifications
 
-Two settings, and the relationship between them is the thing to understand.
+Three settings, and the relationship between them is the thing to understand.
 
 ### The matrix (`notifications.matrix`)
 
@@ -565,6 +565,26 @@ enabled; the form says what is missing.
 Individual users choose what they receive under **Your account → Notifications**,
 within the ceiling above. See [Notifications](user/notifications.md) for the event
 catalogue and what each one means.
+
+Two values here decide **who** hears about somebody's work, not just how:
+
+**Upline depth** — how many levels up the reporting line an event about a person's
+work travels. **1 by default**: your own direct reports and nobody else's. It used to
+be a fixed three, which meant a filing at the bottom of a deep organisation landed on
+a director who had no part in it.
+
+**Stay within one department** — on by default. A person may hold more than one
+department membership, each with its own manager. With this off the walk follows every
+one of them, so somebody who works in two departments carries their team's events up
+_both_ chains, and a head of department is told about work by people they have never
+managed.
+
+### Lanes (`notifications.lanes`)
+
+The first column of the same grid: whether a type counts on the bell (**Needs you**)
+or is filed as a record (**Activity**). Untick to move a type down; the reverse is not
+offered, because the catalogue decides what a notification is at most and a local
+setting can only make it quieter — the same ceiling principle as the matrix.
 
 ---
 

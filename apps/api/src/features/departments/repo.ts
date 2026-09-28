@@ -558,18 +558,46 @@ export interface UplineRow {
   depth: number;
 }
 
-export async function uplineOf(userId: string, maxDepth = 3): Promise<UplineRow[]> {
+export interface UplineOptions {
+  /**
+   * Stay inside one department's chain.
+   *
+   * A person may hold several memberships, each with its own `reports_to`. Without
+   * this the walk followed all of them at every hop, so a supervisor who sits in two
+   * departments carried their team's events up **both** — and a head of department
+   * was told about work by people they have never managed. Reported exactly that way.
+   */
+  sameBranchOnly?: boolean;
+  /**
+   * The department the event belongs to, when it has one. The walk then starts from
+   * the subject's membership *there* rather than from all of them, which is the
+   * difference between "my team filed something" and "somebody I share a department
+   * with filed something".
+   */
+  departmentId?: string | null;
+}
+
+export async function uplineOf(
+  userId: string,
+  maxDepth = 3,
+  options: UplineOptions = {},
+): Promise<UplineRow[]> {
+  const sameBranch = options.sameBranchOnly ?? false;
+  const departmentId = options.departmentId ?? null;
   const result = await db.execute<{ user_id: string; depth: number }>(sql`
     WITH RECURSIVE upline AS (
-      SELECT du.reports_to_id AS user_id, 1 AS depth
+      SELECT du.reports_to_id AS user_id, du.department_id, 1 AS depth
       FROM department_users du
       WHERE du.user_id = ${userId} AND du.reports_to_id IS NOT NULL
+        AND (${departmentId}::uuid IS NULL OR du.department_id = ${departmentId}::uuid)
 
       UNION ALL
 
-      SELECT du.reports_to_id AS user_id, up.depth + 1
+      SELECT du.reports_to_id AS user_id, du.department_id, up.depth + 1
       FROM upline up
-      JOIN department_users du ON du.user_id = up.user_id
+      JOIN department_users du
+        ON du.user_id = up.user_id
+       AND (${sameBranch} = false OR du.department_id = up.department_id)
       WHERE du.reports_to_id IS NOT NULL AND up.depth < ${maxDepth}
     ) CYCLE user_id SET is_cycle USING path
     SELECT DISTINCT ON (up.user_id) up.user_id, up.depth

@@ -5,7 +5,13 @@
 // each call site: "who gets told when an entry is rejected" has to have one
 // answer, or the two routes that can reject one will disagree, and the difference
 // will be invisible until somebody complains they were not told.
-import { type NotificationTypeDef, findNotificationType } from "@reportly/shared";
+import {
+  NOTIFICATION_DELIVERY,
+  type NotificationTypeDef,
+  findNotificationType,
+} from "@reportly/shared";
+
+import { getSystemSetting } from "@/core/settings/service.js";
 
 import { uplineOf } from "@/features/departments/repo.js";
 import {
@@ -31,12 +37,15 @@ export interface NotificationEvent {
 /**
  * How far up the reporting line "your team filed something" travels.
  *
- * Three is a judgement, not a discovery: far enough that a supervisor's absence
- * does not swallow the message, short enough that a filing at the bottom of a
- * deep organisation does not land on a director's phone. It is one constant so
- * that changing the policy is one edit.
+ * This used to be a constant of three, with a comment admitting the number was a
+ * judgement. It is a setting now, defaulting to **one** — your own direct reports —
+ * because the judgement turned out to be wrong in use: "as HOD I am being shown this
+ * type of applications from even the team that is not in my direct reporting line."
  */
-const UPLINE_DEPTH = 3;
+async function uplineRules(): Promise<{ depth: number; sameBranchOnly: boolean }> {
+  const { uplineDepth, uplineSameBranchOnly } = await getSystemSetting(NOTIFICATION_DELIVERY);
+  return { depth: uplineDepth, sameBranchOnly: uplineSameBranchOnly };
+}
 
 /**
  * The user ids an event reaches, in the event's company.
@@ -83,7 +92,14 @@ async function candidatesFor(
 
     case "upline": {
       if (!event.subjectUserId) return [];
-      const chain = await uplineOf(event.subjectUserId, UPLINE_DEPTH);
+      const { depth, sameBranchOnly } = await uplineRules();
+      const chain = await uplineOf(event.subjectUserId, depth, {
+        sameBranchOnly,
+        // The department the event belongs to, where the emitter knows it. Starting
+        // from the subject's membership *there* is the difference between "my team
+        // filed something" and "somebody I share a department with filed something".
+        departmentId: event.departmentId ?? null,
+      });
       return chain.map((row) => row.userId);
     }
 

@@ -9,17 +9,32 @@ by email or one of the messaging channels your organisation has set up.
 
 ---
 
-## The bell
+## The bell counts what is waiting on you
 
-The number on the bell is how many notifications you have not read yet. It
-refreshes on its own about once a minute, so you do not have to reload the page.
+The number on the bell is how many things are **waiting on you to do something** —
+work handed to you, an entry ready for your review, a swap wanting an answer. It is
+not everything unread. It refreshes on its own about once a minute, so you do not
+have to reload the page.
 
-Click it to see the eight most recent. Clicking one takes you to the thing it is
-about and marks it read — you do not have to do both.
+That split is the point. Everything still arrives, because the bell is meant to be a
+complete record of what concerns you — but a number counting twenty-odd kinds of
+event at once is a number nobody acts on, and the thing needing an answer ends up
+sitting between two things that do not.
 
-**See all notifications** opens the full list, where you can filter to unread,
-mark things read one at a time or all at once, and remove ones you have finished
-with.
+Click the bell to see what is waiting, eight at a time. Clicking one takes you to the
+thing it is about and marks it read — you do not have to do both. When there is other
+news, the panel says how much and where to find it.
+
+**See all notifications** opens the full list, with three tabs:
+
+| Tab            | What is in it                                                                  |
+| -------------- | ------------------------------------------------------------------------------ |
+| **Needs you**  | Things waiting on you. This is what the bell counts, and it opens here.        |
+| **Activity**   | A record of what happened around you — a status moved, a comment, points paid. |
+| **Everything** | Both, newest first.                                                            |
+
+You can mark things read one at a time or all at once, and remove ones you have
+finished with.
 
 Read notifications are tidied away automatically after a while (your
 administrator sets how long). Anything you have **not** read is never removed.
@@ -146,3 +161,34 @@ are not lost immediately — but the queue does not drain until it comes back.
 Notifications** first. If a whole kind of notification is noisy for everybody,
 untick its channels in the matrix rather than asking people to mute it one by
 one.
+
+---
+
+## For administrators
+
+### Which events are worth interrupting somebody
+
+**Settings → Notifications** is the grid that decides what fires and how loudly. Each
+kind of notification is a row; the channels are the columns; and the first column is
+**Needs you**.
+
+Untick **Needs you** to move a kind into **Activity**. It still arrives and is still a
+record — it simply stops counting on the bell and stops competing for attention with
+the work. Kinds that are only ever a record cannot be moved the other way: the
+catalogue decides what a notification is at most, and a local decision can only make
+it quieter.
+
+Untick every channel on a row to stop that kind being sent at all. That is the answer
+to "stop telling me every time somebody files an entry".
+
+### How far up the line an event travels
+
+When somebody's work needs reviewing, the people told are their managers. **How far
+up** is yours to set, under the same Notifications settings:
+
+- **Upline depth** — 1 by default, meaning your own direct reports and nobody else's.
+  Raise it if you want to see two or three levels down.
+- **Stay within one department** — on by default. A person may belong to more than one
+  department, each with its own manager. With this off, their work climbs _every_ chain
+  they belong to, so a head of department can be told about people they have never
+  managed.

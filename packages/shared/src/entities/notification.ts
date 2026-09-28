@@ -83,9 +83,34 @@ export const NOTIFICATION_CATEGORIES = [
 ] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
+/**
+ * Whether a notification is a job or a record.
+ *
+ * `action` — something is waiting on you. Assigned to you, awaiting your review, a
+ * swap wanting a decision, a backup that failed.
+ * `activity` — a record that something happened. A status moved, a comment landed,
+ * points were awarded, a rota was published.
+ *
+ * Reported from use: "for in app notifications it should differ from other as
+ * currently it is being cluttered with many and I am not able to find on which I
+ * should be focusing." In-app defaults on for every type, deliberately, so the bell
+ * is a complete record — which is right for a record and wrong for a signal. Twenty-six
+ * types in one list means the thing needing an answer sits between two things that do
+ * not. The lane splits the two without switching anything off.
+ */
+export const NOTIFICATION_LANES = ["action", "activity"] as const;
+export type NotificationLane = (typeof NOTIFICATION_LANES)[number];
+export const notificationLaneSchema = z.enum(NOTIFICATION_LANES);
+
 export interface NotificationTypeDef {
   type: string;
   category: NotificationCategory;
+  /**
+   * Which lane the bell counts it in. Absent means `activity`: a new type is a
+   * record until somebody decides it is a job, which is the safer way round — the
+   * cost of a missed lane is clutter, and of a wrong one a missed instruction.
+   */
+  lane?: NotificationLane;
   /** What the reader sees as the row label on the preference screen. */
   label: string;
   /** What causes it, in a sentence. Shown under the label. */
@@ -136,6 +161,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   // --- journal ---
   {
     type: "journal.assigned",
+    lane: "action",
     category: "journal",
     label: "An entry was assigned to you",
     description: "Somebody put a journal entry in your hands.",
@@ -168,6 +194,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   },
   {
     type: "journal.rejected",
+    lane: "action",
     category: "journal",
     label: "Your entry was rejected",
     description: "A head of department rejected an entry, voiding its points.",
@@ -184,6 +211,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   },
   {
     type: "journal.awaiting-review",
+    lane: "action",
     category: "journal",
     label: "An entry is waiting for your review",
     description: "Somebody in your reporting line filed work that needs appraising.",
@@ -194,6 +222,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   // --- tasks ---
   {
     type: "task.assigned",
+    lane: "action",
     category: "tasks",
     label: "A task was assigned to you",
     description: "You were named on a task.",
@@ -202,6 +231,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   },
   {
     type: "task.handover",
+    lane: "action",
     category: "tasks",
     label: "A task changed hands",
     description:
@@ -220,6 +250,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   },
   {
     type: "task.due-soon",
+    lane: "action",
     category: "tasks",
     label: "A task of yours is due soon",
     description: "A task you hold reaches its due date within a day.",
@@ -230,6 +261,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   // --- routines ---
   {
     type: "routine.due-soon",
+    lane: "action",
     category: "routines",
     label: "A routine of yours is due soon",
     description: "Recurring work assigned to you comes due tomorrow.",
@@ -238,6 +270,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   },
   {
     type: "routine.overdue",
+    lane: "action",
     category: "routines",
     label: "A routine of yours is overdue",
     description: "Recurring work assigned to you passed its date without a log.",
@@ -248,6 +281,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   // --- shifts ---
   {
     type: "shift.swap.requested",
+    lane: "action",
     category: "shifts",
     label: "A colleague asked to swap with you",
     description: "Somebody proposed exchanging a shift with one of yours.",
@@ -304,6 +338,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     // the combination that means "holders of this permission, in this company" —
     // the module belongs to a tenant, unlike a failing backup.
     type: "part.over-cycle-limit",
+    lane: "action",
     category: "cartridges",
     label: "A part passed its rated cycles",
     description: "A part has now had more services than its model is rated for.",
@@ -315,6 +350,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   // --- system ---
   {
     type: "backup.failed",
+    lane: "action",
     category: "system",
     label: "A backup failed",
     description: "A database or file backup did not complete.",
@@ -328,6 +364,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   },
   {
     type: "queue.jobs-failing",
+    lane: "action",
     category: "system",
     label: "Background jobs are failing",
     description: "A queue has accumulated failed jobs since the last check.",
@@ -349,6 +386,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
 
   {
     type: "security.account-locked",
+    lane: "action",
     category: "system",
     label: "Somebody is locked out of sign-in",
     description:
@@ -379,6 +417,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
 
   {
     type: "security.two-factor-required",
+    lane: "action",
     category: "system",
     label: "Two-factor is now required of you",
     description:
@@ -391,6 +430,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
   // --- downtime ---
   {
     type: "downtime.opened",
+    lane: "action",
     category: "downtime",
     label: "Downtime was opened",
     description: "An asset in your department went down.",
@@ -429,6 +469,7 @@ export const notificationSchema = z
     id: uuidSchema,
     type: z.string(),
     category: z.string(),
+    lane: notificationLaneSchema,
     title: z.string(),
     body: z.string(),
     link: z.string().nullable(),
@@ -441,7 +482,19 @@ export const notificationSchema = z
 export type Notification = z.infer<typeof notificationSchema>;
 
 /** What the bell polls for: the badge number, on its own so it stays cheap. */
-export const unreadCountSchema = z.object({ unread: z.number().int().min(0) });
+/**
+ * What the bell shows.
+ *
+ * `unread` is kept for anything still reading it, but the badge uses `needsYou` —
+ * the unread things actually waiting on this person. Counting all twenty-six types
+ * is what made the number meaningless: "for in app notifications... I am not able to
+ * find on which I should be focusing."
+ */
+export const unreadCountSchema = z.object({
+  unread: z.number().int().min(0),
+  needsYou: z.number().int().min(0),
+  activity: z.number().int().min(0),
+});
 export type UnreadCount = z.infer<typeof unreadCountSchema>;
 
 export const markNotificationsReadSchema = z.object({
@@ -536,4 +589,28 @@ export function allowedChannelsFor(
   const def = findNotificationType(type);
   if (!def) return [];
   return matrix[type] ?? def.defaultChannels;
+}
+
+/**
+ * Administrators' demotions: types the installation has decided are a record
+ * rather than a job.
+ *
+ * **Demote only.** An administrator may move an `action` type down into `activity`,
+ * and cannot promote an `activity` type up. That is the same ceiling principle the
+ * channel matrix already follows — the catalogue says what a type is at most, and a
+ * local decision can only make it quieter. Promotion would let one installation's
+ * configuration put things in a lane the product never meant for them, which is how
+ * the lane stops meaning anything.
+ */
+export const notificationLaneOverridesSchema = z
+  .record(z.string(), z.literal("activity"))
+  .default({});
+export type NotificationLaneOverrides = z.infer<typeof notificationLaneOverridesSchema>;
+
+/** The lane a type actually sends in, once the installation has had its say. */
+export function laneFor(type: string, overrides: NotificationLaneOverrides): NotificationLane {
+  const def = findNotificationType(type);
+  if (!def) return "activity";
+  const declared = def.lane ?? "activity";
+  return overrides[type] === "activity" ? "activity" : declared;
 }

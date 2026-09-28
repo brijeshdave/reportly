@@ -5,7 +5,11 @@
 // `schema.parse({})` yields the setting's default value.
 import { z } from "zod";
 
-import { ALL_NOTIFICATION_TYPES, notificationMatrixSchema } from "@/entities/notification.js";
+import {
+  ALL_NOTIFICATION_TYPES,
+  notificationLaneOverridesSchema,
+  notificationMatrixSchema,
+} from "@/entities/notification.js";
 import { shiftColorSchema } from "@/entities/shift.js";
 import {
   DEFAULT_PAGE_SIZE,
@@ -159,6 +163,30 @@ export const notificationDeliverySchema = z.object({
     .min(0)
     .max(365 * 5)
     .default(90),
+  /**
+   * How far up the reporting line an event about somebody's work travels.
+   *
+   * Reported from use: "as HOD I am being shown this type of applications from even
+   * the team that is not in my direct reporting line." It was a constant of three,
+   * with a comment admitting it was a judgement — so a filing at the bottom of a deep
+   * organisation landed on a director, and there was no way to say otherwise.
+   *
+   * **One by default**: your own direct reports, and nobody else's. A head of
+   * department who wants to see two or three levels down can say so; the reverse —
+   * discovering you are being told about strangers and having no switch — is the
+   * complaint this answers.
+   */
+  uplineDepth: z.number().int().min(1).max(6).default(1),
+  /**
+   * Whether an event may climb past the department it happened in.
+   *
+   * A person can hold more than one department membership, each with its own
+   * `reports_to`. The walk followed every one of them, so a supervisor who sits in
+   * two departments carried their team's notifications up **both** chains — and a
+   * head of department was told about work by people they have never managed. On,
+   * the walk stays inside the branch the subject's own membership belongs to.
+   */
+  uplineSameBranchOnly: z.boolean().default(true),
 });
 
 export type NotificationDeliverySettings = z.infer<typeof notificationDeliverySchema>;
@@ -1021,6 +1049,21 @@ export const NOTIFICATION_MATRIX: SettingDef<typeof notificationMatrixSchema> = 
   description: "Per notification type, the channels users are permitted to receive it on",
 };
 
+/**
+ * Types this installation has decided are a record rather than a job.
+ *
+ * Demote only — the catalogue says what a type is at most, and a local decision can
+ * only make it quieter. Same ceiling principle as the channel matrix above, and the
+ * same renderer draws both.
+ */
+export const NOTIFICATION_LANE_OVERRIDES: SettingDef<typeof notificationLaneOverridesSchema> = {
+  namespace: "notifications",
+  key: "lanes",
+  schema: notificationLaneOverridesSchema,
+  userOverridable: false,
+  description: "Notification types moved out of the bell's count and into Activity",
+};
+
 export const PARTS_MODULE: SettingDef<typeof partsModuleSchema> = {
   namespace: "parts",
   key: "module",
@@ -1107,6 +1150,7 @@ export const ALL_SETTING_DEFS: readonly SettingDef[] = [
   CHANNEL_PROVIDERS,
   CHANNEL_VERIFICATION,
   NOTIFICATION_DELIVERY,
+  NOTIFICATION_LANE_OVERRIDES,
   NOTIFICATION_MATRIX,
   PARTS_MODULE,
   APPRAISAL_SETTINGS,

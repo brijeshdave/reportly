@@ -24,20 +24,34 @@ import {
 
 const PAGE_SIZE = 30;
 
+/**
+ * Two lanes and the full record.
+ *
+ * Reported from use: "for in app notifications it should differ from other as
+ * currently it is being cluttered with many and I am not able to find on which I
+ * should be focusing." Everything still arrives — the bell is meant to be a complete
+ * record — but what is waiting on you is no longer sitting between two things that
+ * are not. **Needs you** opens first, because that is the question people come here
+ * with.
+ */
 const TABS = [
-  { id: "unread", label: "Unread" },
-  { id: "all", label: "All" },
+  { id: "needs-you", label: "Needs you" },
+  { id: "activity", label: "Activity" },
+  { id: "all", label: "Everything" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
 export function NotificationsPage() {
-  const [tab, setTab] = useState<TabId>("unread");
+  const [tab, setTab] = useState<TabId>("needs-you");
   const queryClient = useQueryClient();
 
-  const unreadOnly = tab === "unread";
+  const lane = tab === "needs-you" ? "action" : tab === "activity" ? "activity" : undefined;
   const { data, isPending, isError } = useQuery({
     queryKey: [...queryKeys.notifications, "page", tab],
-    queryFn: () => fetchNotifications({ unreadOnly, limit: PAGE_SIZE }),
+    // Read and unread together: a lane you have already read is still the record of
+    // what happened, and hiding it behind a second filter is what the old Unread /
+    // All pair did — two ways of saying "recent" and no way of saying "mine to do".
+    queryFn: () => fetchNotifications({ lane, limit: PAGE_SIZE }),
   });
 
   const refresh = () => {
@@ -53,7 +67,7 @@ export function NotificationsPage() {
     <div>
       <PageHeader
         title="Notifications"
-        description="What has happened that concerns you."
+        description="What is waiting on you, and what has happened around it."
         actions={
           <>
             <Button variant="ghost" onClick={() => markRead.mutate(undefined)}>
@@ -89,7 +103,11 @@ export function NotificationsPage() {
           </div>
         ) : data.items.length === 0 ? (
           <p className="p-10 text-center text-sm text-muted-foreground">
-            {unreadOnly ? "Nothing unread. You are up to date." : "Nothing here yet."}
+            {tab === "needs-you"
+              ? "Nothing is waiting on you."
+              : tab === "activity"
+                ? "No activity to show."
+                : "Nothing here yet."}
           </p>
         ) : (
           <ul>

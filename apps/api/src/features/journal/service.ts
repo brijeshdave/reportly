@@ -948,6 +948,10 @@ export async function changeStatus(
       companyId: row.companyId,
       actorUserId: ctx.userId,
       subjectUserId: row.authorId,
+      // The department the work belongs to, so the walk up the line starts from the
+      // author's membership *there*. Without it, "my team filed something" and
+      // "somebody I share a department with filed something" are the same event.
+      departmentId: row.departmentId,
       title: `An entry is ready for your review: ${row.title}`,
       body: `Marked ${next.name}.`,
       link: `/journal/${id}`,

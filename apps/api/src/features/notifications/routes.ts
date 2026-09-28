@@ -14,6 +14,7 @@ import {
   markNotificationsReadSchema,
   notificationPreferencesSchema,
   notificationSchema,
+  notificationLaneSchema,
   unreadCountSchema,
   updateNotificationPreferencesSchema,
 } from "@reportly/shared";
@@ -37,6 +38,8 @@ export async function notificationRoutes(fastify: FastifyInstance): Promise<void
         summary: "The caller's notifications for the active company, newest first",
         querystring: z.object({
           unreadOnly: z.coerce.boolean().optional(),
+          /** One lane, or both when omitted — the page's two tabs. */
+          lane: notificationLaneSchema.optional(),
           limit: z.coerce.number().int().min(1).max(100).default(20),
           offset: z.coerce.number().int().min(0).default(0),
         }),

@@ -8,7 +8,9 @@
 import {
   CHANNEL_PROVIDERS,
   NOTIFICATION_DELIVERY,
+  NOTIFICATION_LANE_OVERRIDES,
   NOTIFICATION_MATRIX,
+  laneFor,
   type NotificationChannel,
   asContactChannel,
   findNotificationType,
@@ -75,10 +77,11 @@ export async function dispatch(request: NotificationRequest): Promise<number> {
     return 0;
   }
 
-  const [delivery, matrix, providers] = await Promise.all([
+  const [delivery, matrix, providers, laneOverrides] = await Promise.all([
     getSystemSetting(NOTIFICATION_DELIVERY),
     getSystemSetting(NOTIFICATION_MATRIX),
     getSystemSetting(CHANNEL_PROVIDERS),
+    getSystemSetting(NOTIFICATION_LANE_OVERRIDES),
   ]);
 
   const recipients = await resolveAudience(request);
@@ -115,6 +118,10 @@ export async function dispatch(request: NotificationRequest): Promise<number> {
           userId: contact.userId,
           type: request.type,
           category: def.category,
+          // Written onto the row, not looked up when it is read: the catalogue can be
+          // re-edited, and a notification has to keep the meaning it was sent with.
+          // The catalogue's lane, unless this installation has demoted the type.
+          lane: laneFor(request.type, laneOverrides),
           title: request.title,
           body: request.body ?? "",
           link: request.link ?? null,

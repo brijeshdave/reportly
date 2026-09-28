@@ -27,6 +27,9 @@ function serialize(row: repo.NotificationRow): Notification {
     id: row.id,
     type: row.type,
     category: row.category,
+    // Whatever the catalogue said when it was sent. A row written before lanes
+    // existed reads as `activity`, which is the honest answer for it.
+    lane: row.lane === "action" ? "action" : "activity",
     title: row.title,
     body: row.body,
     link: row.link,
@@ -42,11 +45,11 @@ function serialize(row: repo.NotificationRow): Notification {
 export async function inbox(
   userId: string,
   companyId: string | null,
-  options: { unreadOnly?: boolean; limit: number; offset: number },
+  options: { unreadOnly?: boolean; lane?: string; limit: number; offset: number },
 ): Promise<{ items: Notification[]; total: number }> {
   const [rows, total] = await Promise.all([
     repo.listInbox(userId, companyId, options),
-    repo.countInbox(userId, companyId, options.unreadOnly ?? false),
+    repo.countInbox(userId, companyId, options.unreadOnly ?? false, options.lane),
   ]);
   return { items: rows.map(serialize), total };
 }
@@ -54,8 +57,11 @@ export async function inbox(
 export async function unread(
   userId: string,
   companyId: string | null,
-): Promise<{ unread: number }> {
-  return { unread: await repo.unreadCount(userId, companyId) };
+): Promise<{ unread: number; needsYou: number; activity: number }> {
+  const counts = await repo.unreadCounts(userId, companyId);
+  // `unread` stays the total, for anything still reading it; the badge takes
+  // `needsYou`, which is the half a person can act on.
+  return { ...counts, unread: counts.needsYou + counts.activity };
 }
 
 export async function markRead(

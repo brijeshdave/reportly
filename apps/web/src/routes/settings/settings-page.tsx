@@ -6,9 +6,11 @@ import {
   ALL_SETTING_DEFS,
   DEBUG_MODE,
   NOTIFICATION_DELIVERY,
+  NOTIFICATION_LANE_OVERRIDES,
   NOTIFICATION_MATRIX,
   defaultFor,
   type NotificationDeliverySettings,
+  type NotificationLaneOverrides,
   type NotificationMatrix,
   PERMISSIONS,
   humanizeKey,
@@ -74,7 +76,13 @@ const TABS = [...new Set(ALL_SETTING_DEFS.map((def) => def.namespace))].map((id)
  * unusable. Both get their own card below.
  */
 const GENERATED_DEFS = ALL_SETTING_DEFS.filter(
-  (def) => def.namespace !== "debug" && def.key !== NOTIFICATION_MATRIX.key,
+  (def) =>
+    def.namespace !== "debug" &&
+    def.key !== NOTIFICATION_MATRIX.key &&
+    // The lane overrides are a column *of* that grid, not a setting of their own.
+    // Left in, the generated renderer drew them as an empty card with a Save button
+    // that saved nothing — which is what it does with any record-shaped value.
+    def.key !== NOTIFICATION_LANE_OVERRIDES.key,
 );
 
 export function SettingsPage({ tab }: { tab: string }) {
@@ -154,8 +162,16 @@ export function SettingsPage({ tab }: { tab: string }) {
                     `${NOTIFICATION_DELIVERY.namespace}.${NOTIFICATION_DELIVERY.key}`,
                   ) as NotificationDeliverySettings) ?? defaultFor(NOTIFICATION_DELIVERY)
                 }
+                lanes={
+                  (byKey.get(
+                    `${NOTIFICATION_LANE_OVERRIDES.namespace}.${NOTIFICATION_LANE_OVERRIDES.key}`,
+                  ) as NotificationLaneOverrides) ?? {}
+                }
                 disabled={!canManage}
                 onSave={(value) => save.mutateAsync({ def: NOTIFICATION_MATRIX, value })}
+                onSaveLanes={(value) =>
+                  save.mutateAsync({ def: NOTIFICATION_LANE_OVERRIDES, value })
+                }
               />
             ) : null}
           </>

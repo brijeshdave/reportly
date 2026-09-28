@@ -14,6 +14,7 @@ import {
   NOTIFICATION_TYPES,
   type NotificationChannel,
   type NotificationDeliverySettings,
+  type NotificationLaneOverrides,
   type NotificationMatrix,
   allowedChannelsFor,
 } from "@reportly/shared";
@@ -50,14 +51,18 @@ const ALL_CHANNELS: NotificationChannel[] = [
 
 export function NotificationMatrixCard({
   matrix,
+  lanes,
   delivery,
   disabled,
   onSave,
+  onSaveLanes,
 }: {
   matrix: NotificationMatrix;
+  lanes: NotificationLaneOverrides;
   delivery: NotificationDeliverySettings;
   disabled: boolean;
   onSave: (next: NotificationMatrix) => Promise<unknown>;
+  onSaveLanes: (next: NotificationLaneOverrides) => Promise<unknown>;
 }) {
   // Seeded from the effective value — the stored row where there is one, the
   // catalogue's defaults where there is not — so the grid shows what is actually
@@ -67,6 +72,10 @@ export function NotificationMatrixCard({
       NOTIFICATION_TYPES.map((def) => [def.type, [...allowedChannelsFor(def.type, matrix)]]),
     ),
   );
+  // Which types this installation has moved out of the bell's count. Demote only:
+  // the catalogue says what a type is at most, and a local decision can only make it
+  // quieter — the same ceiling the channel grid already works to.
+  const [laneDraft, setLaneDraft] = useState<NotificationLaneOverrides>(() => ({ ...lanes }));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -108,6 +117,13 @@ export function NotificationMatrixCard({
         one is not offered to anybody. Channels switched off above do not appear here.
       </Alert>
 
+      <Alert tone="info">
+        <strong className="font-medium">Needs you</strong> is what the bell counts — things waiting
+        on a person to do something. Untick it to move a type into <strong>Activity</strong>, where
+        it still arrives and still reads as a record, but stops competing for attention with the
+        work. Types that are only ever a record cannot be moved the other way.
+      </Alert>
+
       {[...byCategory.entries()].map(([category, defs]) => (
         <Card key={category} className="overflow-x-auto p-0">
           <table className="w-full text-sm">
@@ -118,6 +134,12 @@ export function NotificationMatrixCard({
               <tr className="border-b border-border text-xs uppercase text-muted-foreground">
                 <th scope="col" className="w-full px-4 py-2 text-left font-medium">
                   Notification
+                </th>
+                <th
+                  scope="col"
+                  className="w-28 whitespace-nowrap px-3 py-2 text-center font-medium"
+                >
+                  Needs you
                 </th>
                 {enabledChannels.map((channel) => (
                   <th
@@ -137,6 +159,31 @@ export function NotificationMatrixCard({
                     <span className="block font-medium">{def.label}</span>
                     <span className="block text-xs text-muted-foreground">{def.description}</span>
                   </th>
+                  <td className="px-3 py-3 text-center">
+                    {def.lane === "action" ? (
+                      <input
+                        type="checkbox"
+                        checked={laneDraft[def.type] !== "activity"}
+                        disabled={disabled}
+                        aria-label={`${def.label} — needs you`}
+                        onChange={() =>
+                          setLaneDraft((prev) => {
+                            const next = { ...prev };
+                            if (next[def.type] === "activity") delete next[def.type];
+                            else next[def.type] = "activity";
+                            return next;
+                          })
+                        }
+                        className="h-4 w-4 accent-primary disabled:opacity-30"
+                      />
+                    ) : (
+                      // Nothing to toggle: this type is a record by nature, and a
+                      // greyed box that cannot be ticked says that better than a gap.
+                      <span className="text-xs text-muted-foreground" title="Always Activity">
+                        —
+                      </span>
+                    )}
+                  </td>
                   {enabledChannels.map((channel) => (
                     <td key={channel} className="px-3 py-3 text-center">
                       <input
@@ -163,6 +210,7 @@ export function NotificationMatrixCard({
             setSaving(true);
             try {
               await onSave(draft);
+              await onSaveLanes(laneDraft);
               setSaved(true);
             } finally {
               setSaving(false);

@@ -5,6 +5,7 @@
 import type {
   Notification,
   NotificationChannel,
+  NotificationLane,
   NotificationPreferences,
   UnreadCount,
 } from "@reportly/shared";
@@ -18,11 +19,14 @@ export interface InboxPage {
 
 export function fetchNotifications(options: {
   unreadOnly?: boolean;
+  /** One lane, or both when omitted. */
+  lane?: NotificationLane;
   limit?: number;
   offset?: number;
 }): Promise<InboxPage> {
   const params = new URLSearchParams();
   if (options.unreadOnly) params.set("unreadOnly", "true");
+  if (options.lane) params.set("lane", options.lane);
   params.set("limit", String(options.limit ?? 20));
   params.set("offset", String(options.offset ?? 0));
   return http.get<InboxPage>(`/me/notifications?${params.toString()}`);
