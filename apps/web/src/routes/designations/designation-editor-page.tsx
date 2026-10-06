@@ -3,15 +3,21 @@
 // app. Editing is where the head-count earns its keep: it is what tells you a rename
 // is about to change what half a department is called, and whether a delete is even
 // possible.
-import { PERMISSIONS, type DesignationRow } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  createDesignationSchema,
+  type CreateDesignation,
+  type DesignationRow,
+} from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { useToast } from "@/components/toaster.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import {
@@ -53,8 +59,6 @@ function Editor({
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const [name, setName] = useState(designation?.name ?? "");
-  const [active, setActive] = useState((designation?.status ?? "active") === "active");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const held = designation?.userCount ?? 0;
@@ -81,26 +85,25 @@ function Editor({
     }
   };
 
-  const save = useMutation({
-    mutationFn: () => {
-      const input = {
-        name: name.trim(),
-        status: active ? ("active" as const) : ("inactive" as const),
-      };
-      return mode === "edit" ? updateDesignation(designation!.id, input) : createDesignation(input);
+  // The route's own schema, so what the form refuses and what the API refuses are
+  // the same rule, and anything it does refuse lands under the field it is about.
+  const form = useForm<{ name: string; active: boolean }, CreateDesignation>({
+    schema: createDesignationSchema,
+    initial: {
+      name: designation?.name ?? "",
+      active: (designation?.status ?? "active") === "active",
     },
-    onSuccess: done,
+    toPayload: (v) => ({ name: v.name.trim(), status: v.active ? "active" : "inactive" }),
+    submit: (input) =>
+      mode === "edit" ? updateDesignation(designation!.id, input) : createDesignation(input),
+    onSuccess: (saved) => done(saved as { id: string; name: string }),
   });
+  const { name, active } = form.values;
 
   const remove = useMutation({
     mutationFn: () => deleteDesignation(designation!.id),
     onSuccess: removed,
   });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
 
   const renamed = mode === "edit" && name.trim() !== designation!.name;
   const retiring = mode === "edit" && designation!.status === "active" && !active;
@@ -135,8 +138,10 @@ function Editor({
       />
 
       <Card className="mt-2 max-w-lg p-6">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {save.error ? <ErrorAlert error={save.error} /> : null}
+        <form ref={form.formRef} onSubmit={form.handleSubmit} className="flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict.
+              Everything the server could attribute is under its own input. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
           {remove.error ? <ErrorAlert error={remove.error} /> : null}
 
           {mode === "edit" ? (
@@ -150,15 +155,13 @@ function Editor({
             </div>
           ) : null}
 
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
               <Input
                 {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
+                {...form.register("name")}
                 autoFocus
-                disabled={save.isPending}
+                disabled={form.submitting}
                 placeholder="e.g. Senior Engineer"
               />
             )}
@@ -176,8 +179,8 @@ function Editor({
             <input
               type="checkbox"
               checked={active}
-              onChange={(event) => setActive(event.target.checked)}
-              disabled={save.isPending}
+              onChange={(event) => form.set("active", event.target.checked)}
+              disabled={form.submitting}
             />
             Offered to new users
           </label>
@@ -196,12 +199,12 @@ function Editor({
               size="sm"
               type="button"
               onClick={() => void navigate({ to: "/designations" })}
-              disabled={save.isPending}
+              disabled={form.submitting}
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={save.isPending || name.trim() === ""}>
-              {save.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
               {mode === "edit" ? "Save changes" : "Create designation"}
             </Button>
           </div>

@@ -37,7 +37,11 @@ export const endUserSchema = z
      * name are told apart, and how an import knows whether it is adding somebody or
      * correcting them.
      */
-    employeeNumber: z.string().trim().min(1).max(64),
+    employeeNumber: z
+      .string()
+      .trim()
+      .min(1, "An employee number is what tells two people of the same name apart.")
+      .max(64, "Keep this under 64 characters."),
     /** Anything worth knowing — a location, a shift, a machine they always use. */
     description: z.string().nullable(),
     /**
@@ -58,7 +62,11 @@ export type EndUser = z.infer<typeof endUserSchema>;
 
 export const createEndUserSchema = z.object({
   fullName: nameSchema,
-  employeeNumber: z.string().trim().min(1).max(64),
+  employeeNumber: z
+    .string()
+    .trim()
+    .min(1, "An employee number is what tells two people of the same name apart.")
+    .max(64, "Keep this under 64 characters."),
   departmentId: uuidSchema.optional(),
   description: z.string().trim().max(2000).optional(),
   /** Active unless somebody says otherwise — a person being added is a person here. */

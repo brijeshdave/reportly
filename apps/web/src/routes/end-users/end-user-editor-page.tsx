@@ -6,10 +6,15 @@
 // same name apart and the only thing an import can match on. And deleting is made
 // deliberately hard once they are named on an entry: `inactive` is the answer, which
 // takes them out of the journal's picker and leaves every entry about them intact.
-import { PERMISSIONS, type EndUser } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  createEndUserSchema,
+  type CreateEndUser,
+  type EndUser,
+} from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
@@ -17,11 +22,21 @@ import { SearchableSelect } from "@/components/searchable-select.js";
 import { useToast } from "@/components/toaster.js";
 import { Alert, Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { fetchDepartments } from "@/services/departments.js";
 import { createEndUser, deleteEndUser, fetchEndUser, updateEndUser } from "@/services/end-users.js";
+
+/** What the form holds. Text as typed; the payload builder does the converting. */
+interface EndUserForm {
+  fullName: string;
+  employeeNumber: string;
+  departmentId: string;
+  description: string;
+  active: boolean;
+}
 
 export type EndUserEditorMode = "create" | "edit";
 
@@ -50,11 +65,6 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
   const toast = useToast();
   const { data: session } = useSuspenseQuery(sessionQuery);
 
-  const [fullName, setFullName] = useState(person?.fullName ?? "");
-  const [employeeNumber, setEmployeeNumber] = useState(person?.employeeNumber ?? "");
-  const [departmentId, setDepartmentId] = useState(person?.departmentId ?? "");
-  const [description, setDescription] = useState(person?.description ?? "");
-  const [active, setActive] = useState((person?.status ?? "active") === "active");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // This company's departments only: the record is created against the active
@@ -76,29 +86,37 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
     }
   };
 
-  const save = useMutation({
-    mutationFn: () => {
-      const status = active ? ("active" as const) : ("inactive" as const);
-      const common = {
-        fullName: fullName.trim(),
-        employeeNumber: employeeNumber.trim(),
-        status,
-      };
-      const notes = description.trim();
-      return mode === "edit"
-        ? updateEndUser(person!.id, {
-            ...common,
-            departmentId: departmentId === "" ? null : departmentId,
-            description: notes === "" ? null : notes,
-          })
-        : createEndUser({
-            ...common,
-            ...(departmentId === "" ? {} : { departmentId }),
-            ...(notes === "" ? {} : { description: notes }),
-          });
+  // The route's own schema. Employee number is unique per company, which only the
+  // server can know — that refusal now arrives named, and lands under the field.
+  const form = useForm<EndUserForm, CreateEndUser>({
+    schema: createEndUserSchema,
+    initial: {
+      fullName: person?.fullName ?? "",
+      employeeNumber: person?.employeeNumber ?? "",
+      departmentId: person?.departmentId ?? "",
+      description: person?.description ?? "",
+      active: (person?.status ?? "active") === "active",
     },
-    onSuccess: done,
+    toPayload: (v) => ({
+      fullName: v.fullName.trim(),
+      employeeNumber: v.employeeNumber.trim(),
+      status: v.active ? "active" : "inactive",
+      ...(v.departmentId === "" ? {} : { departmentId: v.departmentId }),
+      ...(v.description.trim() === "" ? {} : { description: v.description.trim() }),
+    }),
+    submit: (input) =>
+      mode === "edit"
+        ? updateEndUser(person!.id, {
+            ...input,
+            // Explicitly null on an edit: an absent key leaves the stored value
+            // alone, so clearing either of these would not stick.
+            departmentId: input.departmentId ?? null,
+            description: input.description ?? null,
+          })
+        : createEndUser(input),
+    onSuccess: (saved) => done(saved as EndUser),
   });
+  const { departmentId, active } = form.values;
 
   const remove = useMutation({
     mutationFn: () => deleteEndUser(person!.id),
@@ -108,11 +126,6 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
       await navigate({ to: "/end-users" });
     },
   });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
 
   const deactivating = mode === "edit" && person!.status === "active" && !active;
   const movingDepartment = mode === "edit" && (person!.departmentId ?? "") !== departmentId;
@@ -147,8 +160,9 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
       />
 
       <Card className="mt-2 max-w-2xl p-6">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {save.error ? <ErrorAlert error={save.error} /> : null}
+        <form ref={form.formRef} onSubmit={form.handleSubmit} className="flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
           {remove.error ? <ErrorAlert error={remove.error} /> : null}
 
           {mode === "edit" ? (
@@ -165,15 +179,13 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
           ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Full name">
+            <Field label="Full name" required error={form.errorFor("fullName")}>
               {(props) => (
                 <Input
                   {...props}
-                  value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
-                  required
+                  {...form.register("fullName")}
                   autoFocus
-                  disabled={save.isPending}
+                  disabled={form.submitting}
                   placeholder="e.g. Anita Sharma"
                 />
               )}
@@ -181,15 +193,15 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
 
             <Field
               label="Employee number"
-              hint="Required, and unique in this company. It is what tells two people of the same name apart, and what an import matches on."
+              required
+              error={form.errorFor("employeeNumber")}
+              hint="Unique in this company. It is what tells two people of the same name apart, and what an import matches on."
             >
               {(props) => (
                 <Input
                   {...props}
-                  value={employeeNumber}
-                  onChange={(event) => setEmployeeNumber(event.target.value)}
-                  required
-                  disabled={save.isPending}
+                  {...form.register("employeeNumber")}
+                  disabled={form.submitting}
                   placeholder="e.g. EMP-1042"
                 />
               )}
@@ -204,10 +216,10 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
                   id={props.id}
                   aria-describedby={props["aria-describedby"]}
                   value={departmentId}
-                  onChange={setDepartmentId}
+                  onChange={(next) => form.set("departmentId", next)}
                   options={deptOptions}
                   placeholder="No department"
-                  disabled={save.isPending}
+                  disabled={form.submitting}
                 />
               )}
             </Field>
@@ -221,8 +233,8 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
                   <input
                     type="checkbox"
                     checked={active}
-                    onChange={(event) => setActive(event.target.checked)}
-                    disabled={save.isPending}
+                    onChange={(event) => form.set("active", event.target.checked)}
+                    disabled={form.submitting}
                   />
                   Offered in the journal
                 </label>
@@ -249,15 +261,15 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
 
           <Field
             label="Notes"
+            error={form.errorFor("description")}
             hint="Anything worth knowing — where they sit, which shift, the machine they always use."
           >
             {(props) => (
               <Textarea
                 {...props}
                 rows={3}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={save.isPending}
+                {...form.register("description")}
+                disabled={form.submitting}
                 placeholder="e.g. Accounts, 2nd floor — uses the shared printer by the lift"
               />
             )}
@@ -269,16 +281,12 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
               size="sm"
               type="button"
               onClick={() => void navigate({ to: "/end-users" })}
-              disabled={save.isPending}
+              disabled={form.submitting}
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={save.isPending || fullName.trim() === "" || employeeNumber.trim() === ""}
-            >
-              {save.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
               {mode === "edit" ? "Save changes" : "Add end user"}
             </Button>
           </div>

@@ -3,12 +3,17 @@
 // rest of the app follows. A department has a name and an optional parent, which
 // is where it sits in the org tree; the parent list excludes the department itself
 // and its descendants so the tree cannot fold back on itself.
-import { type Department, type DepartmentNode } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createDepartmentSchema,
+  type CreateDepartment,
+  type Department,
+  type DepartmentNode,
+} from "@reportly/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
 
 import { Field, Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import {
@@ -77,9 +82,6 @@ function Editor({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [name, setName] = useState(department?.name ?? "");
-  const [parentId, setParentId] = useState<string>(department?.parentId ?? "");
-
   const forbidden =
     mode === "edit" && department ? forbiddenParents(all, department.id) : new Set<string>();
   const parentOptions = all.filter((node) => !forbidden.has(node.id));
@@ -89,19 +91,16 @@ function Editor({
     await navigate({ to: "/departments/$departmentId", params: { departmentId: id } });
   };
 
-  const save = useMutation({
-    mutationFn: () => {
-      const input = { name: name.trim(), parentId: parentId === "" ? null : parentId };
-      if (mode === "edit") return updateDepartment(department!.id, input);
-      return createDepartment(input);
-    },
-    onSuccess: (created) => done(created.id),
+  // The route's own schema, so the form refuses what the API refuses and says so
+  // under the field rather than above the whole form.
+  const form = useForm<{ name: string; parentId: string }, CreateDepartment>({
+    schema: createDepartmentSchema,
+    initial: { name: department?.name ?? "", parentId: department?.parentId ?? "" },
+    toPayload: (v) => ({ name: v.name.trim(), parentId: v.parentId === "" ? null : v.parentId }),
+    submit: (input) =>
+      mode === "edit" ? updateDepartment(department!.id, input) : createDepartment(input),
+    onSuccess: (created) => done((created as { id: string }).id),
   });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
 
   return (
     <>
@@ -124,29 +123,22 @@ function Editor({
       />
 
       <Card className="mt-2 max-w-lg p-6">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {save.error ? <ErrorAlert error={save.error} /> : null}
+        <form ref={form.formRef} onSubmit={form.handleSubmit} className="flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
-              <Input
-                {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                autoFocus
-                disabled={save.isPending}
-              />
+              <Input {...props} {...form.register("name")} autoFocus disabled={form.submitting} />
             )}
           </Field>
 
-          <Field label="Parent department">
+          <Field label="Parent department" error={form.errorFor("parentId")}>
             {(props) => (
               <select
                 {...props}
-                value={parentId}
-                onChange={(event) => setParentId(event.target.value)}
-                disabled={save.isPending}
+                {...form.register("parentId")}
+                disabled={form.submitting}
                 className="h-10 rounded-xl border border-border bg-card px-3 text-sm"
               >
                 <option value="">None (top-level)</option>
@@ -167,12 +159,12 @@ function Editor({
               size="sm"
               type="button"
               onClick={() => void navigate({ to: "/departments" })}
-              disabled={save.isPending}
+              disabled={form.submitting}
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={save.isPending || name.trim() === ""}>
-              {save.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
               {mode === "edit" ? "Save changes" : "Create department"}
             </Button>
           </div>

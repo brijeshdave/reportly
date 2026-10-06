@@ -13,10 +13,22 @@ import { z } from "zod";
  * are perfectly good identifiers and not valid RFC UUIDs, so the strict form
  * rejected the demo company on every response that carried it.
  */
-export const uuidSchema = z.guid();
+export const uuidSchema = z.guid("Choose one.");
 
-/** Human-facing display name: trimmed, non-empty, bounded. */
-export const nameSchema = z.string().trim().min(1).max(120);
+/**
+ * Human-facing display name: trimmed, non-empty, bounded.
+ *
+ * The messages are written out because they are **shown to people**. Now that a
+ * form validates against these schemas and prints what they say under the field,
+ * zod's own wording surfaces in the UI — "Too small: expected string to have >=1
+ * characters" is the generic message the per-field errors were meant to replace,
+ * wearing a different hat.
+ */
+export const nameSchema = z
+  .string()
+  .trim()
+  .min(1, "This cannot be empty.")
+  .max(120, "Keep this under 120 characters.");
 
 export const entityStatusSchema = z.enum(["active", "inactive"]);
 export type EntityStatus = z.infer<typeof entityStatusSchema>;
