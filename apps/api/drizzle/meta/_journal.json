@@ -239,6 +239,13 @@
       "when": 1786791600024,
       "tag": "0033_silence_report_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786791600025,
+      "tag": "0034_part_handling_permission",
+      "breakpoints": true
     }
   ]
 }

@@ -174,6 +174,11 @@ export const REPORT_SOURCES = [
   "printer_health",
   "part_failures",
   "part_workload",
+  // Who put cartridges in, who took them out, and who did anything to them
+  // afterwards. Asked for from use: "how many cartridges where removed, installed
+  // and refilled and serviced by whom... is that possible to analyse if any user
+  // just remove and install cartridge and left it without service".
+  "part_handling",
   // Who in a department did how much, over a window. Three views of one query —
   // the same counts per person, per person per day, and the people doing little
   // or nothing — which is why they share a filter set and a sort.
@@ -223,6 +228,7 @@ export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
   printer_health: "reports:view:printer_health",
   part_failures: "reports:view:part_failures",
   part_workload: "reports:view:part_workload",
+  part_handling: "reports:view:part_handling",
   dept_workload: "reports:view:dept_workload",
   dept_workload_daily: "reports:view:dept_workload_daily",
   dept_workload_severity: "reports:view:dept_workload_severity",
@@ -276,6 +282,7 @@ export const REPORT_SCOPE: Record<ReportSource, ReportScopeShape> = {
   printer_health: "place",
   part_failures: "place",
   part_workload: "place",
+  part_handling: "place",
   // Every row is somebody's work, so the reporting line decides who may read it:
   // the reader plus their downline, narrowed by company and site. A head of
   // department sees their nested organisation and nobody else's.
@@ -317,6 +324,7 @@ export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
   printer_health: "Printer health — which machines eat cartridges",
   part_failures: "Cartridge failures — what failed, after whose work",
   part_workload: "Cartridge workload — who serviced how many, and what came back",
+  part_handling: "Cartridge handling — who fits, who removes, and who services",
   dept_workload: "Department workload — what each person did",
   dept_workload_daily: "Department workload by day — each person, day by day",
   dept_workload_severity: "Workload by severity — each person, how bad the issues were",
@@ -336,6 +344,7 @@ export const PART_SOURCES = [
   "printer_health",
   "part_failures",
   "part_workload",
+  "part_handling",
 ] as const;
 export function isPartSource(source: ReportSource): boolean {
   return (PART_SOURCES as readonly string[]).includes(source);
@@ -727,6 +736,12 @@ export const ALL_REPORT_COLUMN_LABELS: Record<string, string> = {
   partsFitted: "Fitted",
   partsRemoved: "Removed",
   partsServiced: "Serviced",
+  installed: "Fitted",
+  removed: "Removed",
+  removedFaulty: "Removed faulty",
+  serviced: "Serviced",
+  leftUnserviced: "Left unserviced",
+  swapRatio: "Services per removal",
   tasksOverdue: "Tasks not done",
   routinesMissed: "Routines missed",
   lastJournal: "Last entry",
@@ -845,6 +860,7 @@ export const MAX_CUSTOM_RANGE_DAYS: Record<ReportSource, number> = {
   printer_health: 366,
   part_failures: 366,
   part_workload: 366,
+  part_handling: 366,
 };
 
 /** The fixed columns for a source (journal is user-chosen; the others are fixed). */
@@ -937,6 +953,24 @@ export const PART_FAILURE_COLUMNS = [
  * not a fact about anybody until you know whether they held up, and the same
  * number with three returns and with none describe two different technicians.
  */
+/**
+ * Columns for the handling report.
+ *
+ * `leftUnserviced` is the one the report exists for: cartridges this person took
+ * out as faulty that nothing has been done to since. `swapRatio` puts it in
+ * proportion — twenty removals and no services reads very differently from two.
+ */
+export const PART_HANDLING_COLUMNS = [
+  "person",
+  "installed",
+  "removed",
+  "removedFaulty",
+  "serviced",
+  "breakdown",
+  "leftUnserviced",
+  "swapRatio",
+] as const;
+
 export const PART_WORKLOAD_COLUMNS = [
   "person",
   "services",
@@ -949,6 +983,7 @@ export const PART_WORKLOAD_COLUMNS = [
 
 export function columnsForSource(source: ReportSource): readonly string[] {
   if (source === "part_workload") return PART_WORKLOAD_COLUMNS;
+  if (source === "part_handling") return PART_HANDLING_COLUMNS;
   if (source === "part_failures") return PART_FAILURE_COLUMNS;
   if (source === "part_register") return PART_REGISTER_COLUMNS;
   if (source === "part_services") return PART_SERVICE_COLUMNS;

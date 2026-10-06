@@ -334,3 +334,132 @@ export async function finishedTours(
       ),
     );
 }
+
+/** One person's handling of cartridges: putting them in, taking them out, working on them. */
+export interface HandlingRow {
+  userId: string | null;
+  personName: string | null;
+  partId: string;
+  at: Date;
+  /** `install`, `remove`, or the service kind's name for work done on the part. */
+  action: string;
+  /** Only on a removal: 'ok' or 'faulty'. */
+  outcome: string | null;
+  /** Only on a removal: whether anything has been done to the part since. */
+  servicedSince?: boolean;
+}
+
+/**
+ * Every install, removal and service in the window, one row per act, with who did it.
+ *
+ * Asked for from use: "I need a report where it shows for a period of time, how many
+ * cartridges where removed, installed and refilled and serviced by whom."
+ *
+ * Returned unaggregated, like `finishedTours`, so the counting and the judgement
+ * live in the service where they can be read. Three queries rather than a union:
+ * the three acts live in two tables with different shapes, and a union would need
+ * every column nulled into the same row anyway.
+ */
+export async function handlingRows(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<HandlingRow[]> {
+  const installs = await db
+    .select({
+      userId: partPlacements.installedBy,
+      personName: users.name,
+      partId: partPlacements.partId,
+      at: partPlacements.installedAt,
+    })
+    .from(partPlacements)
+    .innerJoin(devices, eq(devices.id, partPlacements.deviceId))
+    .leftJoin(users, eq(users.id, partPlacements.installedBy))
+    .where(
+      and(
+        eq(partPlacements.companyId, companyId),
+        withLocationsNullable(ctx, devices.locationId),
+        gte(partPlacements.installedAt, from),
+        lt(partPlacements.installedAt, to),
+      ),
+    );
+
+  const removals = await db
+    .select({
+      userId: partPlacements.removedBy,
+      personName: users.name,
+      partId: partPlacements.partId,
+      at: partPlacements.removedAt,
+      outcome: partPlacements.outcome,
+    })
+    .from(partPlacements)
+    .innerJoin(devices, eq(devices.id, partPlacements.deviceId))
+    .leftJoin(users, eq(users.id, partPlacements.removedBy))
+    .where(
+      and(
+        eq(partPlacements.companyId, companyId),
+        withLocationsNullable(ctx, devices.locationId),
+        sql`${partPlacements.removedAt} IS NOT NULL`,
+        gte(partPlacements.removedAt, from),
+        lt(partPlacements.removedAt, to),
+      ),
+    );
+
+  const services = await db
+    .select({
+      userId: serviceEvents.performedBy,
+      personName: users.name,
+      partId: serviceEvents.partId,
+      at: serviceEvents.performedAt,
+      kind: serviceKinds.name,
+    })
+    .from(serviceEvents)
+    .innerJoin(serviceKinds, eq(serviceKinds.id, serviceEvents.serviceKindId))
+    .leftJoin(users, eq(users.id, serviceEvents.performedBy))
+    .where(
+      and(
+        eq(serviceEvents.companyId, companyId),
+        gte(serviceEvents.performedAt, from),
+        lt(serviceEvents.performedAt, to),
+      ),
+    );
+
+  // "Has anything been done to this part since it came out?" asked once for the
+  // whole window rather than per removal: the question is about the part's latest
+  // service, and one grouped query answers it for every part at once.
+  const latestService = new Map<string, Date>();
+  const allServices = await db
+    .select({ partId: serviceEvents.partId, at: sql<Date>`max(${serviceEvents.performedAt})` })
+    .from(serviceEvents)
+    .where(eq(serviceEvents.companyId, companyId))
+    .groupBy(serviceEvents.partId);
+  for (const row of allServices) {
+    const when = row.at instanceof Date ? row.at : new Date(row.at as unknown as string);
+    if (!Number.isNaN(when.getTime())) latestService.set(row.partId, when);
+  }
+
+  return [
+    ...installs.map((r) => ({ ...r, action: "install", outcome: null })),
+    ...removals.map((r) => ({
+      userId: r.userId,
+      personName: r.personName,
+      partId: r.partId,
+      at: r.at!,
+      action: "remove",
+      outcome: r.outcome,
+      // Nothing has touched it since it came out. That is the signal behind "just
+      // removes and installs and leaves it" — not proof of anything on its own,
+      // because somebody else may be the one who services it.
+      servicedSince: (latestService.get(r.partId)?.getTime() ?? 0) > r.at!.getTime(),
+    })),
+    ...services.map((r) => ({
+      userId: r.userId,
+      personName: r.personName,
+      partId: r.partId,
+      at: r.at,
+      action: r.kind,
+      outcome: null,
+    })),
+  ];
+}

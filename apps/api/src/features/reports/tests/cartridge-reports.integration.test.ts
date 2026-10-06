@@ -294,3 +294,119 @@ describe("the cartridge reports", () => {
     expect(rows[1]).toMatchObject({ printer: "Good printer", failures: "0", verdict: "Healthy" });
   });
 });
+
+describe("the cartridge handling report", () => {
+  // Asked for from use: "how many cartridges where removed, installed and refilled
+  // and serviced by whom. is that possible to analyse if any user just remove and
+  // install cartridge and left it without service and not doing anything for
+  // repairs."
+  //
+  // The point of this report is the person `part_workload` cannot show. That one is
+  // built from service events, so somebody who only ever swaps leaves no row on it
+  // at all — they are invisible precisely because they did nothing.
+
+  it("counts fits, removals and services, and names who did each", async () => {
+    await setCompanySetting(PARTS_MODULE, DEMO_COMPANY_ID, {
+      enabled: true,
+      failureWindowDays: 14,
+    });
+    const dept = (await inject("POST", "/departments", { name: "IT" })).json();
+    const type = (
+      await inject("POST", "/device-types", { departmentId: dept.id, name: "LaserJet" })
+    ).json();
+    const printer = (await inject("POST", "/devices", { name: "Printer", typeId: type.id })).json();
+    const model = (
+      await inject("POST", "/part-models", {
+        name: "HP 12A",
+        ratedPageYield: 2000,
+        compatibleDeviceTypeIds: [type.id],
+      })
+    ).json();
+    const kind = (
+      await inject("POST", "/part-service-kinds", { name: "Refill", defaultPoints: 3 })
+    ).json();
+
+    // A cartridge serviced, fitted, then pulled out faulty — and then serviced
+    // again. Somebody picked it up.
+    const tended = (
+      await inject("POST", "/parts", {
+        identifier: "TN-10",
+        partModelId: model.id,
+        status: "ready",
+      })
+    ).json();
+    await inject("POST", `/parts/${tended.id}/services`, { serviceKindId: kind.id });
+    await inject("POST", `/parts/${tended.id}/deploy`, { deviceId: printer.id, meterStart: 100 });
+    await inject("POST", `/parts/${tended.id}/return`, { outcome: "faulty", meterEnd: 200 });
+    await inject("POST", `/parts/${tended.id}/services`, { serviceKindId: kind.id });
+
+    // And one pulled out faulty and left on the shelf. This is the one the report
+    // is for.
+    const abandoned = (
+      await inject("POST", "/parts", {
+        identifier: "TN-11",
+        partModelId: model.id,
+        status: "ready",
+      })
+    ).json();
+    await inject("POST", `/parts/${abandoned.id}/deploy`, {
+      deviceId: printer.id,
+      meterStart: 100,
+    });
+    await inject("POST", `/parts/${abandoned.id}/return`, { outcome: "faulty", meterEnd: 150 });
+
+    const res = await run("part_handling");
+    expect(res.statusCode, res.body).toBe(200);
+    const rows = cellsOf(res.json());
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+
+    expect(row.installed).toBe("2");
+    expect(row.removed).toBe("2");
+    expect(row.removedFaulty).toBe("2");
+    // Two refills on the tended cartridge, none on the abandoned one.
+    expect(row.serviced).toBe("2");
+    expect(row.breakdown).toContain("Refill");
+    // One of the two faulty returns has had nothing done to it since.
+    expect(row.leftUnserviced).toBe("1");
+    // Two services across two removals.
+    expect(row.swapRatio).toBe("1.00");
+  });
+
+  it("does not count an empty cartridge swapped out as one left behind", async () => {
+    // A cartridge taken out because it was spent and replaced with a full one needs
+    // nothing done to it. Counting those would make the column an accusation about
+    // ordinary work, which is the fastest way to make a report nobody trusts.
+    await setCompanySetting(PARTS_MODULE, DEMO_COMPANY_ID, {
+      enabled: true,
+      failureWindowDays: 14,
+    });
+    const dept = (await inject("POST", "/departments", { name: "IT" })).json();
+    const type = (
+      await inject("POST", "/device-types", { departmentId: dept.id, name: "LaserJet" })
+    ).json();
+    const printer = (await inject("POST", "/devices", { name: "Printer", typeId: type.id })).json();
+    const model = (
+      await inject("POST", "/part-models", {
+        name: "HP 12A",
+        ratedPageYield: 2000,
+        compatibleDeviceTypeIds: [type.id],
+      })
+    ).json();
+
+    const spent = (
+      await inject("POST", "/parts", {
+        identifier: "TN-20",
+        partModelId: model.id,
+        status: "ready",
+      })
+    ).json();
+    await inject("POST", `/parts/${spent.id}/deploy`, { deviceId: printer.id, meterStart: 100 });
+    await inject("POST", `/parts/${spent.id}/return`, { outcome: "ok", meterEnd: 2000 });
+
+    const row = cellsOf((await run("part_handling")).json())[0]!;
+    expect(row.removed).toBe("1");
+    expect(row.removedFaulty).toBe("0");
+    expect(row.leftUnserviced).toBe("0");
+  });
+});

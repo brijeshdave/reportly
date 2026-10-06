@@ -395,7 +395,7 @@ is told once, and the part is flagged wherever it appears.
 
 ## Reports
 
-Under **Reports**, in a **Cartridges** tab of their own. All five print and export
+Under **Reports**, in a **Cartridges** tab of their own. They all print and export
 to a spreadsheet like every other report, and can be saved as views.
 
 | Report                        | The question it answers                                            |
@@ -404,6 +404,7 @@ to a spreadsheet like every other report, and can be saved as views.
 | **Cartridge services**        | What was refilled or repaired, by whom, what it used, what it paid |
 | **Consumable usage**          | How much toner, how many drums and blades went in this period      |
 | **Cartridge workload**        | Who serviced how many, what they used, and how much came back      |
+| **Cartridge handling**        | Who fits, who removes, and who does anything to them afterwards    |
 | **Cartridge failures**        | What came back faulty, after whose refill, and who took it out     |
 | **Cartridge health**          | Which cartridges fail or yield badly — the ones to retire          |
 | **Printer health**            | Which _printers_ eat cartridges                                    |
@@ -416,6 +417,32 @@ they held up; the same number with three returns and with none describe two
 different technicians. It counts a comeback whether or not the points were
 reversed, because a cartridge that failed a month later still failed, and the
 reversal only fires inside the failure window.
+
+**Cartridge handling** answers a question the workload report cannot. That one is
+built from service events — so somebody who only ever _swaps_ cartridges leaves no
+row on it at all. They are invisible precisely because they did nothing.
+
+One row per person, for the period:
+
+| Column                   | What it counts                                                             |
+| ------------------------ | -------------------------------------------------------------------------- |
+| **Fitted**               | Cartridges they put into a machine.                                        |
+| **Removed**              | Cartridges they took out.                                                  |
+| **Removed faulty**       | Of those, the ones booked in as faulty rather than just spent.             |
+| **Serviced**             | Refills and repairs they carried out, with the kinds beside it.            |
+| **Left unserviced**      | Cartridges they removed **as faulty** that nothing has been done to since. |
+| **Services per removal** | The first four as one number — what "just swapping" looks like.            |
+
+**Left unserviced** is the column it exists for: a dead cartridge pulled out, a
+fresh one fitted, and the dead one left on a shelf. Only _faulty_ returns count — a
+cartridge taken out because it was spent and swapped for a full one needs nothing
+done to it, and counting those would turn the column into an accusation about
+ordinary work.
+
+> **It is a prompt, not a verdict.** Whoever books a part in is not necessarily
+> whoever repairs it. In a shop where one person swaps and another refills, a high
+> number here is the division of labour working exactly as intended. The report says
+> what happened; reading it takes somebody who knows the shop.
 
 **Cartridge failures** is the one that answers "did the work we did hold up". Each
 row is a faulty return: how long it lasted, what it printed, the refill or repair

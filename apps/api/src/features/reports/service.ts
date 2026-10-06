@@ -48,6 +48,7 @@ import {
   PART_FAILURE_COLUMNS,
   PART_HEALTH_COLUMNS,
   PART_REGISTER_COLUMNS,
+  PART_HANDLING_COLUMNS,
   PART_WORKLOAD_COLUMNS,
   PART_SERVICE_COLUMNS,
   PART_STATUS_LABELS,
@@ -1138,6 +1139,7 @@ async function runCartridges(
   if (source === "printer_health") return runPrinterHealth(ctx, ctx.companyId, from, to);
   if (source === "part_failures") return runPartFailures(ctx, ctx.companyId, from, to, people);
   if (source === "part_workload") return runPartWorkload(ctx, ctx.companyId, from, to, people);
+  if (source === "part_handling") return runPartHandling(ctx, ctx.companyId, from, to);
   return runPartHealth(ctx, ctx.companyId, from, to);
 }
 
@@ -1463,6 +1465,109 @@ async function runPartWorkload(
       },
     }));
   return oneGroup("Who serviced what", rows, PART_WORKLOAD_COLUMNS);
+}
+
+/**
+ * Who fits cartridges, who takes them out, and who does anything to them after.
+ *
+ * Asked for from use: "how many cartridges where removed, installed and refilled
+ * and serviced by whom. is that possible to analyse if any user just remove and
+ * install cartridge and left it without service and not doing anything for
+ * repairs."
+ *
+ * Yes, and this is the shape of it. `part_workload` already counts services; what
+ * it cannot show is the person who only ever swaps — because swapping leaves no
+ * service event, so somebody doing nothing but swaps is **invisible** on a report
+ * built from services.
+ *
+ * `leftUnserviced` is the column it exists for: cartridges this person took out as
+ * **faulty** that nothing has been done to since. That is the pattern — a dead
+ * cartridge pulled, a fresh one fitted, and the dead one left on a shelf.
+ *
+ * **It is a prompt, not a verdict.** Whoever books a part in is not necessarily
+ * whoever repairs it: in a shop where one person swaps and another refills, a high
+ * number here is the division of labour working, not somebody shirking. The report
+ * says what happened and leaves the reading of it to somebody who knows the shop —
+ * which is why the column sits beside the volumes rather than as a score.
+ */
+async function runPartHandling(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<SourceResult> {
+  const acts = await partsRepo.handlingRows(ctx, companyId, from, to);
+
+  interface Tally {
+    person: string;
+    installed: number;
+    removed: number;
+    removedFaulty: number;
+    serviced: number;
+    kinds: Map<string, number>;
+    leftUnserviced: number;
+  }
+  const tallies = new Map<string, Tally>();
+  const at = (name: string | null): Tally => {
+    // Unattributed work is its own row rather than folded into somebody else's:
+    // "—" fitting eight cartridges is a visible gap in the record, and a silent
+    // merge is not. The same rule `part_workload` already follows.
+    const key = name ?? "—";
+    const existing = tallies.get(key);
+    if (existing) return existing;
+    const fresh: Tally = {
+      person: key,
+      installed: 0,
+      removed: 0,
+      removedFaulty: 0,
+      serviced: 0,
+      kinds: new Map(),
+      leftUnserviced: 0,
+    };
+    tallies.set(key, fresh);
+    return fresh;
+  };
+
+  for (const act of acts) {
+    const tally = at(act.personName);
+    if (act.action === "install") {
+      tally.installed += 1;
+    } else if (act.action === "remove") {
+      tally.removed += 1;
+      if (act.outcome === "faulty") {
+        tally.removedFaulty += 1;
+        // Only a faulty one counts. A cartridge taken out because it was empty and
+        // swapped for a full one needs nothing done to it, and counting those would
+        // make the column read as an accusation against ordinary work.
+        if (!act.servicedSince) tally.leftUnserviced += 1;
+      }
+    } else {
+      tally.serviced += 1;
+      tally.kinds.set(act.action, (tally.kinds.get(act.action) ?? 0) + 1);
+    }
+  }
+
+  const rows: ReportRow[] = [...tallies.values()]
+    // Most left behind first: the top of the report is the reason to read it.
+    .sort((a, b) => b.leftUnserviced - a.leftUnserviced || b.removed - a.removed)
+    .map((tally, index) => ({
+      id: String(index),
+      reportId: null,
+      cells: {
+        person: tally.person,
+        installed: String(tally.installed),
+        removed: String(tally.removed),
+        removedFaulty: String(tally.removedFaulty),
+        serviced: String(tally.serviced),
+        breakdown: [...tally.kinds].map(([name, n]) => `${name} ${n}`).join(", ") || "—",
+        leftUnserviced: String(tally.leftUnserviced),
+        // Services per removal, which is what "just swaps" means as a number. A dash
+        // where nothing was removed: zero over zero is not a ratio, and printing
+        // "0.00" there would invent a finding about somebody who did no swapping.
+        swapRatio: tally.removed === 0 ? "—" : (tally.serviced / tally.removed).toFixed(2),
+      },
+    }));
+  return oneGroup("Who handles the cartridges", rows, PART_HANDLING_COLUMNS);
 }
 
 /** One ungrouped block — every cartridge report is a flat table. */
