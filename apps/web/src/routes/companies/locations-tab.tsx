@@ -5,16 +5,22 @@
 // delete would strip this location from every group scoped to it. The API refuses
 // while anything references it and says what does; deactivating is the reversible
 // alternative and keeps those scopes intact.
-import { PERMISSIONS, type Location } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  createLocationSchema,
+  type CreateLocation,
+  type Location,
+} from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Download, MapPin, Pencil, Plus, Power, Trash2, Upload } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Can, usePermission } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { ImportDialog } from "@/components/import-dialog.js";
 import { Field, Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card, EmptyState } from "@/components/ui/primitives.js";
 import {
@@ -248,20 +254,21 @@ function LocationNameDialog({
   onDone: () => Promise<unknown> | unknown;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(initialName);
-
-  const save = useMutation({
-    mutationFn: () => onSubmit(name.trim()),
+  // The name alone, because that is all this dialog edits — the company comes from
+  // the page it is on and is supplied by the caller's `onSubmit`. Validating against
+  // the whole create schema would demand a `companyId` the form has no field for,
+  // fail every time, and report it against an input that does not exist.
+  const form = useForm<{ name: string }, Pick<CreateLocation, "name">>({
+    schema: createLocationSchema.pick({ name: true }),
+    initial: { name: initialName },
+    toPayload: (v) => ({ name: v.name.trim() }),
+    submit: (input) => onSubmit(input.name),
     onSuccess: async () => {
       await onDone();
       onClose();
     },
   });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
+  const unchanged = form.values.name.trim() === initialName;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -275,32 +282,31 @@ function LocationNameDialog({
         <h2 className="text-base font-semibold">{title}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
 
-        <form onSubmit={submit} className="mt-4 flex flex-col gap-4">
-          {save.error ? <ErrorAlert error={save.error} /> : null}
+        <form {...form.formProps} className="mt-4 flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
-              <Input
-                {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                autoFocus
-                disabled={save.isPending}
-              />
+              <Input {...props} {...form.register("name")} autoFocus disabled={form.submitting} />
             )}
           </Field>
 
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={onClose} disabled={save.isPending}>
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={onClose}
+              disabled={form.submitting}
+            >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={save.isPending || name.trim() === "" || name.trim() === initialName}
-            >
-              {save.isPending ? <Spinner /> : null}
+            {/* Still guarded on "unchanged": renaming something to what it is
+                already is not a refusal, it is a no-op, and the schema has no way to
+                know what the name was before. */}
+            <Button type="submit" size="sm" disabled={form.submitting || unchanged}>
+              {form.submitting ? <Spinner /> : null}
               {submitLabel}
             </Button>
           </div>

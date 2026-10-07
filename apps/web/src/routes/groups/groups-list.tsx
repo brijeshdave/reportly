@@ -1,17 +1,24 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Groups list. Groups are the join point: they hold the roles, and the companies
 // and locations those roles apply to. System groups are immutable but clonable.
-import { PERMISSIONS, type Group, formatDate } from "@reportly/shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  PERMISSIONS,
+  createGroupSchema,
+  formatDate,
+  type CreateGroup,
+  type Group,
+} from "@reportly/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Copy, Download, Plus, Upload } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Can } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { ImportDialog } from "@/components/import-dialog.js";
 import { Field, Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
@@ -164,24 +171,26 @@ function GroupNameDialog({
   onClose: () => void;
 }) {
   const cloning = dialog.mode === "clone";
-  const [name, setName] = useState(cloning ? `${dialog.group.name} copy` : "");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const submit = useMutation({
-    mutationFn: (value: string) =>
-      cloning ? cloneGroup(dialog.group.id, value) : createGroup(value),
+  // The route's own schema, so a name already taken comes back named and lands
+  // under the field rather than above a dialog with one input in it.
+  const form = useForm<{ name: string }, CreateGroup>({
+    schema: createGroupSchema,
+    initial: { name: cloning ? `${dialog.group.name} copy` : "" },
+    toPayload: (v) => ({ name: v.name.trim() }),
+    submit: (input) =>
+      cloning ? cloneGroup(dialog.group.id, input.name) : createGroup(input.name),
     onSuccess: async (group) => {
       await queryClient.invalidateQueries({ queryKey: ["groups"] });
       onClose();
-      await navigate({ to: "/groups/$groupId", params: { groupId: group.id } });
+      await navigate({
+        to: "/groups/$groupId",
+        params: { groupId: (group as { id: string }).id },
+      });
     },
   });
-
-  const onSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    submit.mutate(name.trim());
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -199,28 +208,28 @@ function GroupNameDialog({
             : "An empty group. Add roles and members from its detail page."}
         </p>
 
-        <form onSubmit={onSubmit} className="mt-4 flex flex-col gap-4">
-          {submit.error ? <ErrorAlert error={submit.error} /> : null}
+        <form {...form.formProps} className="mt-4 flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
-              <Input
-                {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                autoFocus
-                disabled={submit.isPending}
-              />
+              <Input {...props} {...form.register("name")} autoFocus disabled={form.submitting} />
             )}
           </Field>
 
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={onClose} disabled={submit.isPending}>
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={onClose}
+              disabled={form.submitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={submit.isPending || name.trim() === ""}>
-              {submit.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
               {cloning ? "Clone group" : "Create group"}
             </Button>
           </div>

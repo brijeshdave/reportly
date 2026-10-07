@@ -35,6 +35,12 @@ export interface UseFormOptions<Values extends object, Payload> {
    * The request body this form's state becomes. Omit where the state already is the
    * body. Keys that survive this mapping are the keys errors come back under, so a
    * field whose name changes here needs `fieldName` to say so.
+   *
+   * Returns `unknown` on purpose: this is the body **before** validation, so it may
+   * legitimately be missing a required field — that is the whole point of handing it
+   * to a schema. The thing to get right is the other direction: the schema must only
+   * ask for fields this form actually draws. Give it one that wants a `companyId` the
+   * page supplies invisibly and every submit fails against an input nobody can see.
    */
   toPayload?: (values: Values) => unknown;
   /**
