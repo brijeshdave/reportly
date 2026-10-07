@@ -677,7 +677,13 @@ const tasksRoute = createRoute({
 const taskCreateRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/tasks/new",
-  beforeLoad: requirePermission(PERMISSIONS.TASKS_CREATE),
+  // **Either** grant opens this page, which is what the API has always said:
+  // `POST /tasks` accepts `tasks:create` or `tasks:create-own`. The guard here
+  // asked for the first alone, so somebody who may only give work to themselves saw
+  // the button, pressed it, and was shown "not authorised" by their own app —
+  // reported exactly that way. The list offers the button on either grant, so the
+  // three places now agree.
+  beforeLoad: requireAnyPermission([PERMISSIONS.TASKS_CREATE, PERMISSIONS.TASKS_CREATE_OWN]),
   component: () => <TaskEditorPage mode="create" />,
 });
 

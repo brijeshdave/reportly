@@ -25,7 +25,11 @@ const minuteOfDaySchema = z.number().int().min(0).max(1439);
  * The 1–2 character code shown in a calendar cell — G, A, B, C … — so every cell is
  * the same width and the month reads evenly rather than as a wall of full names.
  */
-export const shiftCodeSchema = z.string().trim().min(1).max(2);
+export const shiftCodeSchema = z
+  .string()
+  .trim()
+  .min(1, "A shift needs a code — one or two characters.")
+  .max(2, "A shift code is one or two characters.");
 
 /**
  * The colour a shift wears on the calendar, from a fixed palette so shifts are told

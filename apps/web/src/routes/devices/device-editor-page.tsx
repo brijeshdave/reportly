@@ -4,15 +4,16 @@
 // The "lives at" field is the load-bearing one: it is the only thing connecting a
 // flat registry of thousands to the asset tree, and so the only reason a roll-up on
 // Line 3 can find the robot standing at its station.
-import { PERMISSIONS, type Device } from "@reportly/shared";
+import { PERMISSIONS, createDeviceSchema, type CreateDevice, type Device } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { useToast } from "@/components/toaster.js";
@@ -23,6 +24,18 @@ import { fetchDepartments } from "@/services/departments.js";
 import { fetchLocations } from "@/services/locations.js";
 import { fetchDeviceTypes } from "@/services/vocabulary.js";
 import { http } from "@/services/http.js";
+
+/** What the form holds. Text as typed; the payload builder does the converting. */
+interface DeviceForm {
+  name: string;
+  identifier: string;
+  assetTag: string;
+  typeId: string;
+  locationId: string;
+  assetId: string;
+  departmentId: string;
+  active: boolean;
+}
 
 export type DeviceEditorMode = "create" | "edit";
 
@@ -58,13 +71,48 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
   // offer somewhere they would then be refused.
   const locations = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
 
-  const [name, setName] = useState(device?.name ?? "");
-  const [identifier, setIdentifier] = useState(device?.identifier ?? "");
-  const [assetTag, setAssetTag] = useState(device?.assetTag ?? "");
-  const [typeId, setTypeId] = useState(device?.typeId ?? "");
-  const [locationId, setLocationId] = useState(device?.locationId ?? "");
-  const [assetId, setAssetId] = useState(device?.assetId ?? "");
-  const [departmentId, setDepartmentId] = useState(device?.departmentId ?? "");
+  // The route's own schema, so what the form refuses and what the API refuses are
+  // one rule — and the asset ID's uniqueness, which only the server can know, comes
+  // back named and lands under that field rather than above the whole form.
+  const form = useForm<DeviceForm, CreateDevice>({
+    schema: createDeviceSchema,
+    initial: {
+      name: device?.name ?? "",
+      identifier: device?.identifier ?? "",
+      assetTag: device?.assetTag ?? "",
+      typeId: device?.typeId ?? "",
+      locationId: device?.locationId ?? "",
+      assetId: device?.assetId ?? "",
+      departmentId: device?.departmentId ?? "",
+      active: (device?.status ?? "active") === "active",
+    },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      status: v.active ? "active" : "inactive",
+      ...(v.identifier.trim() ? { identifier: v.identifier.trim() } : {}),
+      ...(v.assetTag.trim() ? { assetTag: v.assetTag.trim() } : {}),
+      ...(v.typeId ? { typeId: v.typeId } : {}),
+      ...(v.assetId ? { assetId: v.assetId } : {}),
+      ...(v.departmentId ? { departmentId: v.departmentId } : {}),
+      ...(v.locationId ? { locationId: v.locationId } : {}),
+    }),
+    submit: (input) =>
+      mode === "edit"
+        ? updateDevice(device!.id, {
+            ...input,
+            // Explicitly null on an edit: an absent key leaves the stored value
+            // alone, so clearing any of these would not stick.
+            identifier: input.identifier ?? null,
+            assetTag: input.assetTag ?? null,
+            typeId: input.typeId ?? null,
+            assetId: input.assetId ?? null,
+            departmentId: input.departmentId ?? null,
+            locationId: input.locationId ?? null,
+          })
+        : createDevice(input),
+    onSuccess: (saved) => done(saved as { id: string; name: string }),
+  });
+  const { typeId, locationId, assetId, departmentId, active } = form.values;
 
   // Declared after `departmentId` because it depends on it: a device's type comes
   // from its own department's list, so choosing a department changes what is offered.
@@ -73,7 +121,6 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
     queryFn: () => fetchDeviceTypes(departmentId || undefined),
     enabled: Boolean(departmentId),
   });
-  const [active, setActive] = useState((device?.status ?? "active") === "active");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   /** A deletion has nowhere to stay — the thing it was showing is gone. */
@@ -94,35 +141,7 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
     }
   };
 
-  const save = useMutation({
-    mutationFn: () => {
-      const input = {
-        name: name.trim(),
-        identifier: identifier.trim() || null,
-        assetTag: assetTag.trim() || null,
-        typeId: typeId || null,
-        assetId: assetId || null,
-        departmentId: departmentId || null,
-        locationId: locationId || null,
-        status: active ? ("active" as const) : ("inactive" as const),
-      };
-      return mode === "edit"
-        ? updateDevice(device!.id, input)
-        : createDevice({
-            ...input,
-            identifier: input.identifier ?? undefined,
-            assetTag: input.assetTag ?? undefined,
-          });
-    },
-    onSuccess: done,
-  });
-
   const remove = useMutation({ mutationFn: () => deleteDevice(device!.id), onSuccess: removed });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
 
   return (
     <>
@@ -146,19 +165,18 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
       />
 
       <Card className="mt-2 max-w-lg p-6">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {save.error ? <ErrorAlert error={save.error} /> : null}
+        <form {...form.formProps} className="flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
           {remove.error ? <ErrorAlert error={remove.error} /> : null}
 
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
               <Input
                 {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
+                {...form.register("name")}
                 autoFocus
-                disabled={save.isPending}
+                disabled={form.submitting}
                 placeholder="e.g. Robot arm"
               />
             )}
@@ -166,14 +184,14 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
 
           <Field
             label="Asset ID"
+            error={form.errorFor("assetTag")}
             hint="Your organisation's own number for it. Must be unique across the company, so it can be used to look the device up."
           >
             {(props) => (
               <Input
                 {...props}
-                value={assetTag}
-                onChange={(event) => setAssetTag(event.target.value)}
-                disabled={save.isPending}
+                {...form.register("assetTag")}
+                disabled={form.submitting}
                 placeholder="e.g. ACM-00412"
               />
             )}
@@ -181,14 +199,14 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
 
           <Field
             label="Serial or vendor code"
+            error={form.errorFor("identifier")}
             hint="Free text, whatever is stamped on it. Unlike the asset ID this is a note, not a key — it need not be unique."
           >
             {(props) => (
               <Input
                 {...props}
-                value={identifier}
-                onChange={(event) => setIdentifier(event.target.value)}
-                disabled={save.isPending}
+                {...form.register("identifier")}
+                disabled={form.submitting}
                 placeholder="e.g. RA-77"
               />
             )}
@@ -200,12 +218,12 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
                 {...props}
                 value={departmentId}
                 onChange={(value) => {
-                  setDepartmentId(value);
+                  form.set("departmentId", value);
                   // The types belonged to the old department; keeping one would save
                   // a type this device's owner does not have.
-                  setTypeId("");
+                  form.set("typeId", "");
                 }}
-                disabled={save.isPending}
+                disabled={form.submitting}
                 options={departmentOptions(
                   (departments.data ?? []).map((d) => ({
                     value: d.id,
@@ -230,8 +248,8 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
               <SearchableSelect
                 {...props}
                 value={typeId}
-                onChange={setTypeId}
-                disabled={save.isPending || !departmentId}
+                onChange={(value) => form.set("typeId", value)}
+                disabled={form.submitting || !departmentId}
                 options={(deviceTypes.data ?? [])
                   .filter((t) => t.status === "active")
                   .map((type) => ({ value: type.id, label: type.name }))}
@@ -248,8 +266,8 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
               <SearchableSelect
                 {...props}
                 value={locationId}
-                onChange={setLocationId}
-                disabled={save.isPending}
+                onChange={(value) => form.set("locationId", value)}
+                disabled={form.submitting}
                 options={(locations.data ?? []).map((location) => ({
                   value: location.id,
                   label: location.name,
@@ -270,9 +288,9 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
               <AssetCascadePicker
                 assets={assets.data ?? []}
                 value={assetId ? [assetId] : []}
-                onChange={(ids) => setAssetId(ids[0] ?? "")}
+                onChange={(ids) => form.set("assetId", ids[0] ?? "")}
                 multiple={false}
-                disabled={save.isPending}
+                disabled={form.submitting}
               />
             )}
           </Field>
@@ -281,8 +299,8 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
             <input
               type="checkbox"
               checked={active}
-              onChange={(event) => setActive(event.target.checked)}
-              disabled={save.isPending}
+              onChange={(event) => form.set("active", event.target.checked)}
+              disabled={form.submitting}
             />
             Offered when picking what a report is about
           </label>
@@ -293,12 +311,12 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
               size="sm"
               type="button"
               onClick={() => void navigate({ to: "/devices" })}
-              disabled={save.isPending}
+              disabled={form.submitting}
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={save.isPending || name.trim() === ""}>
-              {save.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
               {mode === "edit" ? "Save changes" : "Create device"}
             </Button>
           </div>

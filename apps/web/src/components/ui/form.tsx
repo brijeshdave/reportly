@@ -112,13 +112,20 @@ export function Field({ label, hint, error, required, children }: FieldProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
+      {/* The asterisk is drawn by CSS, not written into the label.
+          `aria-hidden` on a <span> keeps it out of the accessible name, but it is
+          still text inside the element — so "Password" stopped matching a label
+          reading "Password*" for anything that looks at text content, which broke
+          every exact-match query against a field the moment it became required. A
+          pseudo-element is visible, inert, and not part of the DOM's text. */}
+      <label
+        htmlFor={id}
+        className={cn(
+          "text-sm font-medium text-foreground",
+          required && "after:ml-0.5 after:text-destructive after:content-['*']",
+        )}
+      >
         {label}
-        {required ? (
-          <span aria-hidden="true" className="ml-0.5 text-destructive">
-            *
-          </span>
-        ) : null}
       </label>
       {children({
         id,

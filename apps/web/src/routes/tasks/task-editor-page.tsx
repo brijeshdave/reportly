@@ -201,7 +201,7 @@ export function TaskEditorPage({ mode, taskId }: { mode: "create" | "edit"; task
       />
 
       <Card className="mt-4">
-        <form ref={form.formRef} onSubmit={form.handleSubmit} className="flex flex-col gap-4 p-6">
+        <form {...form.formProps} className="flex flex-col gap-4 p-6">
           {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
           <Field label="Title" required error={form.errorFor("title")}>

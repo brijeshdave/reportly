@@ -516,15 +516,19 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
   // line when it stopped. Somebody who logs downtime should not thereby be able to
   // assign work to other people.
   {
-    // The person who *does* the work. `tasks:update` is narrowed by the server to a
-    // task they hold — see `assertMayUpdateTask` — so this tier moves their own work
-    // along and gives work to nobody. The tier that was asked for and did not exist:
-    // "cannot create tasks, but does work on the tasks assigned to them".
+    // The person who *does* the work. `tasks:update` is narrowed by `updateTask` to
+    // a task they are on or assigned, so this tier moves their own work along and
+    // gives work to nobody. The tier that was asked for and did not exist: "cannot
+    // create tasks, but does work on the tasks assigned to them".
     name: "Tasks editor",
     permissions: [PERMISSIONS.TASKS_READ, PERMISSIONS.TASKS_UPDATE],
   },
   {
-    // Hands work out, and may update anybody's task.
+    // Hands work out. `tasks:update` is still narrowed by `updateTask`: changing a
+    // task beyond its state takes being the person who assigned it, or having
+    // somebody on it in your downline. The permission opens the screen; it does not
+    // make every task in the company editable, and the comment here used to say it
+    // did.
     name: "Tasks admin",
     permissions: [
       PERMISSIONS.TASKS_READ,

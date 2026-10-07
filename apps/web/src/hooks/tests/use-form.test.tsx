@@ -34,7 +34,7 @@ function TestForm({ submit }: { submit: (payload: unknown) => Promise<unknown> }
   });
 
   return (
-    <form ref={form.formRef} onSubmit={form.handleSubmit}>
+    <form {...form.formProps}>
       <Field label="Title" error={form.errorFor("title")}>
         {(props) => <Input {...props} {...form.register("title")} />}
       </Field>
@@ -127,7 +127,7 @@ describe("useForm", () => {
         submit,
       });
       return (
-        <form ref={form.formRef} onSubmit={form.handleSubmit}>
+        <form {...form.formProps}>
           {/* `email` is validated but never registered — the case that went quiet. */}
           <Field label="Title" error={form.errorFor("title")}>
             {(props) => <Input {...props} {...form.register("title")} />}

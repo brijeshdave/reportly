@@ -90,7 +90,10 @@ test("a task assigned to somebody reaches their bell, and can be cleared", async
       },
       { timeout: 45_000, message: "the assigned task never reached the bell" },
     )
-    .toMatch(/1 unread/);
+    // "waiting for you", not "unread": the badge counts the `action` lane now —
+    // things with something for this person to do — rather than every unread type.
+    // A task assigned to somebody is squarely one of those.
+    .toMatch(/1 waiting for you/);
 
   await bell.click();
   const panel = page.getByRole("menu", { name: "Notifications" });

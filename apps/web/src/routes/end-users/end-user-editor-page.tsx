@@ -160,7 +160,7 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
       />
 
       <Card className="mt-2 max-w-2xl p-6">
-        <form ref={form.formRef} onSubmit={form.handleSubmit} className="flex flex-col gap-4">
+        <form {...form.formProps} className="flex flex-col gap-4">
           {/* Whatever could not be blamed on a field — a permission, a conflict. */}
           {form.formError ? <ErrorAlert error={form.formError} /> : null}
           {remove.error ? <ErrorAlert error={remove.error} /> : null}

@@ -68,6 +68,21 @@ export interface FormHandle<Values extends object> {
   };
   /** Put on the <form> so a failed submit can move focus to the first bad field. */
   formRef: React.RefObject<HTMLFormElement | null>;
+  /**
+   * Everything the `<form>` element needs: `{...form.formProps}`.
+   *
+   * `noValidate` is the part worth spelling out. A `type="email"` or `type="number"`
+   * input makes the browser validate on submit and show its own bubble — which
+   * **stops the submit handler running at all**, so the form's own message never
+   * appears. The result was one field explaining itself in a grey tooltip that
+   * vanishes on the next click while every other field on the same form showed a
+   * persistent line underneath. One validator, one presentation.
+   */
+  formProps: {
+    ref: React.RefObject<HTMLFormElement | null>;
+    onSubmit: (event: FormEvent) => void;
+    noValidate: true;
+  };
 }
 
 export function useForm<Values extends object, Payload>({
@@ -237,6 +252,7 @@ export function useForm<Values extends object, Payload>({
       handleSubmit,
       register,
       formRef,
+      formProps: { ref: formRef, onSubmit: handleSubmit, noValidate: true as const },
     }),
     [errorFor, errors, formError, handleSubmit, register, reset, set, submitting, values],
   );

@@ -637,11 +637,7 @@ function WorkForm({
   });
 
   return (
-    <form
-      ref={form.formRef}
-      onSubmit={form.handleSubmit}
-      className="flex flex-col gap-3 rounded-xl border border-border p-4"
-    >
+    <form {...form.formProps} className="flex flex-col gap-3 rounded-xl border border-border p-4">
       {form.formError ? <ErrorAlert error={form.formError} /> : null}
       <Field label="What you did" required error={form.errorFor("summary")}>
         {(props) => (

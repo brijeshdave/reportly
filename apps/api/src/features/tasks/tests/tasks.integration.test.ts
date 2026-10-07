@@ -1220,3 +1220,83 @@ describe("the raised-by filter", () => {
     ]);
   });
 });
+
+describe("who may create and change a task", () => {
+  // Reported from use: "create-own permission is given to the user but still when
+  // they access the page by clicking create task, it says not authorized. will they
+  // be able to update their own task or not? ... hope the user will not able to
+  // update other's task as I have to give him Task Admin role."
+  //
+  // The page guard was the bug and is fixed in the router. These pin the answers to
+  // the two questions behind it, because they are about the server and nothing in
+  // the UI can be trusted to prove them.
+
+  it("lets `tasks:create-own` create a task for themselves, and nobody else", async () => {
+    const admin = await superadmin();
+    // The shipped Member role, which carries `tasks:create-own` — rather than
+    // building a bespoke one, so this tests the configuration people actually get.
+    const memberGroup = await makeGroup(admin, "Members", "Member");
+    const solo = await makeUser(admin, "Solo Worker", "solo", memberGroup);
+    const other = await makeUser(admin, "Other Person", "other", memberGroup);
+
+    const mine = await inject("POST", "/tasks", solo.cookie, {
+      locationId: siteId,
+      title: "My own job",
+      assigneeIds: [solo.id],
+      dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    expect(mine.statusCode, mine.body).toBe(201);
+
+    // The grant is "own": handing work to somebody else is refused, which is the
+    // whole difference between it and `tasks:create`.
+    const theirs = await inject("POST", "/tasks", solo.cookie, {
+      locationId: siteId,
+      title: "Your job",
+      assigneeIds: [other.id],
+      dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    expect(theirs.statusCode).toBe(403);
+  });
+
+  it("does not let a tasks admin rewrite a task from outside their line", async () => {
+    // The fear behind the question. `tasks:update` opens the screen; it does not
+    // make every task in the company editable. Changing one beyond its state takes
+    // being the person who assigned it, or having somebody on it in your downline.
+    const admin = await superadmin();
+    const { lead, operator, outsider } = await buildChain(admin);
+
+    const task = (
+      await inject("POST", "/tasks", lead.cookie, {
+        locationId: siteId,
+        title: "Lead's task for their own operator",
+        assigneeIds: [operator.id],
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+      })
+    ).json();
+
+    const adminGroup = await makeGroup(admin, "Task admins", "Tasks admin");
+    const taskAdmin = await makeUser(admin, "Tara Admin", "tara", adminGroup);
+
+    const refused = await inject("PATCH", `/tasks/${task.id}`, taskAdmin.cookie, {
+      title: "Rewritten by somebody with no part in it",
+    });
+    // A **404**, not a 403, and that is the stronger answer: a task outside their
+    // line is not visible to them at all, so there is nothing to refuse them from.
+    // Telling them "forbidden" would confirm the task exists, which is a leak of its
+    // own — the same reason `requireTask` 404s rather than 403s everywhere else.
+    expect(refused.statusCode).toBe(404);
+
+    // And the person who assigned it still can.
+    const allowed = await inject("PATCH", `/tasks/${task.id}`, lead.cookie, {
+      title: "Renamed by the person who handed it out",
+    });
+    expect(allowed.statusCode, allowed.body).toBe(200);
+
+    // `outsider` is in the same company and a different chain — the control that
+    // makes "not sideways" a fact rather than an assumption.
+    const sideways = await inject("PATCH", `/tasks/${task.id}`, outsider.cookie, {
+      title: "Rewritten from another chain",
+    });
+    expect(sideways.statusCode).toBe(404);
+  });
+});

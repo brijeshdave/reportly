@@ -24,8 +24,8 @@ export const usernameSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .min(3)
-  .max(32)
+  .min(3, "A username needs at least three characters.")
+  .max(32, "Keep a username under 32 characters.")
   .regex(/^[a-z0-9._-]+$/, "Use letters, numbers, dot, underscore or hyphen");
 
 /**
@@ -76,7 +76,7 @@ export const userSchema = z
   .object({
     id: uuidSchema,
     name: nameSchema,
-    email: z.string().email(),
+    email: z.string().email("That is not an email address."),
     username: z.string(),
     avatarUrl: z.string().url().nullable().optional(),
     /**
@@ -137,7 +137,7 @@ export const createUserSchema = z.object({
   name: nameSchema,
   email: z.string().email(),
   username: usernameSchema,
-  password: z.string().min(1).optional(),
+  password: z.string().min(1, "Type a password, or leave the box unticked.").optional(),
   avatarUrl: z.string().url().optional(),
   designationId: uuidSchema.nullable().optional(),
   employeeId: employeeIdSchema.optional(),

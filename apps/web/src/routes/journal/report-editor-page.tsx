@@ -358,11 +358,7 @@ function Editor({
           with a dropdown per level, and a deep path needs room to read rather than
           being cut off. Still capped, so lines of prose do not run the full width
           of a large monitor. */}
-      <form
-        ref={editor.formRef}
-        onSubmit={editor.handleSubmit}
-        className="mt-2 flex max-w-5xl flex-col gap-4"
-      >
+      <form {...editor.formProps} className="mt-2 flex max-w-5xl flex-col gap-4">
         {/* What could not be blamed on a field — a permission, a conflict, a network
             failure. Everything the server could attribute is under its own input. */}
         {editor.formError ? <ErrorAlert error={editor.formError} /> : null}
