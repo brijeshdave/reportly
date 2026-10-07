@@ -11,14 +11,21 @@
 // Editing a role changes what every group holding it may do, retroactively. That is
 // why system roles are frozen, and why editing a held role names who it affects
 // before the save, not after.
-import { ALL_PERMISSIONS, type Permission, type Role } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ALL_PERMISSIONS,
+  createRoleSchema,
+  type CreateRole,
+  type Permission,
+  type Role,
+} from "@reportly/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { PageTabs } from "@/components/page-tabs.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { PERMISSION_GROUPS, actionOf, resourceLabel } from "@/routes/roles/permission-groups.js";
 import { useToast } from "@/components/toaster.js";
@@ -70,9 +77,8 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
   const toast = useToast();
   const copy = COPY[mode];
 
-  const [name, setName] = useState(
-    mode === "clone" ? `${role?.name ?? ""} copy` : mode === "edit" ? (role?.name ?? "") : "",
-  );
+  const initialName =
+    mode === "clone" ? `${role?.name ?? ""} copy` : mode === "edit" ? (role?.name ?? "") : "";
   const [selected, setSelected] = useState<Set<Permission>>(
     new Set(mode === "create" ? [] : ((role?.permissions ?? []) as Permission[])),
   );
@@ -100,22 +106,27 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
     }
   };
 
-  const save = useMutation({
-    mutationFn: () => {
+  // The route's own schema, so a name the API refuses — a duplicate, or an empty
+  // one — lands under the field rather than above the permission grid.
+  const form = useForm<{ name: string }, CreateRole>({
+    schema: createRoleSchema,
+    initial: { name: initialName },
+    toPayload: (v) => ({ name: v.name.trim(), permissions: [...selected] }),
+    submit: (input) => {
       const permissions = [...selected];
-      if (mode === "edit") return updateRole(role!.id, { name: name.trim(), permissions });
+      if (mode === "edit") return updateRole(role!.id, { name: input.name, permissions });
       if (mode === "clone") {
         const unchanged =
           role !== undefined &&
           permissions.length === role.permissions.length &&
           role.permissions.every((permission) => selected.has(permission as Permission));
-        return cloneRole(role!.id, name.trim()).then((created) =>
+        return cloneRole(role!.id, input.name).then((created) =>
           unchanged ? created : updateRole(created.id, { permissions }),
         );
       }
-      return createRole(name.trim(), permissions);
+      return createRole(input.name, permissions);
     },
-    onSuccess: done,
+    onSuccess: (saved) => done(saved as Parameters<typeof done>[0]),
   });
 
   const toggle = (permission: Permission) =>
@@ -136,11 +147,6 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
       return next;
     });
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
-
   const affected = references.data ?? [];
   const group = PERMISSION_GROUPS.find((g) => g.id === activeTab) ?? PERMISSION_GROUPS[0];
   const groupAll = group?.permissions.every((p) => selected.has(p)) ?? false;
@@ -157,8 +163,9 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
         }
       />
 
-      <form onSubmit={submit} className="mt-2 flex flex-col gap-4">
-        {save.error ? <ErrorAlert error={save.error} /> : null}
+      <form {...form.formProps} className="mt-2 flex flex-col gap-4">
+        {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
         {mode === "edit" && affected.length > 0 ? (
           <Alert tone="info">
@@ -169,21 +176,14 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
         ) : null}
 
         <div className="max-w-md">
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
-              <Input
-                {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                autoFocus
-                disabled={save.isPending}
-              />
+              <Input {...props} {...form.register("name")} autoFocus disabled={form.submitting} />
             )}
           </Field>
         </div>
 
-        <fieldset className="flex flex-col gap-4" disabled={save.isPending}>
+        <fieldset className="flex flex-col gap-4" disabled={form.submitting}>
           <legend className="sr-only">Permissions</legend>
 
           {/* Counts on the tabs, so where a role's power sits is visible without
@@ -273,12 +273,12 @@ function Editor({ mode, role }: { mode: RoleEditorPageMode; role?: Role }) {
               size="sm"
               type="button"
               onClick={() => void navigate({ to: "/roles" })}
-              disabled={save.isPending}
+              disabled={form.submitting}
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={save.isPending || name.trim() === ""}>
-              {save.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
               {copy.submit}
             </Button>
           </div>

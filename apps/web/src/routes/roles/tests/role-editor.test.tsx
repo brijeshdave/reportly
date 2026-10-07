@@ -98,9 +98,20 @@ describe("creating", () => {
     expect(screen.getAllByRole("button", { name: "Select all" }).length).toBeGreaterThan(1);
   });
 
-  it("cannot submit without a name", async () => {
+  it("refuses a nameless role, and says where the problem is", async () => {
+    // The button used to be disabled instead. That is worse, not safer: a dead
+    // button tells somebody they cannot proceed and not what to fix, and on a page
+    // whose other control is a grid of two hundred checkboxes it reads as the form
+    // being broken. It submits, is refused, and the reason appears under the field.
+    const user = userEvent.setup({ delay: null });
     await renderEditor("create");
-    expect(screen.getByRole("button", { name: "Create role" })).toBeDisabled();
+
+    const submit = screen.getByRole("button", { name: "Create role" });
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    expect(await screen.findByText("This cannot be empty.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
   });
 });
 

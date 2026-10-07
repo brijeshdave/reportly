@@ -5,20 +5,23 @@
 // out so it never looks like a mistake.
 import {
   PERMISSIONS,
+  createShiftSchema,
   formatMinutesOfDay,
   parseMinutesOfDay,
   shiftDurationMinutes,
+  type CreateShift,
   type Shift,
   type ShiftColor,
 } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { useToast } from "@/components/toaster.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { cn } from "@/lib/cn.js";
@@ -27,6 +30,17 @@ import { ColorPicker } from "@/routes/shifts/color-picker.js";
 /** Sunday first, matching the calendar header and `Date.getDay()`. */
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 import { createShift, deleteShift, fetchShift, updateShift } from "@/services/shifts.js";
+
+/** What the form holds. Clock fields stay as `HH:mm`; the payload converts them. */
+interface ShiftForm {
+  name: string;
+  code: string;
+  color: ShiftColor;
+  runsOnDays: number[];
+  start: string;
+  end: string;
+  active: boolean;
+}
 
 export type ShiftEditorMode = "create" | "edit";
 
@@ -48,16 +62,37 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
   const queryClient = useQueryClient();
   const toast = useToast();
 
-  const [name, setName] = useState(shift?.name ?? "");
-  const [code, setCode] = useState(shift?.code ?? "");
-  const [color, setColor] = useState<ShiftColor>(shift?.color ?? "blue");
-  const [runsOnDays, setRunsOnDays] = useState<number[]>(
-    shift?.runsOnDays ?? [0, 1, 2, 3, 4, 5, 6],
-  );
-  const [start, setStart] = useState(formatMinutesOfDay(shift?.startMinute ?? 9 * 60));
-  const [end, setEnd] = useState(formatMinutesOfDay(shift?.endMinute ?? 17 * 60));
-  const [active, setActive] = useState((shift?.status ?? "active") === "active");
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // The route's own schema. The clock fields are kept as the `HH:mm` the input
+  // speaks and converted on the way out — the API counts minutes from midnight, and
+  // one place should know that.
+  const form = useForm<ShiftForm, CreateShift>({
+    schema: createShiftSchema,
+    initial: {
+      name: shift?.name ?? "",
+      code: shift?.code ?? "",
+      color: shift?.color ?? "blue",
+      runsOnDays: shift?.runsOnDays ?? [0, 1, 2, 3, 4, 5, 6],
+      start: formatMinutesOfDay(shift?.startMinute ?? 9 * 60),
+      end: formatMinutesOfDay(shift?.endMinute ?? 17 * 60),
+      active: (shift?.status ?? "active") === "active",
+    },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      code: v.code.trim().toUpperCase(),
+      color: v.color,
+      runsOnDays: v.runsOnDays,
+      // `null` when the box is empty or half-typed. The schema's message for a
+      // missing number reads better than one for `NaN`.
+      startMinute: parseMinutesOfDay(v.start) ?? undefined,
+      endMinute: parseMinutesOfDay(v.end) ?? undefined,
+      status: v.active ? ("active" as const) : ("disabled" as const),
+    }),
+    submit: (input) => (mode === "edit" ? updateShift(shift!.id, input) : createShift(input)),
+    onSuccess: (saved) => done(saved as Parameters<typeof done>[0]),
+  });
+  const { code, color, runsOnDays, start, end, active } = form.values;
 
   const startMinute = parseMinutesOfDay(start);
   const endMinute = parseMinutesOfDay(end);
@@ -83,34 +118,14 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
     }
   };
 
-  const save = useMutation({
-    mutationFn: () => {
-      const input = {
-        name: name.trim(),
-        code: code.trim().toUpperCase(),
-        color,
-        runsOnDays,
-        startMinute: startMinute!,
-        endMinute: endMinute!,
-        status: active ? ("active" as const) : ("disabled" as const),
-      };
-      return mode === "edit" ? updateShift(shift!.id, input) : createShift(input);
-    },
-    onSuccess: done,
-  });
-
   const remove = useMutation({
     mutationFn: () => deleteShift(shift!.id),
     onSuccess: removed,
   });
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
-
-  const canSave =
-    name.trim() !== "" && code.trim() !== "" && bothValid && !zeroLength && !save.isPending;
+  // The shape rules are the schema's now; this is the one the schema cannot express,
+  // because a zero-length shift is only wrong once both ends are read together.
+  const canSave = !zeroLength && !form.submitting;
 
   return (
     <>
@@ -138,36 +153,36 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
       />
 
       <Card className="mt-2 max-w-lg p-6">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {save.error ? <ErrorAlert error={save.error} /> : null}
+        <form {...form.formProps} className="flex flex-col gap-4">
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
           {remove.error ? <ErrorAlert error={remove.error} /> : null}
 
           <div className="flex gap-4">
             <div className="flex-1">
-              <Field label="Name">
+              <Field label="Name" required error={form.errorFor("name")}>
                 {(props) => (
                   <Input
                     {...props}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    required
+                    {...form.register("name")}
                     autoFocus
-                    disabled={save.isPending}
+                    disabled={form.submitting}
                     placeholder="e.g. Morning"
                   />
                 )}
               </Field>
             </div>
             <div className="w-24">
-              <Field label="Code" hint="1–2 chars">
+              <Field label="Code" required error={form.errorFor("code")} hint="1–2 chars">
                 {(props) => (
                   <Input
                     {...props}
+                    name="code"
                     value={code}
-                    onChange={(event) => setCode(event.target.value.toUpperCase().slice(0, 2))}
+                    onChange={(event) =>
+                      form.set("code", event.target.value.toUpperCase().slice(0, 2))
+                    }
                     maxLength={2}
-                    required
-                    disabled={save.isPending}
+                    disabled={form.submitting}
                     placeholder="e.g. G"
                     className="text-center uppercase"
                   />
@@ -181,8 +196,8 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
             <ColorPicker
               label="Shift colour"
               value={color}
-              onChange={setColor}
-              disabled={save.isPending}
+              onChange={(next) => form.set("color", next)}
+              disabled={form.submitting}
             />
           </div>
 
@@ -197,12 +212,15 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
                     type="button"
                     aria-pressed={on}
                     aria-label={label}
-                    disabled={save.isPending}
+                    disabled={form.submitting}
                     onClick={() =>
-                      setRunsOnDays((current) =>
-                        current.includes(index)
-                          ? current.filter((day) => day !== index)
-                          : [...current, index].sort((a, b) => a - b),
+                      // `form.set` takes a value, not an updater — the current list
+                      // is right here, so there is nothing to thread through.
+                      form.set(
+                        "runsOnDays",
+                        runsOnDays.includes(index)
+                          ? runsOnDays.filter((day) => day !== index)
+                          : [...runsOnDays, index].sort((a, b) => a - b),
                       )
                     }
                     className={cn(
@@ -225,14 +243,13 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
 
           <div className="flex gap-4">
             <div className="flex-1">
-              <Field label="Starts">
+              <Field label="Starts" required error={form.errorFor("startMinute")}>
                 {(props) => (
                   <Input
                     {...props}
                     type="time"
-                    value={start}
-                    onChange={(event) => setStart(event.target.value)}
-                    disabled={save.isPending}
+                    {...form.register("start")}
+                    disabled={form.submitting}
                   />
                 )}
               </Field>
@@ -248,9 +265,8 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
                   <Input
                     {...props}
                     type="time"
-                    value={end}
-                    onChange={(event) => setEnd(event.target.value)}
-                    disabled={save.isPending}
+                    {...form.register("end")}
+                    disabled={form.submitting}
                   />
                 )}
               </Field>
@@ -269,8 +285,8 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
             <input
               type="checkbox"
               checked={active}
-              onChange={(event) => setActive(event.target.checked)}
-              disabled={save.isPending}
+              onChange={(event) => form.set("active", event.target.checked)}
+              disabled={form.submitting}
             />
             Available for scheduling
           </label>
@@ -281,12 +297,12 @@ function Editor({ mode, shift }: { mode: ShiftEditorMode; shift?: Shift }) {
               size="sm"
               type="button"
               onClick={() => void navigate({ to: "/shifts" })}
-              disabled={save.isPending}
+              disabled={form.submitting}
             >
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={!canSave}>
-              {save.isPending ? <Spinner /> : null}
+              {form.submitting ? <Spinner /> : null}
               {mode === "edit" ? "Save changes" : "Create shift"}
             </Button>
           </div>
