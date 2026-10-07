@@ -206,7 +206,12 @@ export type NotificationDeliverySettings = z.infer<typeof notificationDeliverySc
  */
 export const partsModuleSchema = z.object({
   enabled: z.boolean().default(false),
-  failureWindowDays: z.number().int().min(0).max(365).default(14),
+  failureWindowDays: z
+    .number({ message: "Type a number of days." })
+    .int("Whole days only.")
+    .min(0, "Zero or more — zero switches the reversal off.")
+    .max(365, "A year is as far out as this can reach.")
+    .default(14),
 });
 
 export type PartsModuleSettings = z.infer<typeof partsModuleSchema>;

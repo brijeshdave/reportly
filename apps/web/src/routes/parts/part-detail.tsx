@@ -10,11 +10,15 @@ import {
   CONSUMABLE_UNIT_LABELS,
   PART_STATUS_LABELS,
   PERMISSIONS,
+  deployPartSchema,
   formatDateTime,
   meanPages,
   pagesFor,
+  returnPartSchema,
   yieldPercent,
   type Consumable,
+  type DeployPart,
+  type ReturnPart,
   PART_EVENT_KINDS,
   PART_EVENT_LABELS,
   type Part,
@@ -31,6 +35,7 @@ import { useState } from "react";
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
@@ -101,9 +106,6 @@ function TourPages({
 
 function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
   const queryClient = useQueryClient();
-  const [deviceId, setDeviceId] = useState("");
-  const [note, setNote] = useState("");
-  const [meterStart, setMeterStart] = useState("");
   // Only the machines this model fits. Asked of the server, which is the same
   // place that refuses an incompatible deploy — a second copy of the rule in the
   // browser is one that can disagree with it.
@@ -112,96 +114,115 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
     queryFn: () => fetchFittingDevices(part.id),
   });
 
-  const deploy = useMutation({
-    mutationFn: () =>
-      deployPart(part.id, {
-        deviceId,
-        ...(note.trim() ? { note: note.trim() } : {}),
-        ...(meterStart.trim() ? { meterStart: Number(meterStart) } : {}),
-      }),
+  // The route's own schema. `deviceId` is a uuid there, so installing without
+  // choosing a printer is refused at the picker in the shared wording rather than
+  // by the Install button quietly going inert.
+  const form = useForm({
+    schema: deployPartSchema,
+    initial: { deviceId: "", note: "", meterStart: "" },
+    toPayload: (v) => ({
+      deviceId: v.deviceId,
+      ...(v.note.trim() ? { note: v.note.trim() } : {}),
+      // Blank means "not read", which is a legitimate answer here — so it is left
+      // out rather than coerced, and `Number("")` never becomes a page count of 0.
+      ...(v.meterStart.trim() ? { meterStart: Number(v.meterStart) } : {}),
+    }),
+    submit: (input) => deployPart(part.id, input as DeployPart),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["parts"] });
       onDone();
     },
   });
+  const { deviceId } = form.values;
 
   return (
-    <Card className="space-y-3 p-4">
-      <h2 className="text-sm font-semibold">Install on a printer</h2>
-      {deploy.error ? <ErrorAlert error={deploy.error} /> : null}
-      <Field label="Printer" hint={`Only machines ${part.partModelName} fits are listed.`}>
-        {(props) => (
-          <SearchableSelect
-            {...props}
-            value={deviceId}
-            onChange={setDeviceId}
-            // The type goes underneath rather than trailing the name: a floor of
-            // fifty printers is a list to search, not to read.
-            //
-            // A machine that already holds one of these is shown greyed and names
-            // the cartridge in the way, rather than being dropped from the list —
-            // "it should be shown disabled non selectable showing cartridge number
-            // install in there". A missing printer reads as a broken list.
-            options={(devices.data ?? []).map((device) => ({
-              value: device.id,
-              label: device.name,
-              hint: device.occupiedBy
-                ? `${device.occupiedBy} is already in it`
-                : (device.typeName ?? undefined),
-              disabled: Boolean(device.occupiedBy),
-            }))}
-            placeholder="Choose…"
-          />
-        )}
-      </Field>
-      {!devices.isLoading &&
-      (devices.data ?? []).length > 0 &&
-      (devices.data ?? []).every((device) => device.occupiedBy) ? (
-        <p className="text-xs text-muted-foreground">
-          Every machine here already has a {part.partModelName} in it. Book one of those back in
-          before installing this one.
-        </p>
-      ) : null}
-      {!devices.isLoading && (devices.data ?? []).length === 0 ? (
-        // The honest answer to an empty picker. Without it this reads as a
-        // broken dropdown, when it is really a model that fits nothing yet or a
-        // company with no machine of a type it fits.
-        <p className="text-xs text-muted-foreground">
-          No machine here takes a {part.partModelName}. Either its model fits no device type yet —
-          set that with <strong>Fits</strong> under{" "}
-          <Link to="/cartridges/setup" className="text-primary hover:underline">
-            Cartridge setup
-          </Link>{" "}
-          — or no device of a fitting type has been registered.
-        </p>
-      ) : null}
-      <Field
-        label="Printer's page counter"
-        hint="Optional. What the machine reads right now — the other half of it is taken when the part comes back out, and the pages are the difference."
-      >
-        {(props) => (
-          <Input
-            {...props}
-            type="number"
-            min="0"
-            inputMode="numeric"
-            className="w-40"
-            value={meterStart}
-            onChange={(e) => setMeterStart(e.target.value)}
-          />
-        )}
-      </Field>
-      <Field label="Note" hint="Optional.">
-        {(props) => <Input {...props} value={note} onChange={(e) => setNote(e.target.value)} />}
-      </Field>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button size="sm" disabled={!deviceId || deploy.isPending} onClick={() => deploy.mutate()}>
-          Install
-        </Button>
-      </div>
+    <Card className="p-4">
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...form.formProps} className="space-y-3">
+        <h2 className="text-sm font-semibold">Install on a printer</h2>
+        {/* Whatever could not be blamed on a field. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        <Field
+          label="Printer"
+          required
+          error={form.errorFor("deviceId")}
+          hint={`Only machines ${part.partModelName} fits are listed.`}
+        >
+          {(props) => (
+            <SearchableSelect
+              {...props}
+              name="deviceId"
+              value={deviceId}
+              onChange={(value) => form.set("deviceId", value)}
+              // The type goes underneath rather than trailing the name: a floor of
+              // fifty printers is a list to search, not to read.
+              //
+              // A machine that already holds one of these is shown greyed and names
+              // the cartridge in the way, rather than being dropped from the list —
+              // "it should be shown disabled non selectable showing cartridge number
+              // install in there". A missing printer reads as a broken list.
+              options={(devices.data ?? []).map((device) => ({
+                value: device.id,
+                label: device.name,
+                hint: device.occupiedBy
+                  ? `${device.occupiedBy} is already in it`
+                  : (device.typeName ?? undefined),
+                disabled: Boolean(device.occupiedBy),
+              }))}
+              placeholder="Choose…"
+            />
+          )}
+        </Field>
+        {!devices.isLoading &&
+        (devices.data ?? []).length > 0 &&
+        (devices.data ?? []).every((device) => device.occupiedBy) ? (
+          <p className="text-xs text-muted-foreground">
+            Every machine here already has a {part.partModelName} in it. Book one of those back in
+            before installing this one.
+          </p>
+        ) : null}
+        {!devices.isLoading && (devices.data ?? []).length === 0 ? (
+          // The honest answer to an empty picker. Without it this reads as a
+          // broken dropdown, when it is really a model that fits nothing yet or a
+          // company with no machine of a type it fits.
+          <p className="text-xs text-muted-foreground">
+            No machine here takes a {part.partModelName}. Either its model fits no device type yet —
+            set that with <strong>Fits</strong> under{" "}
+            <Link to="/cartridges/setup" className="text-primary hover:underline">
+              Cartridge setup
+            </Link>{" "}
+            — or no device of a fitting type has been registered.
+          </p>
+        ) : null}
+        <Field
+          label="Printer's page counter"
+          error={form.errorFor("meterStart")}
+          hint="Optional. What the machine reads right now — the other half of it is taken when the part comes back out, and the pages are the difference."
+        >
+          {(props) => (
+            <Input
+              {...props}
+              type="number"
+              min="0"
+              inputMode="numeric"
+              className="w-40"
+              {...form.register("meterStart")}
+            />
+          )}
+        </Field>
+        <Field label="Note" hint="Optional." error={form.errorFor("note")}>
+          {(props) => <Input {...props} {...form.register("note")} />}
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={onDone}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
+            Install
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
@@ -217,9 +238,6 @@ function ReturnForm({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [outcome, setOutcome] = useState<"ok" | "faulty">("ok");
-  const [note, setNote] = useState("");
-  const [pages, setPages] = useState("");
   const [reversed, setReversed] = useState<boolean | null>(null);
 
   // A reading was taken when it went in, so the matching one closes the pair.
@@ -227,25 +245,35 @@ function ReturnForm({
   // would be two ways to say the same thing and a reader deciding which we meant.
   const metered = openTour?.meterStart !== null && openTour?.meterStart !== undefined;
 
-  const book = useMutation({
-    mutationFn: () =>
-      returnPart(part.id, {
-        outcome,
-        ...(note.trim() ? { note: note.trim() } : {}),
-        ...(pages.trim()
-          ? metered
-            ? { meterEnd: Number(pages) }
-            : { pagesPrinted: Number(pages) }
-          : {}),
-      }),
+  // The route's own schema. Nothing here is required, so what it catches is the
+  // out-of-range page count — which the one box on screen is about, and which
+  // used to come back as a sentence above the card.
+  const form = useForm({
+    schema: returnPartSchema,
+    initial: { outcome: "ok" as "ok" | "faulty", note: "", pages: "" },
+    toPayload: (v) => ({
+      outcome: v.outcome,
+      ...(v.note.trim() ? { note: v.note.trim() } : {}),
+      // Left out when blank rather than coerced: `Number("")` is 0, and a tour
+      // that printed nothing is a different claim from one nobody counted.
+      ...(v.pages.trim()
+        ? metered
+          ? { meterEnd: Number(v.pages) }
+          : { pagesPrinted: Number(v.pages) }
+        : {}),
+    }),
+    submit: (input) => returnPart(part.id, input as ReturnPart),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["parts"] });
       // Said here rather than left for a leaderboard next week. If nothing was
       // reversed the form simply closes: there is no news in "nothing happened".
-      if (result.pointsReversed) setReversed(true);
+      if ((result as { pointsReversed?: boolean }).pointsReversed) setReversed(true);
       else onDone();
     },
   });
+  // The page count goes to whichever of the two keys this tour is counted by, so
+  // a refusal about it comes back named for that one.
+  const pagesError = form.errorFor(metered ? "meterEnd" : "pagesPrinted");
 
   if (reversed) {
     return (
@@ -266,57 +294,65 @@ function ReturnForm({
   }
 
   return (
-    <Card className="space-y-3 p-4">
-      <h2 className="text-sm font-semibold">Book back into the workshop</h2>
-      {book.error ? <ErrorAlert error={book.error} /> : null}
-      <Field
-        label="How did it end?"
-        hint="Faulty is a decision, not a note: inside the failure window it reverses the points for the service before this one."
-      >
-        {(props) => (
-          <Select
-            {...props}
-            value={outcome}
-            onChange={(e) => setOutcome(e.target.value as "ok" | "faulty")}
-          >
-            <option value="ok">Worked — came off for the usual reason</option>
-            <option value="faulty">Faulty — it did not work properly</option>
-          </Select>
-        )}
-      </Field>
-      <Field
-        label={metered ? "Printer's page counter" : "Pages printed this tour"}
-        hint={
-          metered
-            ? `Optional. It read ${openTour!.meterStart!.toLocaleString()} when this cartridge went in — the difference is what it printed.`
-            : "Optional. No counter was read when it went in, so this is the whole number."
-        }
-      >
-        {(props) => (
-          <Input
-            {...props}
-            type="number"
-            min="0"
-            inputMode="numeric"
-            className="w-40"
-            value={pages}
-            onChange={(e) => setPages(e.target.value)}
-          />
-        )}
-      </Field>
-      <Field label="Note" hint="Optional. What went wrong, if anything.">
-        {(props) => (
-          <Textarea {...props} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-        )}
-      </Field>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button size="sm" disabled={book.isPending} onClick={() => book.mutate()}>
-          Book in
-        </Button>
-      </div>
+    <Card className="p-4">
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...form.formProps} className="space-y-3">
+        <h2 className="text-sm font-semibold">Book back into the workshop</h2>
+        {/* Whatever could not be blamed on a field. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        <Field
+          label="How did it end?"
+          required
+          error={form.errorFor("outcome")}
+          hint="Faulty is a decision, not a note: inside the failure window it reverses the points for the service before this one."
+        >
+          {(props) => (
+            <Select {...props} {...form.register("outcome")}>
+              <option value="ok">Worked — came off for the usual reason</option>
+              <option value="faulty">Faulty — it did not work properly</option>
+            </Select>
+          )}
+        </Field>
+        <Field
+          label={metered ? "Printer's page counter" : "Pages printed this tour"}
+          error={pagesError}
+          hint={
+            metered
+              ? `Optional. It read ${openTour!.meterStart!.toLocaleString()} when this cartridge went in — the difference is what it printed.`
+              : "Optional. No counter was read when it went in, so this is the whole number."
+          }
+        >
+          {(props) => (
+            <Input
+              {...props}
+              type="number"
+              min="0"
+              inputMode="numeric"
+              className="w-40"
+              {...form.register("pages")}
+              // Named for the key the payload actually carries, so a refusal the
+              // server sends about it finds this box.
+              name={metered ? "meterEnd" : "pagesPrinted"}
+            />
+          )}
+        </Field>
+        <Field
+          label="Note"
+          hint="Optional. What went wrong, if anything."
+          error={form.errorFor("note")}
+        >
+          {(props) => <Textarea {...props} rows={2} {...form.register("note")} />}
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={onDone}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
+            Book in
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }

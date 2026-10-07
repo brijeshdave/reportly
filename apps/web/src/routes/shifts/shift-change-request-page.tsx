@@ -2,13 +2,19 @@
 // Requesting a shift change: pick one of your own shifts in a department's month, add
 // an optional suggested colleague to swap with, and a note. It goes to your reporting
 // manager, who confirms who to swap with and approves — see Scheduling → Shift change.
-import { formatDate, formatMonthYear, type ScheduleGrid } from "@reportly/shared";
-import { useMutation, useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  createSwapRequestSchema,
+  formatDate,
+  formatMonthYear,
+  type CreateSwapRequest,
+} from "@reportly/shared";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Alert, Field, Select, Spinner } from "@/components/ui/form.js";
 import { Button, Card, PageHeader } from "@/components/ui/primitives.js";
@@ -60,10 +66,6 @@ export function ShiftChangeRequestPage() {
     enabled: effectiveDept !== null,
   });
 
-  const [requesterEntryId, setRequesterEntryId] = useState("");
-  const [counterpartEntryId, setCounterpartEntryId] = useState("");
-  const [note, setNote] = useState("");
-
   // My own changeable cells this month (a working shift or a weekly off).
   const mineShifts = useMemo(
     () =>
@@ -74,6 +76,32 @@ export function ShiftChangeRequestPage() {
   );
   const cellLabel = (e: (typeof mineShifts)[number]) =>
     e.state === "off" ? "W/O" : (e.shiftName ?? "—");
+
+  /** The rota the chosen shift sits on — what the request is posted against. */
+  const scheduleId = useRef<string | null>(null);
+
+  // Declared above `chosen`, which reads the chosen shift out of it. The schedule
+  // it posts to therefore cannot be read from the grid here: that would make the
+  // form's type depend on the grid, whose query depends on the chosen shift, which
+  // comes back out of the form. An explicitly typed ref breaks that circle, and is
+  // filled in below as soon as the grid has loaded.
+  //
+  // The route's own schema. `requesterEntryId` is a uuid there, so leaving the
+  // shift unchosen is refused in the shared wording ("Choose one.") at the picker
+  // — which is what the Send button used to express by going inert instead.
+  const form = useForm({
+    schema: createSwapRequestSchema,
+    initial: { requesterEntryId: "", counterpartEntryId: "", note: "" },
+    toPayload: (v) => ({
+      requesterEntryId: v.requesterEntryId,
+      counterpartEntryId: v.counterpartEntryId || null,
+      note: v.note.trim() || undefined,
+    }),
+    submit: (input) => requestSwap(scheduleId.current as string, input as CreateSwapRequest),
+    onSuccess: () => navigate({ to: "/schedule/changes" }),
+  });
+  const { requesterEntryId, note } = form.values;
+
   const chosen = mineShifts.find((e) => e.entryId === requesterEntryId);
 
   // The colleagues to suggest come from the rota the chosen cell is on — which is
@@ -90,6 +118,7 @@ export function ShiftChangeRequestPage() {
     enabled: effectiveDept !== null && chosen !== undefined,
   });
   const data = grid.data;
+  scheduleId.current = data?.schedule?.id ?? null;
   // The department's HOD is never a swap target — they approve changes, not take them.
   const hodIds = useMemo(
     () => new Set((data?.members ?? []).filter((m) => m.isHod).map((m) => m.userId)),
@@ -111,16 +140,6 @@ export function ShiftChangeRequestPage() {
   );
   const nameOf = (userId: string) => data?.members.find((m) => m.userId === userId)?.name ?? "—";
 
-  const submit = useMutation({
-    mutationFn: () =>
-      requestSwap((data as ScheduleGrid).schedule!.id, {
-        requesterEntryId,
-        counterpartEntryId: counterpartEntryId || null,
-        note: note.trim() || undefined,
-      }),
-    onSuccess: () => navigate({ to: "/schedule/changes" }),
-  });
-
   return (
     <>
       <PageHeader
@@ -138,7 +157,8 @@ export function ShiftChangeRequestPage() {
       />
 
       <Card className="mt-2 max-w-xl p-6">
-        <div className="flex flex-col gap-4">
+        {/* Nested rather than replacing the div: `Card` takes no `asChild`. */}
+        <form {...form.formProps} className="flex flex-col gap-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1">
               <Field label="Department">
@@ -153,8 +173,7 @@ export function ShiftChangeRequestPage() {
                       value={effectiveDept ?? ""}
                       onChange={(value) => {
                         setDepartmentId(value || null);
-                        setRequesterEntryId("");
-                        setCounterpartEntryId("");
+                        form.reset({ requesterEntryId: "", counterpartEntryId: "", note: note });
                       }}
                       options={deptOptions}
                       placeholder="Pick a department"
@@ -200,14 +219,16 @@ export function ShiftChangeRequestPage() {
             </Alert>
           ) : (
             <>
-              <Field label="Which shift?">
+              <Field label="Which shift?" required error={form.errorFor("requesterEntryId")}>
                 {(props) => (
                   <Select
                     {...props}
+                    name="requesterEntryId"
                     value={requesterEntryId}
                     onChange={(e) => {
-                      setRequesterEntryId(e.target.value);
-                      setCounterpartEntryId("");
+                      form.set("requesterEntryId", e.target.value);
+                      // The suggestion belonged to the old shift's rota and day.
+                      form.set("counterpartEntryId", "");
                     }}
                   >
                     <option value="">Choose a shift…</option>
@@ -225,13 +246,12 @@ export function ShiftChangeRequestPage() {
               </Field>
 
               {chosen ? (
-                <Field label="Suggest swapping with (optional)">
+                <Field
+                  label="Suggest swapping with (optional)"
+                  error={form.errorFor("counterpartEntryId")}
+                >
                   {(props) => (
-                    <Select
-                      {...props}
-                      value={counterpartEntryId}
-                      onChange={(e) => setCounterpartEntryId(e.target.value)}
-                    >
+                    <Select {...props} {...form.register("counterpartEntryId")}>
                       <option value="">No suggestion — let the manager choose</option>
                       {candidates.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -244,12 +264,11 @@ export function ShiftChangeRequestPage() {
                 </Field>
               ) : null}
 
-              <Field label="Note (optional)">
+              <Field label="Note (optional)" error={form.errorFor("note")}>
                 {(props) => (
                   <textarea
                     {...props}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
+                    {...form.register("note")}
                     rows={2}
                     maxLength={500}
                     placeholder="Why you need the change"
@@ -258,20 +277,18 @@ export function ShiftChangeRequestPage() {
                 )}
               </Field>
 
-              {submit.error ? <ErrorAlert error={submit.error} /> : null}
+              {/* Whatever could not be blamed on a field. */}
+              {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
               <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  disabled={!requesterEntryId || submit.isPending}
-                  onClick={() => submit.mutate()}
-                >
+                <Button type="submit" size="sm" disabled={form.submitting}>
+                  {form.submitting ? <Spinner /> : null}
                   Send request
                 </Button>
               </div>
             </>
           )}
-        </div>
+        </form>
       </Card>
     </>
   );

@@ -8,6 +8,7 @@ import {
   discordHandleSchema,
   employeeIdSchema,
   groupSchema,
+  inviteUserSchema,
   listQuerySchema,
   mobileSchema,
   nameSchema,
@@ -166,7 +167,7 @@ export async function usersRoutes(fastify: FastifyInstance): Promise<void> {
       schema: {
         tags: ["Users"],
         summary: "Invite a user (emails a set-password link; no access until assigned to a group)",
-        body: z.object({ email: z.string().email(), name: nameSchema }),
+        body: inviteUserSchema,
         response: { 201: userSchema },
       },
     },

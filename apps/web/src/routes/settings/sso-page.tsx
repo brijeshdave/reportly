@@ -42,6 +42,17 @@ export function SsoPage() {
   );
 }
 
+/**
+ * What each required field is called on this screen. The shared rule returns the
+ * config's own keys, which is right for the API and wrong to read: "Fill in
+ * clientId and issuer" names two things that are not labelled that anywhere above.
+ */
+const FIELD_LABELS: Record<string, string> = {
+  clientId: "the client ID",
+  clientSecret: "the client secret",
+  issuer: "the issuer URL",
+};
+
 function ProviderCard({ id, config }: { id: SsoProviderId; config: RedactedSsoProvider }) {
   const canManage = usePermission(PERMISSIONS.SETTINGS_MANAGE);
   const queryClient = useQueryClient();
@@ -140,7 +151,10 @@ function ProviderCard({ id, config }: { id: SsoProviderId; config: RedactedSsoPr
         ) : null}
 
         {!canEnable && !config.enabled ? (
-          <Alert tone="info">Fill in {missing.join(" and ")} before enabling this provider.</Alert>
+          <Alert tone="info">
+            Fill in {missing.map((field) => FIELD_LABELS[field]).join(" and ")} before enabling this
+            provider.
+          </Alert>
         ) : null}
 
         <div className="flex justify-end gap-2">

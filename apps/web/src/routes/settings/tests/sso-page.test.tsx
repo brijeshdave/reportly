@@ -104,7 +104,9 @@ describe("SsoPage", () => {
     renderPage();
 
     await user.type(within(cardFor("Google")).getByLabelText("Client ID"), "cid");
-    expect(within(cardFor("Google")).getByRole("status")).toHaveTextContent("clientSecret");
+    // By the label above the box, not the config key: "Fill in clientSecret" names
+    // something that is not written anywhere on this screen.
+    expect(within(cardFor("Google")).getByRole("status")).toHaveTextContent("the client secret");
   });
 
   it("allows enabling once every required field is present", async () => {

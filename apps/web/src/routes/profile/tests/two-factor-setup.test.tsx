@@ -55,7 +55,11 @@ describe("two-factor enrolment", () => {
     renderSetup();
 
     expect(screen.getByLabelText("Current password")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+
+    // Empty: it says so at the field rather than going inert, and sends nothing.
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("Type your current password.")).toBeInTheDocument();
+    expect(startTwoFactorEnrolment).not.toHaveBeenCalled();
 
     await user.type(screen.getByLabelText("Current password"), "Sup3rSecretPass");
     await user.click(screen.getByRole("button", { name: "Continue" }));

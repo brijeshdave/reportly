@@ -126,16 +126,18 @@ describe("confirmation", () => {
     expect(await screen.findByLabelText("Confirm new password")).toBeInTheDocument();
   });
 
-  it("refuses to submit while the two do not match", async () => {
+  it("refuses to submit while the two do not match, and says which field", async () => {
     const user = userEvent.setup({ delay: null });
     renderSecurity();
 
     await user.type(await screen.findByLabelText("Current password"), "OldPassw0rd!");
     await user.type(screen.getByLabelText("New password"), "N3wPassphrase!");
     await user.type(screen.getByLabelText("Confirm new password"), "N3wPassphrase");
+    await user.click(submitButton());
 
-    expect(screen.getByText("Passwords don't match")).toBeInTheDocument();
-    expect(submitButton()).toBeDisabled();
+    // The button stays live and answers, rather than going inert: that it refused
+    // and why are the same event, and the reason sits under the box it is about.
+    expect(await screen.findByText("This does not match the new password.")).toBeInTheDocument();
     expect(changePassword).not.toHaveBeenCalled();
   });
 
@@ -147,7 +149,6 @@ describe("confirmation", () => {
     await user.type(screen.getByLabelText("New password"), "N3wPassphrase!");
     await user.type(screen.getByLabelText("Confirm new password"), "N3wPassphrase!");
 
-    expect(submitButton()).toBeEnabled();
     await user.click(submitButton());
 
     expect(changePassword).toHaveBeenCalledWith({
@@ -162,22 +163,29 @@ describe("policy gating", () => {
     const user = userEvent.setup({ delay: null });
     renderSecurity();
 
-    // Long enough, but no symbol — which this policy requires.
+    // Long enough, but no symbol — which this policy requires. The form knows that
+    // because it checks with the same function the API does, against the rules the
+    // server reported, so it cannot be more or less strict than the real thing.
     await user.type(await screen.findByLabelText("Current password"), "OldPassw0rd!");
     await user.type(screen.getByLabelText("New password"), "N3wPassphrase");
     await user.type(screen.getByLabelText("Confirm new password"), "N3wPassphrase");
+    await user.click(submitButton());
 
-    expect(submitButton()).toBeDisabled();
+    expect(
+      await screen.findByText("This does not meet every requirement listed above."),
+    ).toBeInTheDocument();
     expect(changePassword).not.toHaveBeenCalled();
   });
 
-  it("still needs the current password", async () => {
+  it("still needs the current password, and says so at that field", async () => {
     const user = userEvent.setup({ delay: null });
     renderSecurity();
 
     await user.type(await screen.findByLabelText("New password"), "N3wPassphrase!");
     await user.type(screen.getByLabelText("Confirm new password"), "N3wPassphrase!");
+    await user.click(submitButton());
 
-    expect(submitButton()).toBeDisabled();
+    expect(await screen.findByText("Type your current password.")).toBeInTheDocument();
+    expect(changePassword).not.toHaveBeenCalled();
   });
 });

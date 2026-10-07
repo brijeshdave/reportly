@@ -34,7 +34,11 @@ export type RequestChannelCode = z.infer<typeof requestChannelCodeSchema>;
 
 export const confirmChannelCodeSchema = z.object({
   channel: channelSchema,
-  code: z.string().trim().min(4).max(12),
+  code: z
+    .string()
+    .trim()
+    .min(4, "Type the code from the message.")
+    .max(12, "That is longer than any code we send."),
 });
 export type ConfirmChannelCode = z.infer<typeof confirmChannelCodeSchema>;
 

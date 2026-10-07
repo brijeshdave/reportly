@@ -1,7 +1,7 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Company detail. Locations are listed here rather than on their own page: they
 // only exist inside a company, and the API scopes them that way too.
-import { PERMISSIONS, type Company } from "@reportly/shared";
+import { PERMISSIONS, createCompanySchema, type Company } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -17,6 +17,7 @@ import {
 } from "@/components/unsaved-changes.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { sessionQuery } from "@/lib/queries.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { LocationsTab } from "@/routes/companies/locations-tab.js";
@@ -219,41 +220,36 @@ function DeleteCompanyDialog({ company, onClose }: { company: Company; onClose: 
 }
 
 function RenameCompany({ companyId, name }: { companyId: string; name: string }) {
-  const [value, setValue] = useState(name);
   const canUpdate = usePermission(PERMISSIONS.COMPANIES_UPDATE);
   const queryClient = useQueryClient();
+  const [saved, setSaved] = useState(false);
 
-  useUnsavedChanges("settings", value.trim() !== name);
-
-  const rename = useMutation({
-    mutationFn: () => updateCompany(companyId, value.trim()),
+  // The create route's own schema, narrowed to the one field this card edits, so
+  // renaming refuses exactly what creating refuses and in the same words.
+  const form = useForm({
+    schema: createCompanySchema.pick({ name: true }),
+    initial: { name },
+    toPayload: (v) => ({ name: v.name.trim() }),
+    submit: (input) => updateCompany(companyId, (input as { name: string }).name),
     onSuccess: async () => {
+      setSaved(true);
       await queryClient.invalidateQueries({ queryKey: ["companies"] });
     },
   });
+  const typed = form.values.name.trim();
+
+  useUnsavedChanges("settings", typed !== name);
 
   return (
     <Card className="max-w-lg p-6">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          rename.mutate();
-        }}
-        className="flex flex-col gap-4"
-      >
-        {rename.error ? <ErrorAlert error={rename.error} /> : null}
-        {rename.isSuccess && value.trim() === name ? (
-          <Alert tone="success">Company renamed.</Alert>
-        ) : null}
+      <form {...form.formProps} className="flex flex-col gap-4">
+        {/* Whatever could not be blamed on the field — a permission, a conflict. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        {saved && typed === name ? <Alert tone="success">Company renamed.</Alert> : null}
 
-        <Field label="Company name">
+        <Field label="Company name" required error={form.errorFor("name")}>
           {(props) => (
-            <Input
-              {...props}
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              disabled={!canUpdate || rename.isPending}
-            />
+            <Input {...props} {...form.register("name")} disabled={!canUpdate || form.submitting} />
           )}
         </Field>
 
@@ -261,11 +257,11 @@ function RenameCompany({ companyId, name }: { companyId: string; name: string })
           <Button
             type="submit"
             size="sm"
-            disabled={
-              !canUpdate || rename.isPending || value.trim() === "" || value.trim() === name
-            }
+            // Permission and nothing-to-save only. An empty name now answers at the
+            // field instead of quietly disabling the button.
+            disabled={!canUpdate || form.submitting || typed === name}
           >
-            {rename.isPending ? <Spinner /> : null}
+            {form.submitting ? <Spinner /> : null}
             Save changes
           </Button>
         </div>

@@ -30,6 +30,16 @@ export const nameSchema = z
   .min(1, "This cannot be empty.")
   .max(120, "Keep this under 120 characters.");
 
+/**
+ * An email address. Trimmed, because a copied address arrives with a space on the
+ * end more often than not, and that is not a mistake worth refusing over.
+ *
+ * Here rather than inline at each route for the reason above: `z.string().email()`
+ * says "Invalid email", which is exactly the kind of wording a person reads under
+ * their own typing and learns nothing from.
+ */
+export const emailSchema = z.string().trim().email("That is not an email address.");
+
 export const entityStatusSchema = z.enum(["active", "inactive"]);
 export type EntityStatus = z.infer<typeof entityStatusSchema>;
 

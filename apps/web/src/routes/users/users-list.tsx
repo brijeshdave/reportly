@@ -3,11 +3,18 @@
 // person: invite them (a dialog — it asks only for a name and an address) or
 // create them outright (a page — it asks for a login name, channels and possibly a
 // password). Every action is gated by the same permission the API enforces.
-import { PERMISSIONS, type User, formatDate, formatDateTime } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  PERMISSIONS,
+  inviteUserSchema,
+  type InviteUser,
+  type User,
+  formatDate,
+  formatDateTime,
+} from "@reportly/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Download, Mail, Upload, UserPlus } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 
 import { Avatar } from "@/components/avatar.js";
 import { Can, usePermission } from "@/components/can.js";
@@ -17,6 +24,7 @@ import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
+import { useForm } from "@/hooks/use-form.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { fetchDesignationOptions } from "@/services/designations.js";
 import {
@@ -288,31 +296,29 @@ export function UsersListPage() {
 }
 
 function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [sent, setSent] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const invite = useMutation({
-    mutationFn: inviteUser,
+  // The route's own schema. The refusal this dialog actually gets is an address
+  // already on the install, which only the server can know — it arrives naming
+  // `email` and lands under that field, where the typing is.
+  const form = useForm<{ name: string; email: string }, InviteUser>({
+    schema: inviteUserSchema,
+    initial: { name: "", email: "" },
+    toPayload: (v) => ({ name: v.name.trim(), email: v.email.trim() }),
+    submit: (input) => inviteUser(input),
     onSuccess: async (user) => {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
-      setSent(user.email);
-      setName("");
-      setEmail("");
+      setSent((user as User).email);
+      form.reset({ name: "", email: "" });
     },
   });
 
   if (!open) return null;
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    invite.mutate({ name: name.trim(), email: email.trim() });
-  };
-
   const close = () => {
     setSent(null);
-    invite.reset();
+    form.reset({ name: "", email: "" });
     onClose();
   };
 
@@ -340,41 +346,39 @@ function InviteUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
           </div>
         ) : (
-          <form onSubmit={submit} className="mt-4 flex flex-col gap-4">
-            {invite.error ? <ErrorAlert error={invite.error} /> : null}
+          <form {...form.formProps} className="mt-4 flex flex-col gap-4">
+            {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+            {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
-            <Field label="Full name">
+            <Field label="Full name" required error={form.errorFor("name")}>
               {(props) => (
-                <Input
-                  {...props}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  required
-                  autoFocus
-                  disabled={invite.isPending}
-                />
+                <Input {...props} {...form.register("name")} autoFocus disabled={form.submitting} />
               )}
             </Field>
 
-            <Field label="Email">
+            <Field label="Email" required error={form.errorFor("email")}>
               {(props) => (
                 <Input
                   {...props}
                   type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                  disabled={invite.isPending}
+                  {...form.register("email")}
+                  disabled={form.submitting}
                 />
               )}
             </Field>
 
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={close} disabled={invite.isPending}>
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                onClick={close}
+                disabled={form.submitting}
+              >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={invite.isPending}>
-                {invite.isPending ? <Spinner /> : null}
+              <Button type="submit" size="sm" disabled={form.submitting}>
+                {form.submitting ? <Spinner /> : null}
                 Send invitation
               </Button>
             </div>

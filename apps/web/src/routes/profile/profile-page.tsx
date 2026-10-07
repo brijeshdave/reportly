@@ -5,6 +5,7 @@
 import {
   PAGE_SIZE_OPTIONS,
   isPasswordValid,
+  nameSchema,
   TABLE_DENSITIES,
   THEME_PALETTES,
   type PageSize,
@@ -16,9 +17,11 @@ import {
 } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
+import { z } from "zod";
 
 import { PasswordField } from "@/components/auth/password-field.js";
+import { useForm } from "@/hooks/use-form.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import {
@@ -105,20 +108,27 @@ export function ProfilePage({ tab }: { tab: string }) {
 
 function ProfileTab() {
   const { data: session } = useQuery(sessionQuery);
-  const [name, setName] = useState(session?.user.name ?? "");
   const queryClient = useQueryClient();
+  const [saved, setSaved] = useState(false);
+
+  // `nameSchema` is the shared rule the API applies to this field, so an empty or
+  // over-long name is refused here in the same words rather than after a round trip.
+  const form = useForm({
+    schema: z.object({ name: nameSchema }),
+    initial: { name: session?.user.name ?? "" },
+    toPayload: (v) => ({ name: v.name.trim() }),
+    submit: (input) => updateMyProfile(input as { name: string }),
+    onSuccess: async () => {
+      setSaved(true);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.session });
+    },
+  });
+  const typed = form.values.name.trim();
 
   // The password fields on Security are deliberately not tracked: they are kept
   // while you move between tabs, but warning on close about a half-typed password
   // would be noise, not safety.
-  useUnsavedChanges("profile", name.trim() !== (session?.user.name ?? ""));
-
-  const save = useMutation({
-    mutationFn: () => updateMyProfile({ name: name.trim() }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.session });
-    },
-  });
+  useUnsavedChanges("profile", typed !== (session?.user.name ?? ""));
 
   if (!session) return <Spinner />;
 
@@ -135,25 +145,17 @@ function ProfileTab() {
       </Card>
 
       <Card className="p-6">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            save.mutate();
-          }}
-          className="flex flex-col gap-4"
-        >
-          {save.error ? <ErrorAlert error={save.error} /> : null}
-          {save.isSuccess ? <Alert tone="success">Profile updated.</Alert> : null}
+        <form {...form.formProps} className="flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
+          {/* Hidden again the moment the name differs from what was saved, which is
+              what typing in the box does — so the notice cannot sit over stale text. */}
+          {saved && typed === session.user.name ? (
+            <Alert tone="success">Profile updated.</Alert>
+          ) : null}
 
-          <Field label="Full name">
-            {(props) => (
-              <Input
-                {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={save.isPending}
-              />
-            )}
+          <Field label="Full name" required error={form.errorFor("name")}>
+            {(props) => <Input {...props} {...form.register("name")} disabled={form.submitting} />}
           </Field>
 
           <Field label="Email" hint="Contact an administrator to change your email.">
@@ -164,9 +166,11 @@ function ProfileTab() {
             <Button
               type="submit"
               size="sm"
-              disabled={save.isPending || name.trim() === "" || name.trim() === session.user.name}
+              // Only for having nothing to save, whose cause is on the screen. An
+              // empty name is no longer a reason to go inert — it says so instead.
+              disabled={form.submitting || typed === session.user.name}
             >
-              {save.isPending ? <Spinner /> : null}
+              {form.submitting ? <Spinner /> : null}
               Save changes
             </Button>
           </div>
@@ -187,21 +191,53 @@ function SecurityTab() {
 }
 
 function ChangePasswordCard() {
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
   // The rules come from the server, so the checklist always states the policy the
   // API will actually enforce.
   const { data: rules } = useQuery(passwordRulesQuery);
-
   const queryClient = useQueryClient();
+  const [saved, setSaved] = useState(false);
 
-  const change = useMutation({
-    mutationFn: () => changePassword({ currentPassword: current, newPassword: next }),
+  /**
+   * Built from the rules rather than written out, because the policy is a setting:
+   * `isPasswordValid` is the same function the API checks with, so the form cannot
+   * refuse a password the server would take, or accept one it would not.
+   *
+   * All three messages exist because this form used to answer with a dead button.
+   * An empty current password, an empty confirmation and a mismatch each disabled
+   * Change password and said nothing about which of them it was.
+   */
+  const schema = useMemo(
+    () =>
+      z
+        .object({
+          currentPassword: z.string().min(1, "Type your current password."),
+          newPassword: z
+            .string()
+            .min(1, "Choose a new password.")
+            // Until the rules load there is nothing to check against, so the server
+            // stays the judge rather than the form blocking on a policy it has not read.
+            .refine((value) => (rules ? isPasswordValid(rules, value) : true), {
+              message: "This does not meet every requirement listed above.",
+            }),
+          confirmPassword: z.string().min(1, "Type the new password again."),
+        })
+        .refine((v) => v.newPassword === v.confirmPassword, {
+          message: "This does not match the new password.",
+          path: ["confirmPassword"],
+        }),
+    [rules],
+  );
+
+  const form = useForm({
+    schema,
+    initial: { currentPassword: "", newPassword: "", confirmPassword: "" },
+    submit: (input) => {
+      const v = input as { currentPassword: string; newPassword: string };
+      return changePassword({ currentPassword: v.currentPassword, newPassword: v.newPassword });
+    },
     onSuccess: async () => {
-      setCurrent("");
-      setNext("");
-      setConfirm("");
+      setSaved(true);
+      form.reset({ currentPassword: "", newPassword: "", confirmPassword: "" });
       // The session carries `passwordExpired`, and changing the password is
       // exactly what clears it. Without this refetch the notice would stay up and
       // the app stay shut until the user thought to reload — having already done
@@ -209,18 +245,7 @@ function ChangePasswordCard() {
       await queryClient.invalidateQueries({ queryKey: sessionQuery.queryKey });
     },
   });
-
-  const mismatch = confirm.length > 0 && confirm !== next;
-  // Until the rules load, let the server be the judge rather than blocking the form.
-  const meetsPolicy = rules ? isPasswordValid(rules, next) : next.length > 0;
-  const canSubmit =
-    current.length > 0 && meetsPolicy && confirm.length > 0 && !mismatch && !change.isPending;
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit) return;
-    change.mutate();
-  };
+  const { currentPassword, newPassword, confirmPassword } = form.values;
 
   return (
     <Card className="max-w-lg p-6">
@@ -229,37 +254,51 @@ function ChangePasswordCard() {
         Changing it signs you out everywhere else.
       </p>
 
-      <form onSubmit={submit} className="mt-4 flex flex-col gap-4">
-        {change.error ? <ErrorAlert error={change.error} /> : null}
-        {change.isSuccess ? <Alert tone="success">Password changed.</Alert> : null}
+      <form {...form.formProps} className="mt-4 flex flex-col gap-4">
+        {/* What was not about one field: a wrong current password is the server's
+            to say, and it names the field, so it lands below rather than here. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        {/* Cleared as soon as anything is typed again, so the notice cannot sit
+            above a half-filled second attempt. */}
+        {saved && currentPassword === "" && newPassword === "" && confirmPassword === "" ? (
+          <Alert tone="success">Password changed.</Alert>
+        ) : null}
 
         <PasswordField
           label="Current password"
-          value={current}
-          onChange={setCurrent}
+          required
+          name="currentPassword"
+          value={currentPassword}
+          onChange={(value) => form.set("currentPassword", value)}
+          error={form.errorFor("currentPassword")}
           autoComplete="current-password"
-          disabled={change.isPending}
+          disabled={form.submitting}
         />
 
         <PasswordField
           label="New password"
-          value={next}
-          onChange={setNext}
+          required
+          name="newPassword"
+          value={newPassword}
+          onChange={(value) => form.set("newPassword", value)}
+          error={form.errorFor("newPassword")}
           rules={rules}
-          disabled={change.isPending}
+          disabled={form.submitting}
         />
 
         <PasswordField
           label="Confirm new password"
-          value={confirm}
-          onChange={setConfirm}
-          error={mismatch ? "Passwords don't match" : null}
-          disabled={change.isPending}
+          required
+          name="confirmPassword"
+          value={confirmPassword}
+          onChange={(value) => form.set("confirmPassword", value)}
+          error={form.errorFor("confirmPassword")}
+          disabled={form.submitting}
         />
 
         <div className="flex justify-end">
-          <Button type="submit" size="sm" disabled={!canSubmit}>
-            {change.isPending ? <Spinner /> : null}
+          <Button type="submit" size="sm" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
             Change password
           </Button>
         </div>

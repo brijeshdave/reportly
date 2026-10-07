@@ -4,6 +4,7 @@
 import { z } from "zod";
 
 import {
+  emailSchema,
   entityStatusSchema,
   nameSchema,
   timestampsSchema,
@@ -135,7 +136,7 @@ export type User = z.infer<typeof userSchema>;
  */
 export const createUserSchema = z.object({
   name: nameSchema,
-  email: z.string().email(),
+  email: emailSchema,
   username: usernameSchema,
   password: z.string().min(1, "Type a password, or leave the box unticked.").optional(),
   avatarUrl: z.string().url().optional(),
@@ -150,6 +151,22 @@ export const createUserSchema = z.object({
 });
 
 export type CreateUser = z.infer<typeof createUserSchema>;
+
+/**
+ * The other way to add a person: ask for a name and an address, and let them fill
+ * in the rest themselves from the set-password link.
+ *
+ * Shared rather than declared at the route because the invite dialog validates
+ * against it before sending. The address being already taken is the refusal this
+ * form actually gets, and only the server can make it — it comes back naming
+ * `email`, and lands under that field.
+ */
+export const inviteUserSchema = z.object({
+  name: nameSchema,
+  email: emailSchema,
+});
+
+export type InviteUser = z.infer<typeof inviteUserSchema>;
 
 /**
  * A password is set through the auth endpoints, never by editing the user.

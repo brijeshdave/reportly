@@ -33,6 +33,9 @@ export function PasswordField({
   onChange,
   rules,
   error,
+  required,
+  name,
+  onBlur,
   autoComplete = "new-password",
   disabled,
 }: {
@@ -42,6 +45,15 @@ export function PasswordField({
   /** Omit to hide the checklist (e.g. on sign-in, where the rules don't apply). */
   rules?: PasswordRules;
   error?: string | null;
+  required?: boolean;
+  /**
+   * The field's name in the form. Worth passing whenever `useForm` owns this
+   * input: it is how a failed submit finds the control to move focus to, and
+   * without it the message falls back to the form-level alert instead of staying
+   * under this field.
+   */
+  name?: string;
+  onBlur?: () => void;
   autoComplete?: string;
   disabled?: boolean;
 }) {
@@ -53,6 +65,7 @@ export function PasswordField({
     <Field
       label={label}
       error={error}
+      required={required}
       hint={
         items ? (
           <ul className="mt-0.5 space-y-1">
@@ -77,8 +90,10 @@ export function PasswordField({
           <Input
             {...fieldProps}
             type={visible ? "text" : "password"}
+            name={name}
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onBlur={onBlur}
             autoComplete={autoComplete}
             disabled={disabled}
             className="pr-10"

@@ -4,13 +4,14 @@
 // marking it verified would prove nothing. Email is always available; the rest
 // need a provider configured, and an unavailable channel says so rather than
 // offering a button that cannot work.
-import { type Channel, type ChannelStatus } from "@reportly/shared";
+import { confirmChannelCodeSchema, type Channel, type ChannelStatus } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, MessageCircle, Phone, Send, Mail } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card } from "@/components/ui/primitives.js";
 import { confirmChannelCode, fetchMyChannels, requestChannelCode } from "@/services/channels.js";
 
@@ -51,7 +52,6 @@ export function ChannelsTab() {
 
 function ChannelRow({ status }: { status: ChannelStatus }) {
   const queryClient = useQueryClient();
-  const [code, setCode] = useState("");
   const [sent, setSent] = useState(false);
   const Icon = ICON[status.channel];
 
@@ -60,20 +60,21 @@ function ChannelRow({ status }: { status: ChannelStatus }) {
     onSuccess: () => setSent(true),
   });
 
-  const confirm = useMutation({
-    mutationFn: () => confirmChannelCode(status.channel, code.trim()),
+  // Only the `code` half of the route's schema: the channel is this row, not
+  // something typed, and a form should validate what it draws. A wrong or lapsed
+  // code is the refusal this actually gets, and it is about the code — so it
+  // belongs under the box rather than in a banner above it.
+  const confirm = useForm({
+    schema: confirmChannelCodeSchema.pick({ code: true }),
+    initial: { code: "" },
+    submit: (input) => confirmChannelCode(status.channel, (input as { code: string }).code),
     onSuccess: async () => {
       setSent(false);
-      setCode("");
+      confirm.reset({ code: "" });
       await queryClient.invalidateQueries({ queryKey: ["me", "channels"] });
       await queryClient.invalidateQueries({ queryKey: ["users"] });
     },
   });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    confirm.mutate();
-  };
 
   // Nothing to verify without an address to send to.
   const addressed = status.destination !== null;
@@ -120,33 +121,28 @@ function ChannelRow({ status }: { status: ChannelStatus }) {
       {request.error ? <ErrorAlert error={request.error} /> : null}
 
       {sent && !status.verified ? (
-        <form onSubmit={submit} className="flex flex-col gap-2">
+        <form {...confirm.formProps} className="flex flex-col gap-2">
           <Alert tone="info">We sent a code to {status.destination}. Enter it below.</Alert>
-          {confirm.error ? <ErrorAlert error={confirm.error} /> : null}
+          {/* Whatever could not be blamed on the code — too many tries, a lapsed send. */}
+          {confirm.formError ? <ErrorAlert error={confirm.formError} /> : null}
 
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <Field label="Code">
+              <Field label="Code" required error={confirm.errorFor("code")}>
                 {(props) => (
                   <Input
                     {...props}
-                    value={code}
-                    onChange={(event) => setCode(event.target.value)}
+                    {...confirm.register("code")}
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     placeholder="123456"
-                    disabled={confirm.isPending}
+                    disabled={confirm.submitting}
                   />
                 )}
               </Field>
             </div>
-            <Button
-              type="submit"
-              size="sm"
-              className="mb-0.5"
-              disabled={confirm.isPending || code.trim() === ""}
-            >
-              {confirm.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" className="mb-0.5" disabled={confirm.submitting}>
+              {confirm.submitting ? <Spinner /> : null}
               Confirm
             </Button>
           </div>
