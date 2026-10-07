@@ -215,7 +215,11 @@ export const partSchema = z
   .object({
     id: uuidSchema,
     /** The label the team writes on the part. Unique within a company. */
-    identifier: z.string().trim().min(1).max(64),
+    identifier: z
+      .string()
+      .trim()
+      .min(1, "Give it the label your team writes on it.")
+      .max(64, "Keep this under 64 characters."),
     partModelId: uuidSchema,
     partModelName: nameSchema,
     status: partStatusSchema,

@@ -11,12 +11,14 @@ import {
   PART_STATUSES,
   PART_STATUS_LABELS,
   PERMISSIONS,
+  createPartSchema,
+  type CreatePart,
   type Part,
   type PartModel,
   type PartStatus,
   formatDate,
 } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Building2, Plus } from "lucide-react";
 import { useState } from "react";
@@ -25,6 +27,7 @@ import { Can } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Textarea } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
@@ -154,12 +157,17 @@ const initialColumnVisibility = {
   updatedAt: false,
 };
 
+/** What the form holds. Text as typed; the payload builder does the converting. */
+interface RegisterForm {
+  identifier: string;
+  partModelId: string;
+  status: "needs_service" | "ready";
+  locationId: string;
+  notes: string;
+}
+
 function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [identifier, setIdentifier] = useState("");
-  const [partModelId, setPartModelId] = useState(models[0]?.id ?? "");
-  const [status, setStatus] = useState<"needs_service" | "ready">("needs_service");
-  const [notes, setNotes] = useState("");
 
   /**
    * Where the cartridge lives.
@@ -171,103 +179,118 @@ function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () =>
    */
   const sites = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
   const activeSites = (sites.data ?? []).filter((site) => site.status === "active");
-  const [locationId, setLocationId] = useState("");
   const [siteTouched, setSiteTouched] = useState(false);
-  const effectiveSite = siteTouched
-    ? locationId
-    : (locationId ?? "") || (activeSites.length === 1 ? (activeSites[0]?.id ?? "") : "");
 
-  const create = useMutation({
-    mutationFn: () =>
-      createPart({
-        identifier,
-        partModelId,
-        status,
-        ...(effectiveSite ? { locationId: effectiveSite } : {}),
-        ...(notes.trim() ? { notes: notes.trim() } : {}),
-      }),
+  // The route's own schema. The identifier is unique within the company, which only
+  // the server knows — that refusal arrives named and lands under the field.
+  const form = useForm<RegisterForm, CreatePart>({
+    schema: createPartSchema,
+    initial: {
+      identifier: "",
+      partModelId: models[0]?.id ?? "",
+      status: "needs_service",
+      locationId: "",
+      notes: "",
+    },
+    toPayload: (v) => {
+      // Worked out here rather than from a value derived outside the hook: that
+      // would make the payload depend on the form and the form on the payload.
+      const site = siteTouched
+        ? v.locationId
+        : v.locationId || (activeSites.length === 1 ? (activeSites[0]?.id ?? "") : "");
+      return {
+        identifier: v.identifier.trim(),
+        partModelId: v.partModelId,
+        status: v.status,
+        ...(site ? { locationId: site } : {}),
+        ...(v.notes.trim() ? { notes: v.notes.trim() } : {}),
+      };
+    },
+    submit: (input) => createPart(input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["parts"] });
       onClose();
     },
   });
+  const { partModelId, status, locationId } = form.values;
+  // What the picker shows: the same rule the payload uses, for the one-site case
+  // where asking a question with a single possible answer wastes somebody's time.
+  const effectiveSite = siteTouched
+    ? locationId
+    : locationId || (activeSites.length === 1 ? (activeSites[0]?.id ?? "") : "");
 
   return (
-    <Card className="space-y-3 p-4">
-      <h2 className="text-sm font-semibold">Register a cartridge</h2>
-      {create.error ? <ErrorAlert error={create.error} /> : null}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Identifier" hint="The label your team writes on it. Unique here.">
-          {(props) => (
-            <Input
-              {...props}
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="TN-0042"
-            />
-          )}
-        </Field>
-        <Field label="Model">
-          {(props) => (
-            <SearchableSelect
-              {...props}
-              value={partModelId}
-              onChange={setPartModelId}
-              options={models.map((model) => ({ value: model.id, label: model.name }))}
-              placeholder="Choose a model…"
-            />
-          )}
-        </Field>
-        <Field
-          label="Site"
-          hint="Where it is kept. Cartridges are shown to the people who work at their site; one left unplaced is visible to everybody."
-        >
-          {(props) => (
-            <SearchableSelect
-              {...props}
-              value={effectiveSite}
-              onChange={(value) => {
-                setSiteTouched(true);
-                setLocationId(value);
-              }}
-              options={activeSites.map((site) => ({ value: site.id, label: site.name }))}
-              placeholder="Not placed anywhere"
-            />
-          )}
-        </Field>
-      </div>
-      <Field
-        label="Is it usable now?"
-        hint="A new cartridge from the supplier is ready to go out. One collected from a printer for refilling is not, and only a ready one can be installed."
-      >
-        {(props) => (
-          <Select
-            {...props}
-            value={status}
-            onChange={(e) => setStatus(e.target.value as "needs_service" | "ready")}
+    <Card className="p-4">
+      <form {...form.formProps} className="space-y-3">
+        <h2 className="text-sm font-semibold">Register a cartridge</h2>
+        {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Identifier"
+            required
+            error={form.errorFor("identifier")}
+            hint="The label your team writes on it. Unique here."
           >
-            <option value="needs_service">Needs service — refill or repair it first</option>
-            <option value="ready">Ready — full and deployable</option>
-          </Select>
-        )}
-      </Field>
-      <Field label="Notes" hint="Optional.">
-        {(props) => (
-          <Textarea {...props} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        )}
-      </Field>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          disabled={!identifier.trim() || !partModelId || create.isPending}
-          onClick={() => create.mutate()}
+            {(props) => <Input {...props} {...form.register("identifier")} placeholder="TN-0042" />}
+          </Field>
+          <Field label="Model" required error={form.errorFor("partModelId")}>
+            {(props) => (
+              <SearchableSelect
+                {...props}
+                value={partModelId}
+                onChange={(next) => form.set("partModelId", next)}
+                options={models.map((model) => ({ value: model.id, label: model.name }))}
+                placeholder="Choose a model…"
+              />
+            )}
+          </Field>
+          <Field
+            label="Site"
+            hint="Where it is kept. Cartridges are shown to the people who work at their site; one left unplaced is visible to everybody."
+          >
+            {(props) => (
+              <SearchableSelect
+                {...props}
+                value={effectiveSite}
+                onChange={(value) => {
+                  setSiteTouched(true);
+                  form.set("locationId", value);
+                }}
+                options={activeSites.map((site) => ({ value: site.id, label: site.name }))}
+                placeholder="Not placed anywhere"
+              />
+            )}
+          </Field>
+        </div>
+        <Field
+          label="Is it usable now?"
+          hint="A new cartridge from the supplier is ready to go out. One collected from a printer for refilling is not, and only a ready one can be installed."
         >
-          Register
-        </Button>
-      </div>
+          {(props) => (
+            <Select
+              {...props}
+              name="status"
+              value={status}
+              onChange={(e) => form.set("status", e.target.value as "needs_service" | "ready")}
+            >
+              <option value="needs_service">Needs service — refill or repair it first</option>
+              <option value="ready">Ready — full and deployable</option>
+            </Select>
+          )}
+        </Field>
+        <Field label="Notes" error={form.errorFor("notes")} hint="Optional.">
+          {(props) => <Textarea {...props} rows={2} {...form.register("notes")} />}
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" type="submit" disabled={form.submitting}>
+            Register
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
