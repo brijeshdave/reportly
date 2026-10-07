@@ -238,6 +238,7 @@ function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () =>
             {(props) => (
               <SearchableSelect
                 {...props}
+                name="partModelId"
                 value={partModelId}
                 onChange={(next) => form.set("partModelId", next)}
                 options={models.map((model) => ({ value: model.id, label: model.name }))}
@@ -252,6 +253,7 @@ function RegisterForm({ models, onClose }: { models: PartModel[]; onClose: () =>
             {(props) => (
               <SearchableSelect
                 {...props}
+                name="locationId"
                 value={effectiveSite}
                 onChange={(value) => {
                   setSiteTouched(true);

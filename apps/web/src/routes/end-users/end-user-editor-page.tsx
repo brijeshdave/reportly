@@ -215,6 +215,7 @@ function Editor({ mode, person }: { mode: EndUserEditorMode; person?: EndUser })
                 <SearchableSelect
                   id={props.id}
                   aria-describedby={props["aria-describedby"]}
+                  name="departmentId"
                   value={departmentId}
                   onChange={(next) => form.set("departmentId", next)}
                   options={deptOptions}

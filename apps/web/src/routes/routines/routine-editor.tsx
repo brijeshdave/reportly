@@ -210,6 +210,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
               ) : (
                 <SearchableSelect
                   ariaLabel="Department"
+                  name="departmentId"
                   value={effectiveDept}
                   onChange={(next) => form.set("departmentId", next)}
                   options={deptOptions}

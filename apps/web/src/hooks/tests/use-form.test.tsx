@@ -109,6 +109,41 @@ describe("useForm", () => {
     );
   });
 
+  it("reports a drawn field once, not twice", async () => {
+    // The other side of the net below. A control that carries its field's `name` is
+    // found, so the message belongs under it and nowhere else — repeating it in the
+    // form-level alert would make every refusal on a picker read as two problems.
+    // Worth pinning because the net is deliberately generous, and a control that
+    // cannot take a `name` (a custom picker built on a <button>) silently falls into
+    // it.
+    const submit = vi.fn();
+
+    function NamedForm() {
+      const form = useForm({
+        schema,
+        initial: { title: "", email: "a@b.co" },
+        submit,
+      });
+      return (
+        <form {...form.formProps}>
+          <Field label="Title" error={form.errorFor("title")}>
+            {(props) => <Input {...props} {...form.register("title")} />}
+          </Field>
+          {form.formError ? <p role="alert">{(form.formError as Error).message}</p> : null}
+          <button type="submit">Save</button>
+        </form>
+      );
+    }
+
+    render(<NamedForm />);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Give it a title")).toBeInTheDocument();
+    // Once. The alert is for what could not be placed.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it("never refuses in silence, even when a bad field is not on the screen", async () => {
     // Reported from use, about the journal editor's work fields: "no proper errors or
     // some times no errors shown". They were validated and not drawn, so the messages

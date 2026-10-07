@@ -1,17 +1,24 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Companies list. Creating a company also creates its Remote location, which the
 // API guarantees and this page tells the user up front.
-import { PERMISSIONS, type Company, formatDate } from "@reportly/shared";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  PERMISSIONS,
+  createCompanySchema,
+  formatDate,
+  type Company,
+  type CreateCompany,
+} from "@reportly/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 
 import { Can } from "@/components/can.js";
 import { DataTable, type TableColumn } from "@/components/data-table/data-table.js";
 import type { FilterDef } from "@/components/data-table/filter-sidebar.js";
 import { Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, PageHeader } from "@/components/ui/primitives.js";
 import { useListResource } from "@/hooks/use-list-resource.js";
 import { createCompany } from "@/services/companies.js";
@@ -105,23 +112,25 @@ export function CompaniesListPage() {
 }
 
 function NewCompanyDialog({ onClose }: { onClose: () => void }) {
-  const [name, setName] = useState("");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const create = useMutation({
-    mutationFn: createCompany,
+  // The route's own schema, so a name the API refuses lands under the one input
+  // this dialog has rather than above it.
+  const form = useForm<{ name: string }, CreateCompany>({
+    schema: createCompanySchema,
+    initial: { name: "" },
+    toPayload: (v) => ({ name: v.name.trim() }),
+    submit: (input) => createCompany(input.name),
     onSuccess: async (company) => {
       await queryClient.invalidateQueries({ queryKey: ["companies"] });
       onClose();
-      await navigate({ to: "/companies/$companyId", params: { companyId: company.id } });
+      await navigate({
+        to: "/companies/$companyId",
+        params: { companyId: (company as { id: string }).id },
+      });
     },
   });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    create.mutate(name.trim());
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -138,28 +147,28 @@ function NewCompanyDialog({ onClose }: { onClose: () => void }) {
           report from.
         </p>
 
-        <form onSubmit={submit} className="mt-4 flex flex-col gap-4">
-          {create.error ? <ErrorAlert error={create.error} /> : null}
+        <form {...form.formProps} className="mt-4 flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
-              <Input
-                {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-                autoFocus
-                disabled={create.isPending}
-              />
+              <Input {...props} {...form.register("name")} autoFocus disabled={form.submitting} />
             )}
           </Field>
 
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={onClose} disabled={create.isPending}>
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={onClose}
+              disabled={form.submitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={create.isPending || name.trim() === ""}>
-              {create.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={form.submitting}>
+              {form.submitting ? <Spinner /> : null}
               Create company
             </Button>
           </div>

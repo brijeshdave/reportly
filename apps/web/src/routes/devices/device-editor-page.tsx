@@ -216,6 +216,7 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
             {(props) => (
               <SearchableSelect
                 {...props}
+                name="departmentId"
                 value={departmentId}
                 onChange={(value) => {
                   form.set("departmentId", value);
@@ -247,6 +248,7 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
             {(props) => (
               <SearchableSelect
                 {...props}
+                name="typeId"
                 value={typeId}
                 onChange={(value) => form.set("typeId", value)}
                 disabled={form.submitting || !departmentId}
@@ -265,6 +267,7 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
             {(props) => (
               <SearchableSelect
                 {...props}
+                name="locationId"
                 value={locationId}
                 onChange={(value) => form.set("locationId", value)}
                 disabled={form.submitting}

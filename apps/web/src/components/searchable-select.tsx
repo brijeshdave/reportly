@@ -31,6 +31,7 @@ export interface SelectOption {
 
 export function SearchableSelect({
   id,
+  name,
   value,
   onChange,
   options,
@@ -42,6 +43,15 @@ export function SearchableSelect({
 }: {
   /** Put `Field`'s id here, or its `<label for>` points at nothing. */
   id?: string;
+  /**
+   * The key this control stands for on its form.
+   *
+   * Not posted anywhere — the trigger is a button, not an input — but it is how a
+   * form finds the control to move focus to when the field it names is refused.
+   * Without it the message has a place on the screen and nothing to scroll to, and
+   * `useForm` reports it a second time as an error it could not attribute.
+   */
+  name?: string;
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
@@ -137,6 +147,7 @@ export function SearchableSelect({
       <button
         ref={buttonRef}
         id={id}
+        name={name}
         type="button"
         disabled={disabled}
         aria-label={ariaLabel}

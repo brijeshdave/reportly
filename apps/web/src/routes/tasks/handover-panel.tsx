@@ -9,13 +9,19 @@
 // may assign the task. The outgoing person is released, not removed: they stay on
 // the task, they are on the entry when the work is written up, and the author
 // divides the points between everybody who did it.
-import { formatDate, type Task, type TaskAssignee } from "@reportly/shared";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  formatDate,
+  handoverTaskSchema,
+  type HandoverTask,
+  type Task,
+  type TaskAssignee,
+} from "@reportly/shared";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRightLeft } from "lucide-react";
-import { useState } from "react";
 
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Field, Input, Select, Spinner } from "@/components/ui/form.js";
 import { Button, Card } from "@/components/ui/primitives.js";
 import { sessionQuery } from "@/lib/queries.js";
@@ -27,10 +33,6 @@ export function HandoverPanel({ task, onDone }: { task: Task; onDone: () => Prom
   const me = session?.user;
   const onIt: TaskAssignee[] = task.assignees.filter((person) => !person.released);
 
-  const [from, setFrom] = useState(onIt[0]?.id ?? "");
-  const [to, setTo] = useState("");
-  const [reason, setReason] = useState("");
-
   // The same reporting line the server checks the handover against, so the picker
   // cannot offer somebody the API will refuse.
   const downline = useQuery({
@@ -39,19 +41,26 @@ export function HandoverPanel({ task, onDone }: { task: Task; onDone: () => Prom
     enabled: Boolean(me?.id),
   });
 
-  const hand = useMutation({
-    mutationFn: () =>
-      handoverTask(task.id, {
-        fromUserId: from,
-        toUserId: to,
-        ...(reason.trim() ? { reason: reason.trim() } : {}),
-      }),
+  // The route's own schema. "Who picks it up" is the field people leave empty, and
+  // the refusal for it now sits under that picker rather than above the panel.
+  const form = useForm<{ from: string; to: string; reason: string }, HandoverTask>({
+    schema: handoverTaskSchema,
+    initial: { from: onIt[0]?.id ?? "", to: "", reason: "" },
+    toPayload: (v) => ({
+      fromUserId: v.from,
+      toUserId: v.to,
+      ...(v.reason.trim() ? { reason: v.reason.trim() } : {}),
+    }),
+    // The schema's keys are not the form's: `fromUserId` has no input, `from` does.
+    fieldName: (key) =>
+      key === "fromUserId" ? "from" : key === "toUserId" ? "to" : key === "reason" ? "reason" : key,
+    submit: (input) => handoverTask(task.id, input),
     onSuccess: async () => {
-      setTo("");
-      setReason("");
+      form.reset({ from: onIt[0]?.id ?? "", to: "", reason: "" });
       await onDone();
     },
   });
+  const { to } = form.values;
 
   // Nobody already on the task: handing it to somebody who has it is not a handover.
   const held = new Set(onIt.map((person) => person.id));
@@ -73,17 +82,18 @@ export function HandoverPanel({ task, onDone }: { task: Task; onDone: () => Prom
         For work that outlasts a shift. Whoever hands it on stays on the task, so the points can be
         divided between both of them when it is written up.
       </p>
-      {hand.error ? <ErrorAlert error={hand.error} /> : null}
+      {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+      {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
       {onIt.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Nobody is on this task yet — assign it before handing it over.
         </p>
       ) : (
-        <>
-          <Field label="From">
+        <form {...form.formProps} className="contents">
+          <Field label="From" required error={form.errorFor("from")}>
             {(props) => (
-              <Select {...props} value={from} onChange={(e) => setFrom(e.target.value)}>
+              <Select {...props} {...form.register("from")}>
                 {onIt.map((person) => (
                   <option key={person.id} value={person.id}>
                     {person.name}
@@ -93,34 +103,38 @@ export function HandoverPanel({ task, onDone }: { task: Task; onDone: () => Prom
             )}
           </Field>
 
-          <Field label="To">
+          <Field label="To" required error={form.errorFor("to")}>
             {(props) => (
               <SearchableSelect
                 {...props}
+                name="to"
                 value={to}
-                onChange={setTo}
+                onChange={(next) => form.set("to", next)}
                 options={options}
                 placeholder="Who picks it up"
               />
             )}
           </Field>
 
-          <Field label="Why" hint="Optional — what was left to do, and why it moved.">
+          <Field
+            label="Why"
+            error={form.errorFor("reason")}
+            hint="Optional — what was left to do, and why it moved."
+          >
             {(props) => (
               <Input
                 {...props}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
+                {...form.register("reason")}
                 placeholder="Shift ended, panel still open"
               />
             )}
           </Field>
 
-          <Button size="sm" onClick={() => hand.mutate()} disabled={!from || !to || hand.isPending}>
-            {hand.isPending ? <Spinner /> : null}
+          <Button size="sm" type="submit" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
             Hand over
           </Button>
-        </>
+        </form>
       )}
 
       {task.handovers.length > 0 ? (

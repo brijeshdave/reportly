@@ -248,8 +248,8 @@ export type TaskPrefill = z.infer<typeof taskPrefillSchema>;
  * written up and the points are divided.
  */
 export const handoverTaskSchema = z.object({
-  fromUserId: z.string().min(1),
-  toUserId: z.string().min(1),
+  fromUserId: z.string().min(1, "Say who is handing it over."),
+  toUserId: z.string().min(1, "Choose who picks it up."),
   reason: z.string().trim().max(2000).optional(),
 });
 export type HandoverTask = z.infer<typeof handoverTaskSchema>;
