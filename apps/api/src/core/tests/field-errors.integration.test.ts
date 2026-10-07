@@ -81,6 +81,24 @@ describe("the error envelope", () => {
     expect(Object.keys(res.json().error.fields)).toContain("targets.0.kind");
   });
 
+  it("refuses a malformed id in the scope rather than failing on it", async () => {
+    // User input must not produce a 500. `targets[].id` is typed as a plain string
+    // because a person is keyed by text while everything else is keyed by uuid — so
+    // a hand-made body (or a stale link) put "not-a-uuid" straight into a uuid
+    // column, Postgres refused the cast, and the request ended as a server error
+    // instead of "that is not in this company".
+    const admin = await superadmin();
+    const res = await inject("POST", "/journal", admin, {
+      kind: "issue",
+      title: "Belt snapped",
+      state: "draft",
+      targets: [{ kind: "asset", id: "not-a-uuid" }],
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/not in this company/i);
+  });
+
   it("carries no fields for a refusal that has none", async () => {
     // A 401 is not about anything the person typed, and a client that showed it
     // against an input would be blaming a field for a missing session.

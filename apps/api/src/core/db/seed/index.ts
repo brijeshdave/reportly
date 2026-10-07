@@ -709,6 +709,13 @@ export const AREA_ROLES: { name: string; permissions: Permission[] }[] = [
       PERMISSIONS.END_USERS_CREATE,
       PERMISSIONS.END_USERS_UPDATE,
       PERMISSIONS.DEPARTMENTS_READ,
+      // The two reports the viewer below already reads. Without them this tier was
+      // the one case where a ladder went backwards — somebody maintaining the
+      // register could not open the figures built from it, while somebody who only
+      // reads it could. A tier that takes a grant away from the tier beneath it is a
+      // mistake every time, which is what the subset test says and why it was red.
+      PERMISSIONS.REPORTS_VIEW_END_USER_SUMMARY,
+      PERMISSIONS.REPORTS_VIEW_END_USER_ISSUES,
     ],
   },
   {

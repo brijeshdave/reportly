@@ -179,7 +179,21 @@ export async function existingTargets(
   targets: JournalTargetInput[],
 ): Promise<Set<string>> {
   const found = new Set<string>();
-  const idsOf = (kind: TargetKind) => targets.filter((t) => t.kind === kind).map((t) => t.id);
+  /**
+   * The ids of one kind, minus any that cannot be an id of that kind at all.
+   *
+   * Assets, devices, departments and end users are keyed by uuid; a person is keyed
+   * by the text id the auth system issues. Passing a non-uuid into a uuid column
+   * does not come back empty — Postgres refuses the cast and the whole request ends
+   * as a 500, so a hand-made body (or a stale link) produced a server error where it
+   * should have produced "that is not in this company". Anything of the wrong shape
+   * is simply not asked about, and falls out as missing a moment later.
+   */
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const idsOf = (kind: TargetKind) => {
+    const ids = targets.filter((t) => t.kind === kind).map((t) => t.id);
+    return kind === "user" ? ids : ids.filter((id) => UUID.test(id));
+  };
 
   const assetIds = idsOf("asset");
   if (assetIds.length > 0) {
