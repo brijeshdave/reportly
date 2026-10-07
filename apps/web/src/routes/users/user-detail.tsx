@@ -8,9 +8,11 @@ import {
   type Location,
   type Role,
   type User,
+  type UpdateUser,
   type UserDepartment,
   formatDate,
   formatDateTime,
+  updateUserSchema,
 } from "@reportly/shared";
 import {
   useMutation,
@@ -43,6 +45,7 @@ import { ancestorTrail, departmentOptions } from "@/lib/department-options.js";
 import { UnsavedChangesProvider, useUnsavedChanges } from "@/components/unsaved-changes.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import {
   fetchDepartmentMembers,
@@ -228,39 +231,77 @@ function VerifiedBadge({ verified }: { verified: boolean }) {
   );
 }
 
+/** What the profile form holds. Text as typed; the payload builder converts. */
+interface ProfileForm {
+  name: string;
+  email: string;
+  username: string;
+  designationId: string | null;
+  employeeId: string;
+  countsOnLeaderboard: boolean;
+  mobile: string;
+  whatsappOnMobile: boolean;
+  telegramOnMobile: boolean;
+  discordHandle: string;
+}
+
 function ProfileTab({ user }: { user: User }) {
   const canUpdate = usePermission(PERMISSIONS.USERS_UPDATE);
   const queryClient = useQueryClient();
 
-  const [name, setName] = useState(user.name);
-  const [email, setEmail] = useState(user.email);
-  const [username, setUsername] = useState(user.username);
-  const [designationId, setDesignationId] = useState<string | null>(user.designationId ?? null);
-  const [employeeId, setEmployeeId] = useState(user.employeeId ?? "");
-  const [countsOnLeaderboard, setCountsOnLeaderboard] = useState(user.countsOnLeaderboard);
-  const [mobile, setMobile] = useState(user.mobile ?? "");
-  const [whatsappOnMobile, setWhatsapp] = useState(user.whatsappOnMobile);
-  const [telegramOnMobile, setTelegram] = useState(user.telegramOnMobile);
-  const [discordHandle, setDiscord] = useState(user.discordHandle ?? "");
-
-  const save = useMutation({
-    mutationFn: () =>
-      updateUser(user.id, {
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        username: username.trim().toLowerCase(),
-        designationId,
-        employeeId: employeeId.trim() === "" ? null : employeeId.trim(),
-        countsOnLeaderboard,
-        mobile: mobile.trim() === "" ? null : mobile.trim(),
-        whatsappOnMobile,
-        telegramOnMobile,
-        discordHandle: discordHandle.trim() === "" ? null : discordHandle.trim(),
-      }),
+  // The update schema, not the create one: every field is optional on an edit, and
+  // the parts that only the server can judge — an email or username already taken —
+  // come back named and land under the field they are about.
+  const form = useForm<ProfileForm, UpdateUser>({
+    schema: updateUserSchema,
+    initial: {
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      designationId: user.designationId ?? null,
+      employeeId: user.employeeId ?? "",
+      countsOnLeaderboard: user.countsOnLeaderboard,
+      mobile: user.mobile ?? "",
+      whatsappOnMobile: user.whatsappOnMobile,
+      telegramOnMobile: user.telegramOnMobile,
+      discordHandle: user.discordHandle ?? "",
+    },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      email: v.email.trim().toLowerCase(),
+      username: v.username.trim().toLowerCase(),
+      designationId: v.designationId,
+      // Explicitly null rather than absent: an absent key leaves the stored value
+      // alone, so clearing any of these would not stick.
+      employeeId: v.employeeId.trim() === "" ? null : v.employeeId.trim(),
+      countsOnLeaderboard: v.countsOnLeaderboard,
+      mobile: v.mobile.trim() === "" ? null : v.mobile.trim(),
+      whatsappOnMobile: v.whatsappOnMobile,
+      telegramOnMobile: v.telegramOnMobile,
+      discordHandle: v.discordHandle.trim() === "" ? null : v.discordHandle.trim(),
+    }),
+    submit: (input) => updateUser(user.id, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["users"] });
+      setSaved(true);
     },
   });
+  // The hook reports failure, not success — a form that stays open after a save
+  // still owes the person a word that it worked. Cleared by `dirty` below the
+  // moment they type again.
+  const [saved, setSaved] = useState(false);
+  const {
+    name,
+    email,
+    username,
+    designationId,
+    employeeId,
+    countsOnLeaderboard,
+    mobile,
+    whatsappOnMobile,
+    telegramOnMobile,
+    discordHandle,
+  } = form.values;
 
   // Name, email and username moved into the form beside it — repeating them here
   // as facts invited the reasonable conclusion that they could not be changed.
@@ -316,23 +357,17 @@ function ProfileTab({ user }: { user: User }) {
           Their login name, job title, and how they can be reached. HOD is separate — it is set per
           department under Departments.
         </p>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            save.mutate();
-          }}
-          className="mt-4 flex flex-col gap-4"
-        >
-          {save.error ? <ErrorAlert error={save.error} /> : null}
-          {save.isSuccess && !dirty ? <Alert tone="success">Saved.</Alert> : null}
+        <form {...form.formProps} className="mt-4 flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
+          {saved && !dirty ? <Alert tone="success">Saved.</Alert> : null}
 
-          <Field label="Name">
+          <Field label="Name" required error={form.errorFor("name")}>
             {(props) => (
               <Input
                 {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={!canUpdate || save.isPending}
+                {...form.register("name")}
+                disabled={!canUpdate || form.submitting}
               />
             )}
           </Field>
@@ -341,25 +376,28 @@ function ProfileTab({ user }: { user: User }) {
               an address, not a person, so moving it puts it out of reach of the
               code that proved it. The service already does that; the hint is here
               so the consequence is visible before the change, not after. */}
-          <Field label="Email" hint="Changing this marks the new address unverified">
+          <Field
+            label="Email"
+            required
+            error={form.errorFor("email")}
+            hint="Changing this marks the new address unverified"
+          >
             {(props) => (
               <Input
                 {...props}
                 type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                disabled={!canUpdate || save.isPending}
+                {...form.register("email")}
+                disabled={!canUpdate || form.submitting}
               />
             )}
           </Field>
 
-          <Field label="Username">
+          <Field label="Username" required error={form.errorFor("username")}>
             {(props) => (
               <Input
                 {...props}
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                disabled={!canUpdate || save.isPending}
+                {...form.register("username")}
+                disabled={!canUpdate || form.submitting}
               />
             )}
           </Field>
@@ -367,17 +405,16 @@ function ProfileTab({ user }: { user: User }) {
           <DesignationPicker
             value={designationId}
             currentName={user.designation}
-            onChange={setDesignationId}
-            disabled={!canUpdate || save.isPending}
+            onChange={(next) => form.set("designationId", next)}
+            disabled={!canUpdate || form.submitting}
           />
-          <Field label="Employee ID">
+          <Field label="Employee ID" error={form.errorFor("employeeId")}>
             {(props) => (
               <Input
                 {...props}
-                value={employeeId}
-                onChange={(event) => setEmployeeId(event.target.value)}
+                {...form.register("employeeId")}
                 placeholder="e.g. EMP-001"
-                disabled={!canUpdate || save.isPending}
+                disabled={!canUpdate || form.submitting}
               />
             )}
           </Field>
@@ -387,8 +424,8 @@ function ProfileTab({ user }: { user: User }) {
               type="checkbox"
               className="mt-0.5"
               checked={countsOnLeaderboard}
-              onChange={(event) => setCountsOnLeaderboard(event.target.checked)}
-              disabled={!canUpdate || save.isPending}
+              onChange={(event) => form.set("countsOnLeaderboard", event.target.checked)}
+              disabled={!canUpdate || form.submitting}
             />
             <span>
               Count on the leaderboard
@@ -412,14 +449,13 @@ function ProfileTab({ user }: { user: User }) {
 
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <Field label="Mobile">
+              <Field label="Mobile" error={form.errorFor("mobile")}>
                 {(props) => (
                   <Input
                     {...props}
-                    value={mobile}
-                    onChange={(event) => setMobile(event.target.value)}
+                    {...form.register("mobile")}
                     placeholder="+919876543210"
-                    disabled={!canUpdate || save.isPending}
+                    disabled={!canUpdate || form.submitting}
                   />
                 )}
               </Field>
@@ -431,14 +467,14 @@ function ProfileTab({ user }: { user: User }) {
 
           <fieldset
             className="flex flex-col gap-2"
-            disabled={!canUpdate || save.isPending || mobile.trim() === ""}
+            disabled={!canUpdate || form.submitting || mobile.trim() === ""}
           >
             <legend className="sr-only">Apps on this mobile</legend>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={whatsappOnMobile}
-                onChange={(event) => setWhatsapp(event.target.checked)}
+                onChange={(event) => form.set("whatsappOnMobile", event.target.checked)}
               />
               On WhatsApp
               {user.whatsappOnMobile ? <VerifiedBadge verified={user.whatsappVerified} /> : null}
@@ -447,7 +483,7 @@ function ProfileTab({ user }: { user: User }) {
               <input
                 type="checkbox"
                 checked={telegramOnMobile}
-                onChange={(event) => setTelegram(event.target.checked)}
+                onChange={(event) => form.set("telegramOnMobile", event.target.checked)}
               />
               On Telegram
               {user.telegramOnMobile ? <VerifiedBadge verified={user.telegramVerified} /> : null}
@@ -456,14 +492,13 @@ function ProfileTab({ user }: { user: User }) {
 
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <Field label="Discord handle">
+              <Field label="Discord handle" error={form.errorFor("discordHandle")}>
                 {(props) => (
                   <Input
                     {...props}
-                    value={discordHandle}
-                    onChange={(event) => setDiscord(event.target.value)}
+                    {...form.register("discordHandle")}
                     placeholder="e.g. ada.dev"
-                    disabled={!canUpdate || save.isPending}
+                    disabled={!canUpdate || form.submitting}
                   />
                 )}
               </Field>
@@ -474,8 +509,8 @@ function ProfileTab({ user }: { user: User }) {
           </div>
 
           <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={!canUpdate || save.isPending || !dirty}>
-              {save.isPending ? <Spinner /> : null}
+            <Button type="submit" size="sm" disabled={!canUpdate || form.submitting || !dirty}>
+              {form.submitting ? <Spinner /> : null}
               Save changes
             </Button>
           </div>

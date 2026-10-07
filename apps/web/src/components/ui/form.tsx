@@ -112,21 +112,25 @@ export function Field({ label, hint, error, required, children }: FieldProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      {/* The asterisk is drawn by CSS, not written into the label.
-          `aria-hidden` on a <span> keeps it out of the accessible name, but it is
-          still text inside the element — so "Password" stopped matching a label
-          reading "Password*" for anything that looks at text content, which broke
-          every exact-match query against a field the moment it became required. A
-          pseudo-element is visible, inert, and not part of the DOM's text. */}
-      <label
-        htmlFor={id}
-        className={cn(
-          "text-sm font-medium text-foreground",
-          required && "after:ml-0.5 after:text-destructive after:content-['*']",
-        )}
-      >
-        {label}
-      </label>
+      {/* The marker sits **beside** the label, not inside it, and not as its
+          generated content either. Both of those were tried and each broke one half:
+          a `<span aria-hidden>` inside the element keeps it out of the accessible
+          name but leaves it in the label's text, so "Password" no longer matched a
+          label reading "Password*"; a CSS `::after` keeps it out of the text but
+          generated content *is* part of the accessible name, so a screen reader
+          announced "Password star". Outside the label it is in neither — the label
+          reads "Password" to a screen reader and to anything matching on text, and
+          the asterisk is still on the screen. */}
+      <span className="flex items-center gap-0.5">
+        <label htmlFor={id} className="text-sm font-medium text-foreground">
+          {label}
+        </label>
+        {required ? (
+          <span aria-hidden="true" className="text-sm font-medium text-destructive">
+            *
+          </span>
+        ) : null}
+      </span>
       {children({
         id,
         "aria-describedby": describedBy || undefined,
