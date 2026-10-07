@@ -4,27 +4,22 @@
 // user into an empty app wondering what broke.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate } from "@tanstack/react-router";
-import { isPasswordValid, suggestUsername } from "@reportly/shared";
-import { useState, type FormEvent } from "react";
+import { createUserSchema, isPasswordValid, suggestUsername } from "@reportly/shared";
+import { useRef, useState } from "react";
 
 import { PasswordField } from "@/components/auth/password-field.js";
 import { SsoButtons } from "@/components/auth/sso-buttons.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { Button } from "@/components/ui/primitives.js";
+import { useForm } from "@/hooks/use-form.js";
 import { errorMessage } from "@/lib/error-message.js";
 import { authConfigQuery, passwordRulesQuery, queryKeys } from "@/lib/queries.js";
 import { signUpWithPassword } from "@/services/auth.js";
 import { AuthLayout } from "@/routes/auth/auth-layout.js";
 
 export function RegisterPage() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   // Suggested from the address until the person edits it themselves.
-  const [username, setUsername] = useState("");
   const [usernameTouched, setUsernameTouched] = useState(false);
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -33,22 +28,34 @@ export function RegisterPage() {
   // matching the API, which would refuse the request anyway.
   const { data: authConfig, isLoading: authConfigLoading } = useQuery(authConfigQuery);
 
-  // The server enforces the policy; this only stops an obviously doomed request.
-  const passwordOk = rules ? isPasswordValid(rules, password) : password.length > 0;
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await signUpWithPassword(name.trim(), email.trim(), username.trim(), password);
+  // The three identity fields are the shared ones, so what this page refuses and
+  // what an administrator's New user page refuses are the same rule. The password is
+  // judged by the installation's own policy, which is a stored setting rather than
+  // part of any schema — see `passwordOk` below.
+  const form = useForm({
+    schema: createUserSchema.pick({ name: true, email: true, username: true }),
+    initial: { name: "", email: "", username: "", password: "" },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      email: v.email.trim(),
+      username: v.username.trim(),
+    }),
+    submit: async () => {
+      const v = valuesRef.current;
+      await signUpWithPassword(v.name.trim(), v.email.trim(), v.username.trim(), v.password);
       await queryClient.invalidateQueries({ queryKey: queryKeys.session });
       await navigate({ to: "/" });
-    } catch (cause) {
-      setError(errorMessage(cause));
-      setBusy(false);
-    }
-  };
+    },
+  });
+  const { email, username, password } = form.values;
+  // `submit` closes over the values as they were when it was built; this is the
+  // pair of eyes on the current ones. The password is not in the payload — it is
+  // not the schema's to judge — so it has to be read from here.
+  const valuesRef = useRef(form.values);
+  valuesRef.current = form.values;
+
+  // The server enforces the policy; this only stops an obviously doomed request.
+  const passwordOk = rules ? isPasswordValid(rules, password) : password.length > 0;
 
   if (!authConfigLoading && authConfig && !authConfig.registrationEnabled) {
     return <Navigate to="/login" replace />;
@@ -70,64 +77,69 @@ export function RegisterPage() {
       <div className="flex flex-col gap-5">
         <SsoButtons />
 
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {error ? <Alert tone="error">{error}</Alert> : null}
+        <form {...form.formProps} className="flex flex-col gap-4">
+          {/* Whatever could not be blamed on a field — an address already registered. */}
+          {form.formError ? <Alert tone="error">{errorMessage(form.formError)}</Alert> : null}
 
-          <Field label="Full name">
+          <Field label="Full name" required error={form.errorFor("name")}>
             {(props) => (
               <Input
                 {...props}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
+                {...form.register("name")}
                 autoComplete="name"
-                required
-                disabled={busy}
+                disabled={form.submitting}
               />
             )}
           </Field>
 
-          <Field label="Email">
+          <Field label="Email" required error={form.errorFor("email")}>
             {(props) => (
               <Input
                 {...props}
                 type="email"
+                name="email"
                 value={email}
                 onChange={(event) => {
-                  setEmail(event.target.value);
+                  form.set("email", event.target.value);
                   if (!usernameTouched) {
-                    setUsername(
+                    form.set(
+                      "username",
                       event.target.value.includes("@") ? suggestUsername(event.target.value) : "",
                     );
                   }
                 }}
                 autoComplete="email"
-                required
-                disabled={busy}
+                disabled={form.submitting}
               />
             )}
           </Field>
 
           {/* Either identifier signs you in later; pick the one you want to type. */}
-          <Field label="Username">
+          <Field label="Username" required error={form.errorFor("username")}>
             {(props) => (
               <Input
                 {...props}
+                name="username"
                 value={username}
                 onChange={(event) => {
                   setUsernameTouched(true);
-                  setUsername(event.target.value);
+                  form.set("username", event.target.value);
                 }}
                 autoComplete="username"
-                required
-                disabled={busy}
+                disabled={form.submitting}
               />
             )}
           </Field>
 
-          <PasswordField value={password} onChange={setPassword} rules={rules} disabled={busy} />
+          <PasswordField
+            value={password}
+            onChange={(next) => form.set("password", next)}
+            rules={rules}
+            disabled={form.submitting}
+          />
 
-          <Button type="submit" disabled={busy || !passwordOk}>
-            {busy ? <Spinner /> : null}
+          <Button type="submit" disabled={form.submitting || !passwordOk}>
+            {form.submitting ? <Spinner /> : null}
             Create account
           </Button>
         </form>

@@ -5,12 +5,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useReducer, useState, type FormEvent } from "react";
+import { z } from "zod";
 
 import { PasswordField } from "@/components/auth/password-field.js";
 import { SsoButtons } from "@/components/auth/sso-buttons.js";
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { Button } from "@/components/ui/primitives.js";
 import { initialLoginState, loginReducer } from "@/lib/auth-machine.js";
+import { useForm } from "@/hooks/use-form.js";
 import { errorMessage } from "@/lib/error-message.js";
 import { authConfigQuery, queryKeys } from "@/lib/queries.js";
 import { signInWithPassword, verifyBackupCode, verifyTotp } from "@/services/auth.js";
@@ -112,16 +114,31 @@ function CredentialsStep({
   redirect?: string;
   onSubmit: (identifier: string, password: string) => void;
 }) {
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
   // Only offer a register link when public sign-up is actually enabled, so a
   // reader never reaches a dead end.
   const { data: authConfig } = useQuery(authConfigQuery);
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    onSubmit(identifier, password);
-  };
+  /**
+   * Only the empty cases are checked here, and deliberately.
+   *
+   * A failed sign-in stays a single message above the form, because "wrong
+   * password" under the password box would confirm the identifier exists — which is
+   * precisely what the generic wording of that message exists to avoid. The parent
+   * owns that error and still renders it. What belongs at the field is the part that
+   * is about the field: an empty one.
+   */
+  const form = useForm({
+    schema: z.object({
+      identifier: z.string().trim().min(1, "Type your email address or username."),
+      password: z.string().min(1, "Type your password."),
+    }),
+    initial: { identifier: "", password: "" },
+    submit: async (input) => {
+      const v = input as { identifier: string; password: string };
+      onSubmit(v.identifier, v.password);
+    },
+  });
+  const { password } = form.values;
 
   return (
     <AuthLayout
@@ -141,21 +158,20 @@ function CredentialsStep({
       <div className="flex flex-col gap-5">
         <SsoButtons callbackURL={redirect ?? "/"} />
 
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form {...form.formProps} className="flex flex-col gap-4">
+          {/* The parent's, not the hook's: a refused sign-in has no field to blame. */}
           {error ? <Alert tone="error">{error}</Alert> : null}
 
           {/* Either identifier signs a person in; the service picks the endpoint
               by whether this looks like an address. `type="text"`, not "email",
               or the browser would refuse a username as malformed. */}
-          <Field label="Email or username">
+          <Field label="Email or username" required error={form.errorFor("identifier")}>
             {(props) => (
               <Input
                 {...props}
                 type="text"
-                value={identifier}
-                onChange={(event) => setIdentifier(event.target.value)}
+                {...form.register("identifier")}
                 autoComplete="username"
-                required
                 disabled={busy}
               />
             )}
@@ -163,9 +179,10 @@ function CredentialsStep({
 
           <PasswordField
             value={password}
-            onChange={setPassword}
+            onChange={(next) => form.set("password", next)}
             autoComplete="current-password"
             disabled={busy}
+            error={form.errorFor("password")}
           />
 
           {/* Not drawn at all when an administrator handles resets: a link that

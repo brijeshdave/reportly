@@ -4,33 +4,36 @@
 // which emails are registered.
 import { Link } from "@tanstack/react-router";
 import { MailCheck } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import { z } from "zod";
 
 import { Alert, Field, Input, Spinner } from "@/components/ui/form.js";
 import { Button } from "@/components/ui/primitives.js";
+import { useForm } from "@/hooks/use-form.js";
 import { errorMessage } from "@/lib/error-message.js";
 import { requestPasswordReset } from "@/services/auth.js";
 import { AuthLayout } from "@/routes/auth/auth-layout.js";
 
-export function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+/** The one field this page has. Its own schema: there is no create route to borrow. */
+const resetRequestSchema = z.object({
+  email: z.string().trim().email("That is not an email address."),
+});
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await requestPasswordReset(email.trim(), `${window.location.origin}/reset-password`);
-      setSent(true);
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
+export function ForgotPasswordPage() {
+  const [sent, setSent] = useState(false);
+
+  const form = useForm({
+    schema: resetRequestSchema,
+    initial: { email: "" },
+    toPayload: (v) => ({ email: v.email.trim() }),
+    submit: (input) =>
+      requestPasswordReset(
+        (input as { email: string }).email,
+        `${window.location.origin}/reset-password`,
+      ),
+    onSuccess: () => setSent(true),
+  });
+  const { email } = form.values;
 
   if (sent) {
     return (
@@ -61,26 +64,25 @@ export function ForgotPasswordPage() {
         </Link>
       }
     >
-      <form onSubmit={submit} className="flex flex-col gap-4">
-        {error ? <Alert tone="error">{error}</Alert> : null}
+      <form {...form.formProps} className="flex flex-col gap-4">
+        {/* Whatever could not be blamed on a field — the mail server refusing, say. */}
+        {form.formError ? <Alert tone="error">{errorMessage(form.formError)}</Alert> : null}
 
-        <Field label="Email">
+        <Field label="Email" required error={form.errorFor("email")}>
           {(props) => (
             <Input
               {...props}
               type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              {...form.register("email")}
               autoComplete="email"
-              required
               autoFocus
-              disabled={busy}
+              disabled={form.submitting}
             />
           )}
         </Field>
 
-        <Button type="submit" disabled={busy}>
-          {busy ? <Spinner /> : null}
+        <Button type="submit" disabled={form.submitting}>
+          {form.submitting ? <Spinner /> : null}
           Send reset link
         </Button>
       </form>
