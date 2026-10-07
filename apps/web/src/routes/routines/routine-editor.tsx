@@ -4,15 +4,16 @@
 import {
   ROUTINE_CADENCES,
   ROUTINE_CADENCE_LABELS,
+  createRoutineSchema,
   type CreateRoutine,
   type Routine,
   type RoutineCadence,
 } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Select, Spinner } from "@/components/ui/form.js";
 import { MultiSelect } from "@/components/multi-select.js";
@@ -25,6 +26,23 @@ import { createRoutine, fetchRoutine, updateRoutine } from "@/services/routines.
 import { dayOffset } from "@/routes/routines/util.js";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** What the form holds. Numbers stay as typed text; the payload builder converts. */
+interface RoutineForm {
+  departmentId: string;
+  locationId: string;
+  title: string;
+  description: string;
+  cadence: RoutineCadence;
+  anchorWeekday: number;
+  anchorDay: number;
+  anchorMonthOfQuarter: number;
+  points: string;
+  startDate: string;
+  graceDays: string;
+  active: boolean;
+  assigneeIds: string[];
+}
 
 export function RoutineEditorPage({
   mode,
@@ -63,28 +81,67 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
     departments.map((d) => ({ value: d.departmentId, name: d.name, path: d.path })),
   );
 
-  const [departmentId, setDepartmentId] = useState(routine?.departmentId ?? "");
-  const [locationId, setLocationId] = useState(routine?.locationId ?? "");
   // The sites this person may file at — the same list the journal and task editors
   // offer, and the one the server checks, so the picker cannot name a site the save
   // would refuse.
   const sites = useQuery({ queryKey: ["locations", "mine"], queryFn: fetchMyLocations });
+
+  // The route's own schema. The numbers are kept as the text the inputs hold and
+  // converted on the way out, so a half-typed "1" is never read as NaN.
+  const form = useForm<RoutineForm, CreateRoutine>({
+    schema: createRoutineSchema,
+    initial: {
+      departmentId: routine?.departmentId ?? "",
+      locationId: routine?.locationId ?? "",
+      title: routine?.title ?? "",
+      description: routine?.description ?? "",
+      cadence: routine?.cadence ?? "daily",
+      anchorWeekday: routine?.anchorWeekday ?? 1,
+      anchorDay: routine?.anchorDay ?? 1,
+      anchorMonthOfQuarter: routine?.anchorMonthOfQuarter ?? 1,
+      points: String(routine?.points ?? 1),
+      startDate: routine?.startDate ?? dayOffset(0),
+      graceDays: String(routine?.graceDays ?? 3),
+      active: (routine?.status ?? "active") === "active",
+      assigneeIds: routine?.assignees.map((a) => a.userId) ?? [],
+    },
+    toPayload: (v) => ({
+      departmentId: v.departmentId || departments[0]?.departmentId || "",
+      locationId: v.locationId,
+      title: v.title.trim(),
+      description: v.description.trim() || undefined,
+      cadence: v.cadence,
+      // Only the anchor the chosen cadence uses. A weekday left over from a weekly
+      // routine would otherwise travel with a monthly one and mean nothing.
+      anchorWeekday: v.cadence === "weekly" ? v.anchorWeekday : null,
+      anchorDay: v.cadence === "monthly" || v.cadence === "quarterly" ? v.anchorDay : null,
+      anchorMonthOfQuarter: v.cadence === "quarterly" ? v.anchorMonthOfQuarter : null,
+      points: Number(v.points) || 0,
+      startDate: v.startDate,
+      graceDays: Number(v.graceDays) || 0,
+      status: v.active ? ("active" as const) : ("paused" as const),
+      assigneeIds: v.assigneeIds,
+    }),
+    submit: (input) => (mode === "edit" ? updateRoutine(routine!.id, input) : createRoutine(input)),
+    onSuccess: async (saved) => {
+      await queryClient.invalidateQueries({ queryKey: ["routines"] });
+      await navigate({
+        to: "/routines/manage/$routineId",
+        params: { routineId: (saved as { id: string }).id },
+      });
+    },
+  });
+  const {
+    departmentId,
+    locationId,
+    cadence,
+    anchorWeekday,
+    anchorDay,
+    anchorMonthOfQuarter,
+    active,
+    assigneeIds,
+  } = form.values;
   const effectiveDept = departmentId || departments[0]?.departmentId || "";
-  const [title, setTitle] = useState(routine?.title ?? "");
-  const [description, setDescription] = useState(routine?.description ?? "");
-  const [cadence, setCadence] = useState<RoutineCadence>(routine?.cadence ?? "daily");
-  const [anchorWeekday, setAnchorWeekday] = useState(routine?.anchorWeekday ?? 1);
-  const [anchorDay, setAnchorDay] = useState(routine?.anchorDay ?? 1);
-  const [anchorMonthOfQuarter, setAnchorMonthOfQuarter] = useState(
-    routine?.anchorMonthOfQuarter ?? 1,
-  );
-  const [points, setPoints] = useState(String(routine?.points ?? 1));
-  const [startDate, setStartDate] = useState(routine?.startDate ?? dayOffset(0));
-  const [graceDays, setGraceDays] = useState(String(routine?.graceDays ?? 3));
-  const [active, setActive] = useState((routine?.status ?? "active") === "active");
-  const [assigneeIds, setAssigneeIds] = useState<string[]>(
-    routine?.assignees.map((a) => a.userId) ?? [],
-  );
 
   // The manager may assign to themselves or anyone below them.
   // Searchable, with each person's department underneath: a downline of forty was a
@@ -99,47 +156,9 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
     })),
   ].filter((o, i, arr) => arr.findIndex((x) => x.value === o.value) === i);
 
-  const save = useMutation({
-    mutationFn: () => {
-      const input: CreateRoutine = {
-        departmentId: effectiveDept,
-        // Always sent. A site is required on every kind of entry now — a routine with
-        // none cannot be counted towards any plant's compliance, and a rota cannot say
-        // who is there to do it. The Save button will not fire without one; this only
-        // stops an empty string being quietly dropped from the body on its way out.
-        locationId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        cadence,
-        anchorWeekday: cadence === "weekly" ? anchorWeekday : null,
-        anchorDay: cadence === "monthly" || cadence === "quarterly" ? anchorDay : null,
-        anchorMonthOfQuarter: cadence === "quarterly" ? anchorMonthOfQuarter : null,
-        points: Number(points) || 0,
-        startDate,
-        graceDays: Number(graceDays) || 0,
-        status: active ? "active" : "paused",
-        assigneeIds,
-      };
-      // On an edit the site is sent even when blank, because clearing it is a real
-      // answer: a duty that turns out not to be about one plant.
-      return mode === "edit" ? updateRoutine(routine!.id, input) : createRoutine(input);
-    },
-    onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: ["routines"] });
-      await navigate({ to: "/routines/manage/$routineId", params: { routineId: saved.id } });
-    },
-  });
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    save.mutate();
-  };
-  const canSave =
-    title.trim() !== "" &&
-    effectiveDept !== "" &&
-    locationId !== "" &&
-    assigneeIds.length > 0 &&
-    !save.isPending;
+  // Two rules the field schema cannot see: a routine needs somebody on it, and the
+  // department falls back to this person's only one. Everything else is the schema's.
+  const canSave = assigneeIds.length > 0 && effectiveDept !== "" && !form.submitting;
 
   return (
     <>
@@ -157,27 +176,24 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
         }
       />
       <Card className="mt-2 max-w-xl p-6">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {save.error ? <ErrorAlert error={save.error} /> : null}
+        <form {...form.formProps} className="flex flex-col gap-4">
+          {form.formError ? <ErrorAlert error={form.formError} /> : null}
 
-          <Field label="Title">
+          <Field label="Title" required error={form.errorFor("title")}>
             {(props) => (
               <Input
                 {...props}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
+                {...form.register("title")}
                 autoFocus
                 placeholder="e.g. Boiler pressure check"
               />
             )}
           </Field>
-          <Field label="Description">
+          <Field label="Description" error={form.errorFor("description")}>
             {(props) => (
               <textarea
                 {...props}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                {...form.register("description")}
                 rows={2}
                 maxLength={2000}
                 className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
@@ -195,7 +211,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
                 <SearchableSelect
                   ariaLabel="Department"
                   value={effectiveDept}
-                  onChange={setDepartmentId}
+                  onChange={(next) => form.set("departmentId", next)}
                   options={deptOptions}
                   placeholder="Pick a department"
                 />
@@ -203,9 +219,18 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
             }
           </Field>
 
-          <Field label="Site" required hint="where the duty is done">
+          <Field
+            label="Site"
+            required
+            error={form.errorFor("locationId")}
+            hint="where the duty is done"
+          >
             {(props) => (
-              <Select {...props} value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <Select
+                {...props}
+                value={locationId}
+                onChange={(e) => form.set("locationId", e.target.value)}
+              >
                 <option value="">Choose one</option>
                 {(sites.data ?? []).map((l) => (
                   <option key={l.id} value={l.id}>
@@ -218,12 +243,12 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
 
           <div className="flex flex-wrap gap-4">
             <div className="min-w-[10rem] flex-1">
-              <Field label="Cadence">
+              <Field label="Cadence" error={form.errorFor("cadence")}>
                 {(props) => (
                   <Select
                     {...props}
                     value={cadence}
-                    onChange={(e) => setCadence(e.target.value as RoutineCadence)}
+                    onChange={(e) => form.set("cadence", e.target.value as RoutineCadence)}
                   >
                     {ROUTINE_CADENCES.map((c) => (
                       <option key={c} value={c}>
@@ -241,7 +266,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
                     <Select
                       {...props}
                       value={String(anchorWeekday)}
-                      onChange={(e) => setAnchorWeekday(Number(e.target.value))}
+                      onChange={(e) => form.set("anchorWeekday", Number(e.target.value))}
                     >
                       {WEEKDAYS.map((w, i) => (
                         <option key={w} value={i}>
@@ -260,7 +285,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
                     <Select
                       {...props}
                       value={String(anchorMonthOfQuarter)}
-                      onChange={(e) => setAnchorMonthOfQuarter(Number(e.target.value))}
+                      onChange={(e) => form.set("anchorMonthOfQuarter", Number(e.target.value))}
                     >
                       <option value="1">First</option>
                       <option value="2">Second</option>
@@ -280,7 +305,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
                       min={1}
                       max={28}
                       value={anchorDay}
-                      onChange={(e) => setAnchorDay(Number(e.target.value))}
+                      onChange={(e) => form.set("anchorDay", Number(e.target.value))}
                     />
                   )}
                 </Field>
@@ -290,7 +315,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
 
           <div className="flex flex-wrap gap-4">
             <div className="w-28">
-              <Field label="Points" hint="on-time; half if late">
+              <Field label="Points" error={form.errorFor("points")} hint="on-time; half if late">
                 {(props) => (
                   <Input
                     {...props}
@@ -298,34 +323,25 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
                     min={0}
                     max={100}
                     step={0.5}
-                    value={points}
-                    onChange={(e) => setPoints(e.target.value)}
+                    {...form.register("points")}
                   />
                 )}
               </Field>
             </div>
             <div className="w-44">
-              <Field label="Starts">
-                {(props) => (
-                  <Input
-                    {...props}
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                )}
+              <Field label="Starts" required error={form.errorFor("startDate")}>
+                {(props) => <Input {...props} type="date" {...form.register("startDate")} />}
               </Field>
             </div>
             <div className="w-32">
-              <Field label="Grace days" hint="then it expires">
+              <Field label="Grace days" error={form.errorFor("graceDays")} hint="then it expires">
                 {(props) => (
                   <Input
                     {...props}
                     type="number"
                     min={0}
                     max={366}
-                    value={graceDays}
-                    onChange={(e) => setGraceDays(e.target.value)}
+                    {...form.register("graceDays")}
                   />
                 )}
               </Field>
@@ -338,7 +354,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
               ariaLabel="Assignees"
               options={options}
               values={assigneeIds}
-              onChange={setAssigneeIds}
+              onChange={(next) => form.set("assigneeIds", next)}
               placeholder="Pick people…"
             />
             <p className="mt-1 text-xs text-muted-foreground">
@@ -347,7 +363,11 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
           </div>
 
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => form.set("active", e.target.checked)}
+            />
             Active (paused routines stop generating occurrences)
           </label>
 
@@ -361,7 +381,7 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={!canSave}>
-              {save.isPending ? <Spinner /> : null}
+              {form.submitting ? <Spinner /> : null}
               {mode === "edit" ? "Save changes" : "Create routine"}
             </Button>
           </div>
