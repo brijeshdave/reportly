@@ -1,6 +1,6 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Routine definitions: a manager creates recurring duties for their team (anyone in
-// their reporting downline, or themselves), sets the assignees, and edits/pauses them.
+// their reporting downline), sets the assignees, and edits/pauses them.
 // Row scope is the reporting line: a manager manages what they created; a member sees
 // what they are assigned. The occurrence + completion flow builds on these.
 import {
@@ -109,18 +109,42 @@ export async function getRoutine(id: string, companyId: string): Promise<Routine
   return serialize(row, assignees);
 }
 
-/** Assignees must be the caller or someone in their reporting downline. */
+/**
+ * Assignees must be someone in the caller's reporting downline — and not the
+ * caller.
+ *
+ * A routine carries points, so somebody who can both invent the duty and be the
+ * one who completes it is awarding themselves: there is no second person in the
+ * loop at any step, which is the thing every other scoring path here has. Work you
+ * did for yourself goes in the journal, where somebody above you scores it.
+ *
+ * `already` is who the routine has on it now, and it is what keeps this from
+ * breaking live data: a routine somebody put themselves on before this rule
+ * existed stays editable, and the refusal is about *adding* yourself rather than
+ * about being there. Empty on create, where there is nothing to grandfather.
+ *
+ * Superadmins are exempt, as they are from every other check in this file.
+ */
 async function assertAssignable(
   userId: string,
   isSuperadmin: boolean,
   assigneeIds: string[],
+  already: string[] = [],
 ): Promise<void> {
   if (isSuperadmin) return;
-  const allowed = new Set([userId, ...(await downlineUserIds(userId))]);
+  const allowed = new Set(await downlineUserIds(userId));
+  if (already.includes(userId)) allowed.add(userId);
+
   const outside = assigneeIds.filter((id) => !allowed.has(id));
-  if (outside.length > 0) {
-    throw new AppError(403, ERROR_CODES.FORBIDDEN, "You can only assign routines to your own team");
-  }
+  if (outside.length === 0) return;
+
+  // Said apart from the team rule because it is a different thing to get wrong,
+  // and the person reading it has a different next move: there is no permission
+  // that would let them do this.
+  const message = outside.includes(userId)
+    ? "You cannot put yourself on a routine you are creating — somebody above you assigns it. Log work you did for yourself in the journal instead."
+    : "You can only assign routines to your own team";
+  throw new AppError(403, ERROR_CODES.FORBIDDEN, message, undefined, { assigneeIds: message });
 }
 
 /** The anchor fields a cadence keeps; the others are nulled so a switch stays clean. */
@@ -199,7 +223,12 @@ export async function updateRoutine(
   if (!isSuperadmin && before.createdBy !== userId) {
     throw new AppError(403, ERROR_CODES.FORBIDDEN, "Only the routine's owner can edit it");
   }
-  if (input.assigneeIds) await assertAssignable(userId, isSuperadmin, input.assigneeIds);
+  if (input.assigneeIds) {
+    // Who is on it already, so somebody who predates this rule is not locked out
+    // of their own routine.
+    const already = await repo.assigneeIdsOf(id);
+    await assertAssignable(userId, isSuperadmin, input.assigneeIds, already);
+  }
   if (input.departmentId && !(await getDepartment(input.departmentId, companyId))) {
     throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, "That department is not in this company");
   }

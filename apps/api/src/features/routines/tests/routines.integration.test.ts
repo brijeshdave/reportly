@@ -525,7 +525,7 @@ describe("routines", () => {
 describe("a routine's site", () => {
   it("is stated on the routine, shown back, and filters the list", async () => {
     const admin = await superadmin();
-    const { boss, dept } = await fixture(admin);
+    const { boss, ravi, dept } = await fixture(admin);
     const sites = (await inject("GET", "/locations", admin)).json() as {
       id: string;
       name: string;
@@ -542,7 +542,7 @@ describe("a routine's site", () => {
       cadence: "daily",
       points: 1,
       startDate: "2026-01-01",
-      assigneeIds: [boss.id],
+      assigneeIds: [ravi.id],
     });
     expect(created.statusCode).toBe(201);
     expect(created.json().locationName).toBe(site.name);
@@ -558,7 +558,7 @@ describe("a routine's site", () => {
       anchorWeekday: 1,
       points: 1,
       startDate: "2026-01-01",
-      assigneeIds: [boss.id],
+      assigneeIds: [ravi.id],
     });
     expect(elsewhere.statusCode).toBe(201);
     expect(elsewhere.json().locationId).toBe(other.id);
@@ -570,7 +570,7 @@ describe("a routine's site", () => {
       cadence: "daily",
       points: 1,
       startDate: "2026-01-01",
-      assigneeIds: [boss.id],
+      assigneeIds: [ravi.id],
     });
     expect(siteless.statusCode).toBe(400);
     expect(Object.keys(siteless.json().error.fields)).toContain("locationId");
@@ -597,5 +597,76 @@ describe("a routine's site", () => {
       locationId: null,
     });
     expect(emptied.statusCode).toBe(400);
+  });
+});
+
+describe("nobody sets their own routine", () => {
+  // A routine pays points on completion, so a person who can both invent the duty
+  // and be the one who does it is awarding themselves — there is no second person
+  // at any step, which every other scoring path here has.
+  it("refuses a manager who puts themselves on a routine they are creating", async () => {
+    const admin = await superadmin();
+    const { boss, dept } = await fixture(admin);
+
+    const res = await inject("POST", "/routines", boss.cookie, daily(dept.id, [boss.id]));
+
+    expect(res.statusCode).toBe(403);
+    // Named for the field, so the picker says it rather than a banner above the form.
+    expect(res.json().error.fields.assigneeIds).toMatch(/cannot put yourself/i);
+  });
+
+  it("refuses them among others, not just on their own", async () => {
+    const admin = await superadmin();
+    const { boss, ravi, dept } = await fixture(admin);
+
+    const res = await inject("POST", "/routines", boss.cookie, daily(dept.id, [ravi.id, boss.id]));
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.fields.assigneeIds).toMatch(/cannot put yourself/i);
+  });
+
+  it("refuses adding yourself to a routine you already own", async () => {
+    const admin = await superadmin();
+    const { boss, ravi, dept } = await fixture(admin);
+    const made = await inject("POST", "/routines", boss.cookie, daily(dept.id, [ravi.id]));
+    expect(made.statusCode).toBe(201);
+
+    const res = await inject("PATCH", `/routines/${made.json().id}`, boss.cookie, {
+      assigneeIds: [ravi.id, boss.id],
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("still lets a superadmin assign themselves", async () => {
+    // The exemption everything else in this file already gives them.
+    const admin = await superadmin();
+    const { dept } = await fixture(admin);
+    const me = (await inject("GET", "/me", admin)).json().user as { id: string };
+
+    const res = await inject("POST", "/routines", admin, daily(dept.id, [me.id]));
+
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("leaves a routine somebody is already on editable", async () => {
+    // The grandfathering. A superadmin can put the manager on one, and from then on
+    // the manager must still be able to save other changes to it without being told
+    // to remove themselves first.
+    const admin = await superadmin();
+    const { boss, ravi, dept } = await fixture(admin);
+    const made = await inject("POST", "/routines", admin, daily(dept.id, [boss.id]));
+    expect(made.statusCode).toBe(201);
+    const id = made.json().id as string;
+
+    // The manager does not own it, so the superadmin hands it over by editing it —
+    // what matters is that `boss` stays on the list through a save.
+    const kept = await inject("PATCH", `/routines/${id}`, admin, {
+      title: "Renamed",
+      assigneeIds: [boss.id, ravi.id],
+    });
+
+    expect(kept.statusCode).toBe(200);
+    expect((kept.json().assignees as { userId: string }[]).map((a) => a.userId)).toContain(boss.id);
   });
 });

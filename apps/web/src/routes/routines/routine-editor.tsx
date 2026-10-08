@@ -1,6 +1,7 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // Create or edit a routine: what it is, how often (cadence + anchor), what it's worth,
-// and who on your team does it. Assignees are chosen from your reporting downline.
+// and who on your team does it. Assignees are chosen from your reporting downline —
+// never yourself: a routine pays points, and nobody should both set and earn them.
 import {
   ROUTINE_CADENCES,
   ROUTINE_CADENCE_LABELS,
@@ -143,12 +144,22 @@ function Editor({ mode, routine }: { mode: "create" | "edit"; routine?: Routine 
   } = form.values;
   const effectiveDept = departmentId || departments[0]?.departmentId || "";
 
-  // The manager may assign to themselves or anyone below them.
+  // A routine somebody put themselves on before the rule existed stays editable, so
+  // they are still offered on that one — otherwise saving any other change to it
+  // would silently drop them. On everything else the manager assigns downwards
+  // only: a routine pays points, and inventing your own duty and completing it has
+  // nobody else in the loop. The API refuses it either way; this keeps the picker
+  // from offering something that would come back refused.
+  // Superadmins are exempt from the rule in the API, so the picker has to offer
+  // them the option — otherwise the screen refuses something the server accepts,
+  // which is the drift this whole area exists to avoid.
+  const mayAssignSelf =
+    session.isSuperadmin || (routine?.assignees ?? []).some((a) => a.userId === session.user.id);
   // Searchable, with each person's department underneath: a downline of forty was a
   // checkbox list you had to scroll, and two people of the same name were two
   // identical rows.
   const options = [
-    { value: session.user.id, label: `${session.user.name} (you)` },
+    ...(mayAssignSelf ? [{ value: session.user.id, label: `${session.user.name} (you)` }] : []),
     ...(downline.data ?? []).map((m) => ({
       value: m.userId,
       label: m.name,
