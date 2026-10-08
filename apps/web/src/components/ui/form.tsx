@@ -165,6 +165,12 @@ export function Field({ label, hint, error, required, children }: FieldProps) {
  *
  * Not a variant of `Field` because it deliberately does less — no hint, no id
  * wiring — and wrapping the control in the `<label>` is what lets it skip that.
+ *
+ * The message sits OUTSIDE that `<label>`, which is the whole reason for the
+ * surrounding div. Inside it, the text joins the control's accessible name: a
+ * screen reader then announces the field as "Name This cannot be empty.", and
+ * `getByLabelText("Name")` stops matching the moment a message appears. The same
+ * trap the required asterisk fell into.
  */
 export function InlineField({
   label,
@@ -176,11 +182,13 @@ export function InlineField({
   children: ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      {children}
+    <div className="flex flex-col gap-1 text-xs">
+      <label className="flex flex-col gap-1">
+        <span className="text-muted-foreground">{label}</span>
+        {children}
+      </label>
       {error ? <span className="font-medium text-destructive">{error}</span> : null}
-    </label>
+    </div>
   );
 }
 
