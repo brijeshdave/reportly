@@ -9,7 +9,14 @@
 //
 // The permission half matters for the same reason: a technician who may install
 // but not scrap must not see a Scrap button that would 403.
-import { PERMISSIONS, type Part, type PartEvent, type PartModel } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  type Consumable,
+  type Part,
+  type PartEvent,
+  type PartModel,
+  type ServiceKind,
+} from "@reportly/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -33,6 +40,7 @@ vi.mock("@/services/parts.js", async (importOriginal) => ({
   fetchFittingDevices: vi.fn(),
   fetchServiceKinds: vi.fn(),
   fetchConsumables: vi.fn(),
+  recordService: vi.fn(),
 }));
 
 const fetchPart = vi.mocked(parts.fetchPart);
@@ -127,6 +135,34 @@ function model(ratedPageYield: number | null): PartModel {
     ratedPageYield,
     status: "active",
     compatibleDeviceTypeIds: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+const REFILL = "11111111-1111-4111-8111-111111111111";
+const TONER = "22222222-2222-4222-8222-222222222222";
+
+/** A service kind, with whatever consumable rules the test is about. */
+function serviceKind(consumables: ServiceKind["consumables"] = []): ServiceKind {
+  return {
+    id: REFILL,
+    name: "Refill",
+    description: null,
+    defaultPoints: 3,
+    status: "active",
+    consumables,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function consumable(): Consumable {
+  return {
+    id: TONER,
+    name: "Black toner",
+    unit: "g",
+    status: "active",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
@@ -366,5 +402,77 @@ describe("the history table", () => {
     expect(
       (await screen.findAllByRole("combobox", { name: "Filter by printer" }))[0],
     ).toBeInTheDocument();
+  });
+});
+
+describe("what a service used", () => {
+  /** A Refill that must use between 50 and 100 g of toner. */
+  function refillNeedingToner() {
+    vi.mocked(parts.fetchServiceKinds).mockResolvedValue([
+      serviceKind([{ consumableId: TONER, minQuantity: 50, maxQuantity: 100 }]),
+    ]);
+    vi.mocked(parts.fetchConsumables).mockResolvedValue([consumable()]);
+  }
+
+  const tonerBox = () => screen.getByLabelText("Black toner used, in grams");
+
+  it("refuses a refill that used none of what it needs, before posting it", async () => {
+    // The rule used to live only in the API, so this form accepted the job, posted
+    // it, and showed the refusal as a sentence above the card — naming a consumable
+    // it could not point at. Both sides now ask the same function.
+    refillNeedingToner();
+    const user = userEvent.setup({ delay: null });
+    renderDetail(TECHNICIAN);
+
+    await user.click(await screen.findByRole("button", { name: "Service" }));
+    await user.click(screen.getByRole("button", { name: "Record" }));
+
+    expect(await screen.findByText("A Refill needs at least 50 Black toner.")).toBeInTheDocument();
+    expect(parts.recordService).not.toHaveBeenCalled();
+  });
+
+  it("refuses more than the kind allows", async () => {
+    refillNeedingToner();
+    const user = userEvent.setup({ delay: null });
+    renderDetail(TECHNICIAN);
+
+    await user.click(await screen.findByRole("button", { name: "Service" }));
+    await user.type(tonerBox(), "250");
+    await user.click(screen.getByRole("button", { name: "Record" }));
+
+    expect(await screen.findByText("A Refill uses at most 100 Black toner.")).toBeInTheDocument();
+    expect(parts.recordService).not.toHaveBeenCalled();
+  });
+
+  it("records a quantity inside the rule", async () => {
+    refillNeedingToner();
+    const user = userEvent.setup({ delay: null });
+    renderDetail(TECHNICIAN);
+
+    await user.click(await screen.findByRole("button", { name: "Service" }));
+    await user.type(tonerBox(), "75");
+    await user.click(screen.getByRole("button", { name: "Record" }));
+
+    expect(parts.recordService).toHaveBeenCalledWith("p1", {
+      serviceKindId: serviceKind().id,
+      consumptions: [{ consumableId: TONER, quantity: 75 }],
+    });
+  });
+
+  it("leaves a kind with no rules unrestricted", async () => {
+    // Empty means unrestricted, not "uses nothing" — every kind created before the
+    // rules existed looks like this, and none of them should start refusing.
+    vi.mocked(parts.fetchServiceKinds).mockResolvedValue([serviceKind([])]);
+    vi.mocked(parts.fetchConsumables).mockResolvedValue([consumable()]);
+    const user = userEvent.setup({ delay: null });
+    renderDetail(TECHNICIAN);
+
+    await user.click(await screen.findByRole("button", { name: "Service" }));
+    await user.click(screen.getByRole("button", { name: "Record" }));
+
+    expect(parts.recordService).toHaveBeenCalledWith("p1", {
+      serviceKindId: serviceKind().id,
+      consumptions: [],
+    });
   });
 });

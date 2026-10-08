@@ -7,6 +7,7 @@
 // and make sure it blames it once.
 import {
   ERROR_CODES,
+  consumableViolations,
   type RecordService,
   type ServiceConsumption,
   type ServiceEvent,
@@ -179,40 +180,16 @@ async function enforceKindRules(
     companyId,
   );
   const nameOf = (id: string) => names.get(id)?.name ?? "that consumable";
-  const allowed = new Map(rules.map((rule) => [rule.consumableId, rule]));
 
-  for (const line of lines) {
-    const rule = allowed.get(line.consumableId);
-    if (!rule) {
-      throw new AppError(
-        400,
-        ERROR_CODES.VALIDATION_ERROR,
-        `A ${kindName} does not use ${nameOf(line.consumableId)}.`,
-      );
-    }
-    if (rule.maxQuantity !== null && line.quantity > rule.maxQuantity) {
-      throw new AppError(
-        400,
-        ERROR_CODES.VALIDATION_ERROR,
-        `A ${kindName} uses at most ${rule.maxQuantity} ${nameOf(line.consumableId)}.`,
-      );
-    }
-  }
+  const problems = consumableViolations(kindName, rules, lines, nameOf);
+  if (problems.length === 0) return;
 
-  // And the other direction: a refill that used no toner did not happen.
-  for (const rule of rules) {
-    if (rule.minQuantity <= 0) continue;
-    const used = lines
-      .filter((line) => line.consumableId === rule.consumableId)
-      .reduce((sum, line) => sum + line.quantity, 0);
-    if (used < rule.minQuantity) {
-      throw new AppError(
-        400,
-        ERROR_CODES.VALIDATION_ERROR,
-        `A ${kindName} needs at least ${rule.minQuantity} ${nameOf(rule.consumableId)}.`,
-      );
-    }
-  }
+  // Named for the consumable each one is about, so the form can show it under
+  // that box. The first message is still the one on the error itself, for callers
+  // that have no field to put it against.
+  const fields: Record<string, string> = {};
+  for (const problem of problems) fields[`used.${problem.consumableId}`] = problem.message;
+  throw new AppError(400, ERROR_CODES.VALIDATION_ERROR, problems[0]!.message, undefined, fields);
 }
 
 /**

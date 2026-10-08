@@ -9,17 +9,20 @@ import {
   formatDate,
   formatDateTime,
   formatDurationMinutes,
+  finishOccurrenceSchema,
+  type FinishOccurrence,
   type Routine,
   type RoutineCompletion,
   type RoutineOccurrence,
   type RoutineOccurrenceState,
 } from "@reportly/shared";
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Building2, CheckCircle2, ListChecks, Paperclip, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { AttachmentsPanel } from "@/components/attachments-panel.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Field, Spinner } from "@/components/ui/form.js";
 import { Badge, Button, Card, EmptyState, PageHeader } from "@/components/ui/primitives.js";
 import { sessionQuery } from "@/lib/queries.js";
@@ -39,6 +42,18 @@ function toLocalInput(iso: string | null): string {
 }
 
 const round2 = (n: number) => Math.round(n * 2) / 2;
+
+/**
+ * A `datetime-local` box's text as an instant, or the text itself when it is not
+ * one. Handing the raw text back is the point: `new Date("").toISOString()` throws,
+ * which took the whole submit with it, and a value the schema can see is a value
+ * the schema can refuse by name.
+ */
+function toIso(local: string): string {
+  if (local.trim() === "") return "";
+  const at = new Date(local);
+  return Number.isNaN(at.getTime()) ? local : at.toISOString();
+}
 
 export function MyRoutinesPage() {
   const { data: session } = useSuspenseQuery(sessionQuery);
@@ -244,29 +259,37 @@ function OccurrenceRow({ occ, meId }: { occ: RoutineOccurrence; meId: string }) 
 
   const [editing, setEditing] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
-  const [started, setStarted] = useState("");
-  const [finished, setFinished] = useState("");
-  const [notes, setNotes] = useState("");
 
-  const openForm = () => {
-    setStarted(toLocalInput(mine?.startedAt ?? null));
-    setFinished(toLocalInput(mine?.finishedAt ?? null));
-    setNotes(mine?.notes ?? "");
-    setEditing(true);
-  };
-
-  const log = useMutation({
-    mutationFn: () =>
-      finishOccurrence(occ.routineId, occ.date, {
-        startedAt: started ? new Date(started).toISOString() : undefined,
-        finishedAt: new Date(finished).toISOString(),
-        notes: notes || undefined,
-      }),
+  // The route's own schema, which is also where "finished before it started" now
+  // lives — so the pair is checked once rather than on the screen and the server
+  // separately. Finishing with an empty box used to throw inside the submit and
+  // look like a dead button.
+  const form = useForm({
+    schema: finishOccurrenceSchema,
+    initial: { started: "", finished: "", notes: "" },
+    toPayload: (v) => ({
+      ...(v.started ? { startedAt: toIso(v.started) } : {}),
+      finishedAt: toIso(v.finished),
+      ...(v.notes ? { notes: v.notes } : {}),
+    }),
+    // The boxes are named for the payload keys the schema reports under, so each
+    // refusal finds its own box.
+    fieldName: (key) => (key === "startedAt" ? "started" : key === "finishedAt" ? "finished" : key),
+    submit: (input) => finishOccurrence(occ.routineId, occ.date, input as FinishOccurrence),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["routine-occurrences"] });
       setEditing(false);
     },
   });
+
+  const openForm = () => {
+    form.reset({
+      started: toLocalInput(mine?.startedAt ?? null),
+      finished: toLocalInput(mine?.finishedAt ?? null),
+      notes: mine?.notes ?? "",
+    });
+    setEditing(true);
+  };
 
   const durationMinutes =
     mine?.startedAt && mine?.finishedAt
@@ -336,30 +359,29 @@ function OccurrenceRow({ occ, meId }: { occ: RoutineOccurrence; meId: string }) 
         <tr className="border-t border-border bg-muted/30">
           <td colSpan={7} className="px-4 py-3">
             {editing ? (
-              <div className="flex flex-col gap-2">
-                {log.error ? <ErrorAlert error={log.error} /> : null}
+              <form {...form.formProps} className="flex flex-col gap-2">
+                {/* Whatever could not be blamed on a field. */}
+                {form.formError ? <ErrorAlert error={form.formError} /> : null}
                 <div className="flex flex-wrap gap-3">
                   <div className="min-w-[13rem] flex-1">
-                    <Field label="Started">
+                    <Field label="Started" error={form.errorFor("started")}>
                       {(props) => (
                         <input
                           {...props}
                           type="datetime-local"
-                          value={started}
-                          onChange={(e) => setStarted(e.target.value)}
+                          {...form.register("started")}
                           className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
                         />
                       )}
                     </Field>
                   </div>
                   <div className="min-w-[13rem] flex-1">
-                    <Field label="Finished">
+                    <Field label="Finished" required error={form.errorFor("finished")}>
                       {(props) => (
                         <input
                           {...props}
                           type="datetime-local"
-                          value={finished}
-                          onChange={(e) => setFinished(e.target.value)}
+                          {...form.register("finished")}
                           className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
                         />
                       )}
@@ -367,26 +389,28 @@ function OccurrenceRow({ occ, meId }: { occ: RoutineOccurrence; meId: string }) 
                   </div>
                 </div>
                 <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  {...form.register("notes")}
+                  aria-label="Notes"
                   rows={2}
                   maxLength={2000}
                   placeholder="Notes (optional)"
                   className="w-full rounded-lg border border-border bg-background px-2 py-1 text-sm"
                 />
                 <div className="flex justify-end gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => setEditing(false)}>
-                    Cancel
-                  </Button>
                   <Button
                     size="sm"
-                    disabled={!finished || log.isPending}
-                    onClick={() => log.mutate()}
+                    variant="secondary"
+                    type="button"
+                    onClick={() => setEditing(false)}
                   >
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" disabled={form.submitting}>
+                    {form.submitting ? <Spinner /> : null}
                     Save log
                   </Button>
                 </div>
-              </div>
+              </form>
             ) : showFiles && mine ? (
               <AttachmentsPanel
                 ownerType="routine-completion"

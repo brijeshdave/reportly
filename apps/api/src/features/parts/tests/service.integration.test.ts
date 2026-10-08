@@ -261,11 +261,16 @@ describe("what a kind may consume", () => {
   });
 
   it("requires the consumable a kind cannot do without", async () => {
-    const { part, refill: kind } = await withRules();
+    const { part, refill: kind, toner } = await withRules();
     const res = await service(part.id, kind.id, []);
 
     expect(res.statusCode).toBe(400);
     expect(res.json().error.message).toBe("A Refill needs at least 1 Toner powder.");
+    // Named for the consumable it is about, so the form can put it under that box
+    // instead of in a banner that names a consumable it cannot point at.
+    expect(res.json().error.fields).toEqual({
+      [`used.${toner.id}`]: "A Refill needs at least 1 Toner powder.",
+    });
   });
 
   it("caps the quantity", async () => {
@@ -274,6 +279,9 @@ describe("what a kind may consume", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().error.message).toBe("A Refill uses at most 2 Toner powder.");
+    expect(res.json().error.fields).toEqual({
+      [`used.${toner.id}`]: "A Refill uses at most 2 Toner powder.",
+    });
   });
 
   it("accepts a job inside the rules", async () => {

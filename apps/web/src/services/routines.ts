@@ -3,6 +3,7 @@
 // and the log that records the times the work was done.
 import type {
   CreateRoutine,
+  FinishOccurrence,
   Routine,
   RoutineCompletion,
   RoutineOccurrence,
@@ -24,12 +25,14 @@ export const fetchMyOccurrences = (from: string, to: string) =>
 export const fetchRoutineOccurrences = (id: string, from: string, to: string) =>
   http.get<RoutineOccurrence[]>(`/routines/${id}/occurrences`, { query: { from, to } });
 
-/** Log a completion with the times the person entered (start optional, finish required). */
-export const finishOccurrence = (
-  id: string,
-  date: string,
-  input: { startedAt?: string; finishedAt: string; notes?: string },
-) => http.post<RoutineCompletion>(`/routines/${id}/occurrences/${date}/finish`, input);
+/**
+ * Log a completion with the times the person entered (start optional, finish
+ * required). Typed from the route's own schema rather than restated here: the
+ * local copy had `startedAt` non-nullable while the schema allows null, so the
+ * two disagreed about what the API accepts.
+ */
+export const finishOccurrence = (id: string, date: string, input: FinishOccurrence) =>
+  http.post<RoutineCompletion>(`/routines/${id}/occurrences/${date}/finish`, input);
 
 /** Award a month's routine points into the leaderboard (idempotent). */
 export const awardRoutineMonth = (year: number, month: number) =>

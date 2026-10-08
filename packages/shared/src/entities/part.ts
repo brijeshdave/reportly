@@ -423,6 +423,79 @@ export const recordServiceSchema = z.object({
 });
 export type RecordService = z.infer<typeof recordServiceSchema>;
 
+/** One thing a service used, as the form holds it before it becomes a payload. */
+export interface ConsumptionLine {
+  consumableId: string;
+  quantity: number;
+}
+
+/**
+ * Something wrong with what a service claims it used, named for the consumable it
+ * is about so a screen can put it under the right box.
+ */
+export interface ConsumableViolation {
+  consumableId: string;
+  message: string;
+}
+
+/**
+ * Whether a service's consumption lines satisfy its kind's rules.
+ *
+ * Here, and called by both sides, for the same reason `pagesFor` is: the API
+ * enforced these three rules on its own and the browser enforced none of them, so
+ * a refill short of toner was accepted by the form, posted, and refused with a
+ * sentence above the card that named a consumable but could not point at it. Two
+ * implementations would have drifted; one that only the server has cannot say
+ * where it hurts.
+ *
+ * `rules` empty means unrestricted, which is how every kind behaved before the
+ * rules existed — not "uses nothing".
+ */
+export function consumableViolations(
+  kindName: string,
+  rules: readonly ServiceKindConsumable[],
+  lines: readonly ConsumptionLine[],
+  nameOf: (consumableId: string) => string,
+): ConsumableViolation[] {
+  if (rules.length === 0) return [];
+  const problems: ConsumableViolation[] = [];
+  const allowed = new Map(rules.map((rule) => [rule.consumableId, rule]));
+
+  for (const line of lines) {
+    const rule = allowed.get(line.consumableId);
+    if (!rule) {
+      problems.push({
+        consumableId: line.consumableId,
+        message: `A ${kindName} does not use ${nameOf(line.consumableId)}.`,
+      });
+      continue;
+    }
+    if (rule.maxQuantity !== null && line.quantity > rule.maxQuantity) {
+      problems.push({
+        consumableId: line.consumableId,
+        message: `A ${kindName} uses at most ${rule.maxQuantity} ${nameOf(line.consumableId)}.`,
+      });
+    }
+  }
+
+  // And the other direction: a refill that used no toner did not happen. Summed
+  // rather than checked line by line, since the same consumable may appear twice.
+  for (const rule of rules) {
+    if (rule.minQuantity <= 0) continue;
+    const used = lines
+      .filter((line) => line.consumableId === rule.consumableId)
+      .reduce((sum, line) => sum + line.quantity, 0);
+    if (used < rule.minQuantity) {
+      problems.push({
+        consumableId: rule.consumableId,
+        message: `A ${kindName} needs at least ${rule.minQuantity} ${nameOf(rule.consumableId)}.`,
+      });
+    }
+  }
+
+  return problems;
+}
+
 /* -------------------------------- timeline --------------------------------- */
 
 /**

@@ -277,11 +277,26 @@ export type OccurrenceQuery = z.infer<typeof occurrenceQuerySchema>;
  * is often logged after the fact — so both are given, not stamped from the clock. A
  * finished completion can be logged again to correct it.
  */
-export const finishOccurrenceSchema = z.object({
-  startedAt: z.string().datetime().nullable().optional(),
-  finishedAt: z.string().datetime(),
-  notes: z.string().trim().max(2000).optional(),
-});
+export const finishOccurrenceSchema = z
+  .object({
+    startedAt: z
+      .string()
+      .datetime("Give a date and time, or leave it empty.")
+      .nullable()
+      .optional(),
+    finishedAt: z.string().datetime("Say when it was finished."),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  // Checked here rather than on the screen so both sides agree: a routine that
+  // finished before it started is not a shape error, it is two fields that cannot
+  // both be right, and the later one is the one to correct.
+  .refine(
+    (value) =>
+      !value.startedAt ||
+      !value.finishedAt ||
+      Date.parse(value.finishedAt) >= Date.parse(value.startedAt),
+    { message: "This is before it started.", path: ["finishedAt"] },
+  );
 export type FinishOccurrence = z.infer<typeof finishOccurrenceSchema>;
 
 export const updateRoutineSchema = z

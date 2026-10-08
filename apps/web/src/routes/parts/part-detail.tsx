@@ -12,8 +12,10 @@ import {
   PERMISSIONS,
   deployPartSchema,
   formatDateTime,
+  consumableViolations,
   meanPages,
   pagesFor,
+  recordServiceSchema,
   returnPartSchema,
   yieldPercent,
   type Consumable,
@@ -30,7 +32,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, PackageCheck, PackageX, Pencil, Undo2, Wrench } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { z } from "zod";
 
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
@@ -369,9 +372,68 @@ function ServiceForm({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [serviceKindId, setServiceKindId] = useState(kinds[0]?.id ?? "");
-  const [notes, setNotes] = useState("");
-  const [used, setUsed] = useState<Record<string, string>>({});
+
+  /** A blank or zero box means "did not use it", which is not a line. */
+  const linesOf = (boxes: Record<string, string>) =>
+    Object.entries(boxes)
+      .map(([consumableId, quantity]) => ({ consumableId, quantity: Number(quantity) }))
+      .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0);
+
+  const nameOf = (consumableId: string) =>
+    consumables.find((candidate) => candidate.id === consumableId)?.name ?? "that consumable";
+
+  /**
+   * The route's schema plus the kind's own consumable rules, which until now only
+   * the server checked — so a refill short of toner was accepted here, posted, and
+   * refused with a sentence above the card naming a consumable it could not point
+   * at. `consumableViolations` is the same function the API calls, and it reports
+   * per consumable, so each message lands under its own box.
+   */
+  const schema = useMemo(
+    () =>
+      recordServiceSchema
+        .pick({ serviceKindId: true, notes: true })
+        .extend({ used: z.record(z.string(), z.string()) })
+        .superRefine((value, ctx) => {
+          const kind = kinds.find((candidate) => candidate.id === value.serviceKindId);
+          if (!kind) return;
+          for (const problem of consumableViolations(
+            kind.name,
+            kind.consumables ?? [],
+            linesOf(value.used),
+            nameOf,
+          )) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["used", problem.consumableId],
+              message: problem.message,
+            });
+          }
+        }),
+    // `linesOf` holds nothing, and `nameOf` only reads `consumables`, so these two
+    // are the whole dependency — listing the closures would rebuild it every render.
+    [kinds, consumables],
+  );
+
+  const form = useForm({
+    schema,
+    initial: { serviceKindId: kinds[0]?.id ?? "", notes: "", used: {} as Record<string, string> },
+    submit: (input) => {
+      const v = input as { serviceKindId: string; notes?: string; used: Record<string, string> };
+      return recordService(part.id, {
+        serviceKindId: v.serviceKindId,
+        ...(v.notes?.trim() ? { notes: v.notes.trim() } : {}),
+        consumptions: linesOf(v.used),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["parts"] });
+      onDone();
+    },
+  });
+  /** The boxes, as typed, keyed by consumable. `linesOf` turns them into lines. */
+  const { serviceKindId, used } = form.values;
+  const setUsed = (next: Record<string, string>) => form.set("used", next);
 
   const kind = kinds.find((candidate) => candidate.id === serviceKindId);
   // What this kind may consume. No rules at all means unrestricted, which is how
@@ -386,111 +448,115 @@ function ServiceForm({
   const ruleFor = (consumableId: string) =>
     rules.find((rule) => rule.consumableId === consumableId);
 
-  const save = useMutation({
-    mutationFn: () =>
-      recordService(part.id, {
-        serviceKindId,
-        ...(notes.trim() ? { notes: notes.trim() } : {}),
-        consumptions: Object.entries(used)
-          .map(([consumableId, quantity]) => ({ consumableId, quantity: Number(quantity) }))
-          // A blank or zero box means "did not use it", which is not a line.
-          .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0),
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["parts"] });
-      onDone();
-    },
-  });
-
   return (
-    <Card className="space-y-3 p-4">
-      <h2 className="text-sm font-semibold">Record a refill or repair</h2>
-      {/* What it pays is not asked for here: the rate comes from the model and the
+    <Card className="p-4">
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...form.formProps} className="space-y-3">
+        <h2 className="text-sm font-semibold">Record a refill or repair</h2>
+        {/* What it pays is not asked for here: the rate comes from the model and the
           kind on the server, so the screen cannot promise a number the ledger
           then disagrees with. */}
-      {save.error ? <ErrorAlert error={save.error} /> : null}
-      <Field label="What was done">
-        {(props) => (
-          <Select
-            {...props}
-            value={serviceKindId}
-            onChange={(e) => {
-              setServiceKindId(e.target.value);
-              // Clear what was typed: a quantity entered against a consumable
-              // the new kind does not use would be submitted invisibly and
-              // refused, with nothing on screen explaining why.
-              setUsed({});
-            }}
-          >
-            {kinds.map((kind) => (
-              <option key={kind.id} value={kind.id}>
-                {kind.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
+        {/* Whatever could not be blamed on a field. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        <Field label="What was done" required error={form.errorFor("serviceKindId")}>
+          {(props) => (
+            <Select
+              {...props}
+              name="serviceKindId"
+              value={serviceKindId}
+              onChange={(e) => {
+                form.set("serviceKindId", e.target.value);
+                // Clear what was typed: a quantity entered against a consumable
+                // the new kind does not use would be submitted invisibly and
+                // refused, with nothing on screen explaining why.
+                setUsed({});
+              }}
+            >
+              {kinds.map((kind) => (
+                <option key={kind.id} value={kind.id}>
+                  {kind.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">What it used</legend>
-        <p className="text-xs text-muted-foreground">
-          {rules.length === 0
-            ? "Recorded against the job. Leave a box empty for anything you did not use — this is a record of work, not a stock cupboard."
-            : `Only what a ${kind?.name.toLowerCase()} uses is listed. Recorded against the job, not deducted from a cupboard.`}
-        </p>
-        {offered.length === 0 ? (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">What it used</legend>
           <p className="text-xs text-muted-foreground">
-            A {kind?.name.toLowerCase()} uses no consumables — record it on its own.
+            {rules.length === 0
+              ? "Recorded against the job. Leave a box empty for anything you did not use — this is a record of work, not a stock cupboard."
+              : `Only what a ${kind?.name.toLowerCase()} uses is listed. Recorded against the job, not deducted from a cupboard.`}
           </p>
-        ) : null}
-        <div className="grid gap-2 sm:grid-cols-2">
-          {offered.map((consumable) => {
-            const rule = ruleFor(consumable.id);
-            const required = (rule?.minQuantity ?? 0) > 0;
-            return (
-              <label key={consumable.id} className="flex items-center gap-2 text-sm">
-                <span className="flex-1 truncate">
-                  {consumable.name}
-                  {required ? <span className="ml-1 text-destructive">*</span> : null}
-                  {rule && (rule.minQuantity > 0 || rule.maxQuantity !== null) ? (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {rule.maxQuantity !== null
-                        ? `${rule.minQuantity}–${rule.maxQuantity}`
-                        : `min ${rule.minQuantity}`}
-                    </span>
-                  ) : null}
-                </span>
-                <Input
-                  type="number"
-                  min={rule?.minQuantity ?? 0}
-                  max={rule?.maxQuantity ?? undefined}
-                  step="any"
-                  inputMode="decimal"
-                  aria-label={`${consumable.name} used, in ${CONSUMABLE_UNIT_LABELS[consumable.unit]}`}
-                  className="w-24"
-                  value={used[consumable.id] ?? ""}
-                  onChange={(e) => setUsed({ ...used, [consumable.id]: e.target.value })}
-                />
-                <span className="w-8 text-xs text-muted-foreground">{consumable.unit}</span>
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
+          {offered.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              A {kind?.name.toLowerCase()} uses no consumables — record it on its own.
+            </p>
+          ) : null}
+          <div className="grid gap-2 sm:grid-cols-2">
+            {offered.map((consumable) => {
+              const rule = ruleFor(consumable.id);
+              const required = (rule?.minQuantity ?? 0) > 0;
+              return (
+                <label key={consumable.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 truncate">
+                    {consumable.name}
+                    {required ? <span className="ml-1 text-destructive">*</span> : null}
+                    {rule && (rule.minQuantity > 0 || rule.maxQuantity !== null) ? (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        {rule.maxQuantity !== null
+                          ? `${rule.minQuantity}–${rule.maxQuantity}`
+                          : `min ${rule.minQuantity}`}
+                      </span>
+                    ) : null}
+                  </span>
+                  <Input
+                    type="number"
+                    min={rule?.minQuantity ?? 0}
+                    max={rule?.maxQuantity ?? undefined}
+                    step="any"
+                    inputMode="decimal"
+                    aria-label={`${consumable.name} used, in ${CONSUMABLE_UNIT_LABELS[consumable.unit]}`}
+                    className="w-24"
+                    // Matches the path the rule reports under, both from the schema
+                    // here and from the server, so either can find this box.
+                    name={`used.${consumable.id}`}
+                    value={used[consumable.id] ?? ""}
+                    onChange={(e) => setUsed({ ...used, [consumable.id]: e.target.value })}
+                  />
+                  <span className="w-8 text-xs text-muted-foreground">{consumable.unit}</span>
+                </label>
+              );
+            })}
+          </div>
+          {/* Under the boxes rather than in the banner above: each one names the
+            consumable it is about, and there may be more than one at a time. */}
+          {offered
+            .map((consumable) => ({
+              id: consumable.id,
+              message: form.errorFor(`used.${consumable.id}`),
+            }))
+            .filter((entry) => entry.message !== undefined)
+            .map((entry) => (
+              <p key={entry.id} className="text-xs text-destructive">
+                {entry.message}
+              </p>
+            ))}
+        </fieldset>
 
-      <Field label="Notes" hint="Optional.">
-        {(props) => (
-          <Textarea {...props} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        )}
-      </Field>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button size="sm" disabled={!serviceKindId || save.isPending} onClick={() => save.mutate()}>
-          Record
-        </Button>
-      </div>
+        <Field label="Notes" hint="Optional." error={form.errorFor("notes")}>
+          {(props) => <Textarea {...props} rows={2} {...form.register("notes")} />}
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={onDone}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
+            Record
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
