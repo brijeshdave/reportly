@@ -59,3 +59,8 @@ apps/api/uploads
 # VitePress build output and cache
 docs/.vitepress/dist
 docs/.vitepress/cache
+
+# Written into the repository root by `turbo` whenever it detects that an AI agent
+# is driving it. It records nothing about this project, and the installed turbo has
+# no `agentGuidance` switch to turn it off, so it is ignored rather than committed.
+AGENTS.md

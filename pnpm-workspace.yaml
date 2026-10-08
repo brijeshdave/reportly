@@ -36,8 +36,11 @@ overrides:
   # incomplete-fix follow-up: a sourceMappingURL reads arbitrary .map files.
   postcss: "^8.5.23"
   # Six advisories across three major lines, all reached through glob/minimatch in
-  # the test and build tooling: unbounded brace expansion is a DoS.
-  brace-expansion: "^2.1.4"
+  # the test and build tooling: unbounded brace expansion is a DoS. 2.1.4 answered
+  # the first of them; two more followed — quadratic expansion of `{a},b}` and
+  # uncontrolled recursion on nested braces — so the floor moves to 2.1.7. Held
+  # below 3 because minimatch asks for the 2 line.
+  brace-expansion: "^2.1.7"
   # exceljs still asks for uuid 8; v3/v5/v6 miss a buffer bounds check when the
   # caller supplies `buf`. exceljs itself does not, but the copy is ours to patch.
   uuid: "^11.1.1"
@@ -52,5 +55,36 @@ overrides:
   # fastify-type-provider-zod. Two major lines are in the tree at once, so each is
   # pinned to its own patched version rather than being forced onto one line: a
   # `^4` override would break whatever still asks for `^3`.
-  fast-uri@<3.1.6: "^3.1.6"
-  fast-uri@>=4.0.0 <4.1.3: "^4.1.3"
+  fast-uri@<3.1.8: "^3.1.8"
+  fast-uri@>=4.0.0 <4.1.5: "^4.1.5"
+  # Multipart parsing, reached through @fastify/multipart — so this one is on the
+  # request path of the running API rather than in the toolchain. An oversized
+  # part header and a prototype-pollution route are both denial of service, and a
+  # CRLF in a part's headers lets a caller forge the ones after it.
+  "@fastify/busboy": ">=3.2.2"
+  # Reached through drizzle-orm's optional `gel` driver, which nothing here uses —
+  # Reportly talks to Postgres through pg. Pinned anyway: it is a one-line fix for
+  # a command injection, and "installed but we believe unreachable" is a worse
+  # thing to have to re-argue at every audit than a version number.
+  shell-quote: ">=1.11.0"
+  # In the web bundle, through @tanstack/react-router: an unchecked TypedArray
+  # length lets a crafted payload exhaust memory while being deserialised.
+  seroval: ">=1.6.3"
+  # Only in the test toolchain (jsdom under vitest), but the list is long enough to
+  # be worth closing: a TLS certificate validation bypass, cross-origin cache
+  # poisoning, and several denial-of-service routes.
+  undici: ">=8.10.2"
+  # Indexed lookups walk the mappings linearly, so a crafted source map stalls the
+  # event loop. Reached twice: Tailwind's Vite plugin, and Vue's compiler under
+  # VitePress. Neither ships, but both run on a machine holding a checkout.
+  source-map-js: ">=1.2.2"
+  # VitePress's Vue. An attribute name containing a bare CR slips past the SSR
+  # escaper, which is an XSS in anything server-rendered — the docs site is
+  # static, so this is closing the hole rather than patching a live one.
+  vue: ">=3.5.43"
+  # pptxgenjs declares image-size but references it in none of its published
+  # bundles, and the management-pack deck is built in the browser — so the ICNS,
+  # JXL and HEIF parsers this fixes are not on any path the app takes. Pinned
+  # because "declared but we believe unused" is not worth re-deciding at every
+  # audit, and the 2 line still publishes a CommonJS entry point.
+  image-size: ">=2.0.3"
