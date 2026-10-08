@@ -20,6 +20,7 @@ import {
   REPORT_SOURCE_LABELS,
   isShiftSource,
   REPORT_VIEW_ACCESS,
+  createReportViewSchema,
   REPORT_VIEW_ACCESS_LABELS,
   type ReportColumn,
   type ReportDefinition,
@@ -153,6 +154,20 @@ export function ReportWorkspace({ mode, viewId }: { mode: WorkspaceMode; viewId?
   // Controls changed since the report was generated — the Generate button lights up.
   const dirty = applied !== null && JSON.stringify(applied) !== JSON.stringify(definition);
 
+  /**
+   * What the name is wrong about, if anything.
+   *
+   * Checked rather than left to a disabled button, because of where the two things
+   * are: Save is in the page header and the name is in a column beside the report,
+   * often scrolled away. A button that goes quiet up there explains nothing at all.
+   *
+   * `useForm` is not used for this one screen, and the reason is the same geometry:
+   * it moves focus to the offending input inside the `<form>` it is given, and there
+   * is no form here to put around a header button and a side panel. The rule still
+   * comes from the route's own schema rather than a hand-written `.trim()`.
+   */
+  const [nameError, setNameError] = useState<string | undefined>(undefined);
+
   const save = useMutation({
     mutationFn: async () => {
       const payload = { name, description, access, groupIds, definition };
@@ -164,6 +179,17 @@ export function ReportWorkspace({ mode, viewId }: { mode: WorkspaceMode; viewId?
       await navigate({ to: "/reports/$viewId", params: { viewId: view.id } });
     },
   });
+
+  /** Save, or say why not. */
+  const attemptSave = () => {
+    const checked = createReportViewSchema.shape.name.safeParse(name);
+    if (!checked.success) {
+      setNameError(checked.error.issues[0]?.message ?? "Give the report a name.");
+      return;
+    }
+    setNameError(undefined);
+    save.mutate();
+  };
 
   // Exports must match the report on screen, so they use what was generated.
   const runBody = { definition: applied ?? definition };
@@ -224,8 +250,10 @@ export function ReportWorkspace({ mode, viewId }: { mode: WorkspaceMode; viewId?
             {editing && canManage ? (
               <Button
                 size="sm"
-                onClick={() => save.mutate()}
-                disabled={save.isPending || !name.trim()}
+                onClick={attemptSave}
+                // Not disabled on an empty name: that is the one thing this button
+                // used to refuse without saying so, from the far side of the page.
+                disabled={save.isPending}
               >
                 <Save className="mr-1.5 h-4 w-4" />
                 {mode === "edit" ? "Save changes" : "Save report"}
@@ -274,7 +302,12 @@ export function ReportWorkspace({ mode, viewId }: { mode: WorkspaceMode; viewId?
             {editing ? (
               <MetaPanel
                 name={name}
-                setName={setName}
+                setName={(v) => {
+                  setName(v);
+                  // Gone the moment they start fixing it.
+                  setNameError(undefined);
+                }}
+                nameError={nameError}
                 description={description}
                 setDescription={setDescription}
                 access={access}
@@ -761,11 +794,22 @@ function ControlsPanel({
 /** A label + control stack. Div-based (not a <label>) so a checkbox group inside it
  *  never nests two labels. Replaces the shared `Field`, whose render-prop children
  *  do not fit the SearchableSelect or the checkbox lists used here. */
-function Labeled({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function Labeled({
+  label,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5 text-sm">
       <span className="font-medium">{label}</span>
       {children}
+      {error ? <span className="text-xs font-medium text-destructive">{error}</span> : null}
       {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </div>
   );
@@ -785,6 +829,7 @@ function FilterField({ label, children }: { label: string; children: ReactNode }
 function MetaPanel({
   name,
   setName,
+  nameError,
   description,
   setDescription,
   access,
@@ -794,6 +839,7 @@ function MetaPanel({
 }: {
   name: string;
   setName: (v: string) => void;
+  nameError?: string;
   description: string;
   setDescription: (v: string) => void;
   access: ReportViewAccess;
@@ -806,7 +852,7 @@ function MetaPanel({
   return (
     <Card className="flex flex-col gap-3 p-4">
       <h2 className="text-sm font-semibold">Report details</h2>
-      <Labeled label="Name">
+      <Labeled label="Name" error={nameError}>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
