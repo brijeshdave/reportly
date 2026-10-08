@@ -7,6 +7,8 @@
 // An entry left open (no end time) is the normal way to record a breakdown you are
 // still in the middle of: save it now, come back and close it when the line runs.
 import {
+  createDowntimeSchema,
+  type CreateDowntime,
   type DowntimeEntry,
   type DowntimeTargetKind,
   type JournalTarget,
@@ -17,7 +19,8 @@ import { Clock, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { Input, Select, Spinner } from "@/components/ui/form.js";
+import { InlineField, Input, Select, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card } from "@/components/ui/primitives.js";
 import {
   createDowntime,
@@ -26,9 +29,18 @@ import {
   updateDowntime,
 } from "@/services/downtime.js";
 
-/** datetime-local ↔ ISO, in the viewer's own time zone. */
-const toIso = (local: string): string | undefined =>
-  local ? new Date(local).toISOString() : undefined;
+/**
+ * datetime-local ↔ ISO, in the viewer's own time zone.
+ *
+ * An unparseable box comes back as its own text rather than throwing: `new
+ * Date("x").toISOString()` raises, which took the whole submit with it, and a
+ * value the schema can see is a value the schema can refuse by name.
+ */
+const toIso = (local: string): string | undefined => {
+  if (!local) return undefined;
+  const at = new Date(local);
+  return Number.isNaN(at.getTime()) ? local : at.toISOString();
+};
 function toLocalInput(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -236,82 +248,77 @@ function AddDowntimeForm({
   onCancel: () => void;
 }) {
   const first = options[0]!;
-  const [target, setTarget] = useState(`${first.kind}:${first.id}`);
-  const [startedAt, setStartedAt] = useState(toLocalInput(new Date().toISOString()));
-  const [endedAt, setEndedAt] = useState("");
-  const [reason, setReason] = useState("");
 
-  const create = useMutation({
-    mutationFn: () => {
-      const [kind, ...rest] = target.split(":");
-      return createDowntime({
-        reportId,
-        targetKind: kind as DowntimeTargetKind,
-        targetId: rest.join(":"),
-        startedAt: toIso(startedAt)!,
-        endedAt: toIso(endedAt),
-        reason: reason.trim() || undefined,
-      });
+  /** The chosen option as the payload's two halves. */
+  const split = (target: string) => {
+    const [kind, ...rest] = target.split(":");
+    return { targetKind: kind as DowntimeTargetKind, targetId: rest.join(":") };
+  };
+
+  // The route's own schema, which already holds the pair rule and points it at
+  // `endedAt` — so "cannot end before it started" lands under Back up at rather
+  // than in a banner above the panel. A cleared Went down at is caught here too;
+  // it used to be asserted non-null and refused by the server.
+  const create = useForm({
+    schema: createDowntimeSchema,
+    initial: {
+      target: `${first.kind}:${first.id}`,
+      startedAt: toLocalInput(new Date().toISOString()),
+      endedAt: "",
+      reason: "",
     },
+    toPayload: (v) => ({
+      reportId,
+      ...split(v.target),
+      startedAt: toIso(v.startedAt),
+      endedAt: toIso(v.endedAt),
+      reason: v.reason.trim() || undefined,
+    }),
+    submit: (input) => createDowntime(input as CreateDowntime),
     onSuccess: onDone,
   });
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
-      {create.error ? <ErrorAlert error={create.error} /> : null}
+    <form {...create.formProps} className="flex flex-col gap-3 rounded-xl border border-border p-3">
+      {/* Whatever could not be blamed on a field. */}
+      {create.formError ? <ErrorAlert error={create.formError} /> : null}
 
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">What was down</span>
-        <Select value={target} onChange={(event) => setTarget(event.target.value)}>
+      <InlineField label="What was down" error={create.errorFor("targetId")}>
+        <Select {...create.register("target")} name="targetId">
           {options.map((option) => (
             <option key={`${option.kind}:${option.id}`} value={`${option.kind}:${option.id}`}>
               {option.label}
             </option>
           ))}
         </Select>
-      </label>
+      </InlineField>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Went down at</span>
-          <Input
-            type="datetime-local"
-            value={startedAt}
-            onChange={(event) => setStartedAt(event.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Back up at</span>
-          <Input
-            type="datetime-local"
-            value={endedAt}
-            onChange={(event) => setEndedAt(event.target.value)}
-          />
-        </label>
+        <InlineField label="Went down at" error={create.errorFor("startedAt")}>
+          <Input type="datetime-local" {...create.register("startedAt")} />
+        </InlineField>
+        <InlineField label="Back up at" error={create.errorFor("endedAt")}>
+          <Input type="datetime-local" {...create.register("endedAt")} />
+        </InlineField>
       </div>
       <p className="text-xs text-muted-foreground">
         Leave &ldquo;back up&rdquo; empty if it is still down — it will wait in the pending queue
         until you close it.
       </p>
 
-      <label className="flex flex-col gap-1 text-xs">
-        <span className="text-muted-foreground">Reason (optional)</span>
-        <Input
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="e.g. Belt seized"
-        />
-      </label>
+      <InlineField label="Reason (optional)" error={create.errorFor("reason")}>
+        <Input {...create.register("reason")} placeholder="e.g. Belt seized" />
+      </InlineField>
 
       <div className="flex justify-end gap-2">
-        <Button size="sm" variant="ghost" onClick={onCancel}>
+        <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
           Cancel
         </Button>
-        <Button size="sm" onClick={() => create.mutate()} disabled={create.isPending || !startedAt}>
-          {create.isPending ? <Spinner /> : null}
+        <Button type="submit" size="sm" disabled={create.submitting}>
+          {create.submitting ? <Spinner /> : null}
           Record
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
