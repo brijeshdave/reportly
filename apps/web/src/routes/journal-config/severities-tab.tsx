@@ -7,12 +7,13 @@
 // manager, and it consults severity nowhere. The box stayed editable long after
 // it stopped doing anything, which is worse than useless — it told an
 // administrator that tuning it changed what work was worth.
-import { type CreateSeverity, type Severity } from "@reportly/shared";
+import { createSeveritySchema, type CreateSeverity, type Severity } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { Input, Spinner } from "@/components/ui/form.js";
+import { InlineField, Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card } from "@/components/ui/primitives.js";
 import {
@@ -32,24 +33,23 @@ export function SeveritiesTab({ canManage }: { canManage: boolean }) {
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["report-config", "severities"] });
 
-  const [draft, setDraft] = useState<CreateSeverity>({
-    name: "",
-    orderIndex: 0,
-    // Ten to begin with, like every severity that already exists — a new one is
-    // worth what an entry has always been worth until somebody decides otherwise.
-    maxPoints: 10,
-    status: "active",
-  });
-
-  const create = useMutation({
-    mutationFn: () =>
-      createSeverity({
-        ...draft,
-        name: draft.name.trim(),
-        orderIndex: severities.data?.length ?? 0,
-      }),
+  // The route's own schema, so an empty name is answered at the box rather than by
+  // Add quietly going inert.
+  const create = useForm({
+    schema: createSeveritySchema,
+    initial: { name: "" },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      // Ten to begin with, like every severity that already exists — a new one is
+      // worth what an entry has always been worth until somebody decides otherwise.
+      maxPoints: 10,
+      status: "active" as const,
+      // Appended, so a new rung lands at the bottom of the scale.
+      orderIndex: severities.data?.length ?? 0,
+    }),
+    submit: (input) => createSeverity(input as CreateSeverity),
     onSuccess: async () => {
-      setDraft({ name: "", orderIndex: 0, maxPoints: 10, status: "active" });
+      create.reset({ name: "" });
       await refresh();
     },
   });
@@ -86,27 +86,22 @@ export function SeveritiesTab({ canManage }: { canManage: boolean }) {
       </Card>
 
       {canManage ? (
-        <Card className="flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-semibold">Add a severity</h3>
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="grid grid-cols-[1fr_auto] items-end gap-3">
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">Name</span>
-              <Input
-                value={draft.name}
-                onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value }))}
-                placeholder="e.g. Emergency"
-              />
-            </label>
-            <Button
-              size="sm"
-              onClick={() => create.mutate()}
-              disabled={create.isPending || draft.name.trim() === ""}
-            >
-              {create.isPending ? <Spinner /> : null}
-              Add
-            </Button>
-          </div>
+        <Card className="p-4">
+          {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+          <form {...create.formProps} className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold">Add a severity</h3>
+            {/* Whatever could not be blamed on the field — a duplicate name. */}
+            {create.formError ? <ErrorAlert error={create.formError} /> : null}
+            <div className="grid grid-cols-[1fr_auto] items-end gap-3">
+              <InlineField label="Name" error={create.errorFor("name")}>
+                <Input {...create.register("name")} placeholder="e.g. Emergency" />
+              </InlineField>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
+            </div>
+          </form>
         </Card>
       ) : null}
     </div>

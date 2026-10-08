@@ -29,14 +29,14 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { ExclusivePanels, useExclusivePanel } from "@/routes/parts/use-exclusive-panel.js";
 
 import { Can } from "@/components/can.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { Field, Input, Select, Spinner } from "@/components/ui/form.js";
+import { Field, InlineField, Input, Select, Spinner } from "@/components/ui/form.js";
 import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { useOptions } from "@/hooks/use-options.js";
@@ -59,33 +59,6 @@ const TABS = [
   { id: "kinds", label: "Service kinds" },
   { id: "consumables", label: "Consumables" },
 ];
-
-/**
- * The compact label-above-input these inline editors use, with somewhere to put a
- * message. `Field` is the right thing on a page; these panels sit inside table
- * rows at `text-xs`, and the full component's spacing and font fight the row.
- *
- * It exists because the labels here were bare `<span>`s with no error slot at all,
- * so a refusal had nowhere to go but the alert above — or, for the commonest case
- * of an empty name, nowhere at all, since the Save button simply went inert.
- */
-function InlineField({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      {children}
-      {error ? <span className="text-destructive">{error}</span> : null}
-    </label>
-  );
-}
 
 /** The names behind a kind's consumable rules, with "at least" marked. */
 function consumableNames(rules: ServiceKindConsumable[], all: Consumable[] | undefined): string {

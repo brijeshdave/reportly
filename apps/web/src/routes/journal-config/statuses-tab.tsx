@@ -1,12 +1,18 @@
 // Author: Brijesh Dave <https://github.com/brijeshdave>
 // The status workflow. The engine reads the group (open / resolved / rejected) and
 // the terminal flag; the name is the organisation's to choose.
-import { STATUS_GROUPS, type CreateReportStatus, type JournalStatus } from "@reportly/shared";
+import {
+  STATUS_GROUPS,
+  createReportStatusSchema,
+  type CreateReportStatus,
+  type JournalStatus,
+} from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 
-import { Input, Spinner } from "@/components/ui/form.js";
+import { InlineField, Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Badge, Button, Card } from "@/components/ui/primitives.js";
 import {
@@ -23,24 +29,24 @@ export function StatusesTab({ canManage }: { canManage: boolean }) {
   const statuses = useQuery({ queryKey: ["report-config", "statuses"], queryFn: fetchStatuses });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["report-config", "statuses"] });
 
-  const [draft, setDraft] = useState<CreateReportStatus>({
-    name: "",
-    group: "open",
-    isTerminal: false,
-    orderIndex: 0,
-    status: "active",
-  });
-
-  const create = useMutation({
-    mutationFn: () =>
-      createStatus({
-        ...draft,
-        name: draft.name.trim(),
-        isTerminal: draft.group !== "open",
-        orderIndex: statuses.data?.length ?? 0,
-      }),
+  // The route's own schema, so an empty name is answered at the box rather than by
+  // Add quietly going inert.
+  const create = useForm({
+    schema: createReportStatusSchema,
+    initial: { name: "", group: "open" as CreateReportStatus["group"] },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      group: v.group,
+      // Anything that is not "open" ends the workflow, which is the rule the
+      // engine reads — not a separate thing for somebody to tick.
+      isTerminal: v.group !== "open",
+      status: "active" as const,
+      // Appended, so a new status lands at the bottom of the list.
+      orderIndex: statuses.data?.length ?? 0,
+    }),
+    submit: (input) => createStatus(input as CreateReportStatus),
     onSuccess: async () => {
-      setDraft({ name: "", group: "open", isTerminal: false, orderIndex: 0, status: "active" });
+      create.reset({ name: "", group: "open" });
       await refresh();
     },
   });
@@ -70,46 +76,34 @@ export function StatusesTab({ canManage }: { canManage: boolean }) {
       </Card>
 
       {canManage ? (
-        <Card className="flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-semibold">Add a status</h3>
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="grid grid-cols-[1fr_8rem_auto] items-end gap-3">
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">Name</span>
-              <Input
-                value={draft.name}
-                onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value }))}
-                placeholder="e.g. Awaiting parts"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">Group</span>
-              <select
-                value={draft.group}
-                onChange={(event) =>
-                  setDraft((d) => ({
-                    ...d,
-                    group: event.target.value as CreateReportStatus["group"],
-                  }))
-                }
-                className="h-10 rounded-xl border border-border bg-card px-2 text-sm"
-              >
-                {STATUS_GROUPS.map((group) => (
-                  <option key={group} value={group}>
-                    {group}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button
-              size="sm"
-              onClick={() => create.mutate()}
-              disabled={create.isPending || draft.name.trim() === ""}
-            >
-              {create.isPending ? <Spinner /> : null}
-              Add
-            </Button>
-          </div>
+        <Card className="p-4">
+          {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+          <form {...create.formProps} className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold">Add a status</h3>
+            {/* Whatever could not be blamed on a field — a duplicate name. */}
+            {create.formError ? <ErrorAlert error={create.formError} /> : null}
+            <div className="grid grid-cols-[1fr_8rem_auto] items-end gap-3">
+              <InlineField label="Name" error={create.errorFor("name")}>
+                <Input {...create.register("name")} placeholder="e.g. Awaiting parts" />
+              </InlineField>
+              <InlineField label="Group" error={create.errorFor("group")}>
+                <select
+                  {...create.register("group")}
+                  className="h-10 rounded-xl border border-border bg-card px-2 text-sm"
+                >
+                  {STATUS_GROUPS.map((group) => (
+                    <option key={group} value={group}>
+                      {group}
+                    </option>
+                  ))}
+                </select>
+              </InlineField>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
+            </div>
+          </form>
         </Card>
       ) : null}
     </div>

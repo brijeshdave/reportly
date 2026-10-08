@@ -2,12 +2,13 @@
 // Categories, owned by a department. Pick a department, then manage its categories —
 // two departments may each have a "Safety" and mean different things, so they never
 // collide across the company.
-import { type CategoryRow } from "@reportly/shared";
+import { createCategorySchema, type CategoryRow } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Network, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { departmentOptions } from "@/lib/department-options.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
@@ -36,11 +37,19 @@ export function CategoriesTab({ canManage }: { canManage: boolean }) {
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["report-config", "categories", active] });
 
-  const [name, setName] = useState("");
-  const create = useMutation({
-    mutationFn: () => createCategory({ departmentId: active, name: name.trim(), status: "active" }),
+  // Only the `name` half of the route's schema: the department comes from the tab
+  // above, not from anything typed here, and a form should validate what it draws.
+  const create = useForm({
+    schema: createCategorySchema.pick({ name: true }),
+    initial: { name: "" },
+    submit: (input) =>
+      createCategory({
+        departmentId: active,
+        name: (input as { name: string }).name,
+        status: "active",
+      }),
     onSuccess: async () => {
-      setName("");
+      create.reset({ name: "" });
       await refresh();
     },
   });
@@ -100,26 +109,31 @@ export function CategoriesTab({ canManage }: { canManage: boolean }) {
       </Card>
 
       {canManage ? (
-        <Card className="flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-semibold">Add a category</h3>
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. Mechanical breakdown"
-              />
+        <Card className="p-4">
+          {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+          <form {...create.formProps} className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold">Add a category</h3>
+            {/* Whatever could not be blamed on the field — a name already in use. */}
+            {create.formError ? <ErrorAlert error={create.formError} /> : null}
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Input
+                  {...create.register("name")}
+                  aria-label="Category name"
+                  placeholder="e.g. Mechanical breakdown"
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onClick={() => create.mutate()}
-              disabled={create.isPending || name.trim() === ""}
-            >
-              {create.isPending ? <Spinner /> : null}
-              Add
-            </Button>
-          </div>
+            {/* Under the row rather than beside it: the box shares its line with
+                the button, and there is no label here to hang a message off. */}
+            {create.errorFor("name") ? (
+              <p className="text-xs font-medium text-destructive">{create.errorFor("name")}</p>
+            ) : null}
+          </form>
         </Card>
       ) : null}
     </div>

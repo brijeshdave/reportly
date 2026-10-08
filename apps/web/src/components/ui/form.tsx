@@ -151,6 +151,39 @@ export function Field({ label, hint, error, required, children }: FieldProps) {
   );
 }
 
+/* ------------------------------- InlineField ------------------------------- */
+
+/**
+ * `Field`'s small sibling, for the editor panels that live inside table rows and
+ * dense catalogue cards at `text-xs`.
+ *
+ * It exists because those panels were written with bare `<span>` labels and had
+ * nowhere at all to put a message — so every one of them answered an empty box by
+ * disabling its own Save button, which is the least informative thing a form can
+ * do. `Field` is the right component on a page and the wrong one here: its label
+ * size and vertical rhythm fight a table row.
+ *
+ * Not a variant of `Field` because it deliberately does less — no hint, no id
+ * wiring — and wrapping the control in the `<label>` is what lets it skip that.
+ */
+export function InlineField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      {children}
+      {error ? <span className="font-medium text-destructive">{error}</span> : null}
+    </label>
+  );
+}
+
 /* ---------------------------------- Alert ---------------------------------- */
 
 const ALERT_ICONS = {

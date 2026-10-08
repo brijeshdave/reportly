@@ -5,7 +5,11 @@
 // A type that devices already hold cannot be deleted; the API refuses and says how
 // many hold it. Retiring stops it being offered while those devices keep their
 // label, which is why the status toggle sits next to every row.
-import { type DeviceTypeRow, type UpdateDeviceType } from "@reportly/shared";
+import {
+  createDeviceTypeSchema,
+  type DeviceTypeRow,
+  type UpdateDeviceType,
+} from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Network, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -14,6 +18,7 @@ import { departmentOptions } from "@/lib/department-options.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Button, Card, EmptyState } from "@/components/ui/primitives.js";
 import { fetchDepartments } from "@/services/departments.js";
 import {
@@ -39,22 +44,30 @@ export function DeviceTypesTab({ canManage }: { canManage: boolean }) {
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["vocabulary", "device-types", active] });
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const create = useMutation({
-    mutationFn: () =>
-      createDeviceType({
+  // The name and description halves of the route's schema: the department comes
+  // from the tab above, not from anything typed here, and a form should validate
+  // what it draws.
+  const create = useForm({
+    schema: createDeviceTypeSchema.pick({ name: true, description: true }),
+    initial: { name: "", description: "" },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      ...(v.description.trim() ? { description: v.description.trim() } : {}),
+    }),
+    submit: (input) => {
+      const v = input as { name: string; description?: string };
+      return createDeviceType({
         departmentId: active,
-        name: name.trim(),
+        name: v.name,
         // Off for a new device type: most of the register is desks and laptops,
         // where a failure is a job to do rather than an outage to measure.
         tracksDowntime: false,
         status: "active",
-        ...(description.trim() ? { description: description.trim() } : {}),
-      }),
+        ...(v.description ? { description: v.description } : {}),
+      });
+    },
     onSuccess: async () => {
-      setName("");
-      setDescription("");
+      create.reset({ name: "", description: "" });
       await refresh();
     },
   });
@@ -109,31 +122,41 @@ export function DeviceTypesTab({ canManage }: { canManage: boolean }) {
       </Card>
 
       {canManage ? (
-        <Card className="flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-semibold">Add a device type</h3>
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. Pump"
-              />
+        <Card className="p-4">
+          {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+          <form {...create.formProps} className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold">Add a device type</h3>
+            {/* Whatever could not be blamed on a field — a name already in use. */}
+            {create.formError ? <ErrorAlert error={create.formError} /> : null}
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Input
+                  {...create.register("name")}
+                  aria-label="Device type name"
+                  placeholder="e.g. Pump"
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onClick={() => create.mutate()}
-              disabled={create.isPending || name.trim() === ""}
-            >
-              {create.isPending ? <Spinner /> : null}
-              Add
-            </Button>
-          </div>
-          <Input
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="What belongs in this type (optional)"
-          />
+            {/* Under the row rather than beside it: the box shares its line with
+                the button, and there is no label here to hang a message off. */}
+            {create.errorFor("name") ? (
+              <p className="text-xs font-medium text-destructive">{create.errorFor("name")}</p>
+            ) : null}
+            <Input
+              {...create.register("description")}
+              aria-label="What belongs in this type"
+              placeholder="What belongs in this type (optional)"
+            />
+            {create.errorFor("description") ? (
+              <p className="text-xs font-medium text-destructive">
+                {create.errorFor("description")}
+              </p>
+            ) : null}
+          </form>
         </Card>
       ) : null}
     </div>

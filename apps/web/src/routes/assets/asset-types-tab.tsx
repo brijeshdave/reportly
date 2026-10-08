@@ -2,14 +2,20 @@
 // The vocabulary the asset tree is built from. This is the screen that makes the tree
 // mean something in an industry other than the one it shipped for: rename Line to
 // Ward and the same structure describes a hospital.
-import { PERMISSIONS, type AssetTypeRow, type CreateAssetType } from "@reportly/shared";
+import {
+  PERMISSIONS,
+  createAssetTypeSchema,
+  type AssetTypeRow,
+  type CreateAssetType,
+} from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 
 import { ImportDialog } from "@/components/import-dialog.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { Input, Spinner } from "@/components/ui/form.js";
+import { InlineField, Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card } from "@/components/ui/primitives.js";
 import { usePermission } from "@/components/can.js";
 import {
@@ -30,22 +36,21 @@ export function AssetTypesTab({ canManage }: { canManage: boolean }) {
   const canImport = usePermission(PERMISSIONS.ASSET_TYPES_IMPORT);
   const [importOpen, setImportOpen] = useState(false);
 
-  const [draft, setDraft] = useState<CreateAssetType>({
-    name: "",
-    orderIndex: 0,
-    tracksDowntime: true,
-    status: "active",
-  });
-
-  const create = useMutation({
-    mutationFn: () =>
-      createAssetType({
-        ...draft,
-        name: draft.name.trim(),
-        orderIndex: types.data?.length ?? 0,
-      }),
+  // The route's own schema, so an empty name is answered at the box rather than by
+  // Add quietly going inert.
+  const create = useForm({
+    schema: createAssetTypeSchema,
+    initial: { name: "" },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      tracksDowntime: true,
+      status: "active" as const,
+      // Appended, so a new type lands at the bottom of the list.
+      orderIndex: types.data?.length ?? 0,
+    }),
+    submit: (input) => createAssetType(input as CreateAssetType),
     onSuccess: async () => {
-      setDraft({ name: "", orderIndex: 0, tracksDowntime: true, status: "active" });
+      create.reset({ name: "" });
       await refresh();
     },
   });
@@ -100,27 +105,24 @@ export function AssetTypesTab({ canManage }: { canManage: boolean }) {
       </Card>
 
       {canManage ? (
-        <Card className="flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-semibold">Add a type</h3>
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="flex items-end gap-3">
-            <label className="flex flex-1 flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">Name</span>
-              <Input
-                value={draft.name}
-                onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value }))}
-                placeholder="e.g. Warehouse"
-              />
-            </label>
-            <Button
-              size="sm"
-              onClick={() => create.mutate()}
-              disabled={create.isPending || draft.name.trim() === ""}
-            >
-              {create.isPending ? <Spinner /> : null}
-              Add
-            </Button>
-          </div>
+        <Card className="p-4">
+          {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+          <form {...create.formProps} className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold">Add a type</h3>
+            {/* Whatever could not be blamed on the field — a name already in use. */}
+            {create.formError ? <ErrorAlert error={create.formError} /> : null}
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <InlineField label="Name" error={create.errorFor("name")}>
+                  <Input {...create.register("name")} placeholder="e.g. Warehouse" />
+                </InlineField>
+              </div>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
+            </div>
+          </form>
         </Card>
       ) : null}
     </div>

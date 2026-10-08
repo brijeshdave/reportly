@@ -6,7 +6,7 @@
 // A new tag arrives already coloured (the server picks from a twenty-hue palette,
 // preferring one the department is not using), so the common case is type-a-name-
 // and-go. The colour is editable for anyone who wants to organise by it.
-import { TAG_COLORS, type TagRow } from "@reportly/shared";
+import { TAG_COLORS, createTagSchema, type TagRow } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Network, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -16,6 +16,7 @@ import { departmentOptions } from "@/lib/department-options.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Input, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Button, Card, EmptyState } from "@/components/ui/primitives.js";
 import { fetchDepartments } from "@/services/departments.js";
 import { createTag, deleteTag, fetchTags, updateTag } from "@/services/vocabulary.js";
@@ -35,24 +36,30 @@ export function TagsTab({ canManage }: { canManage: boolean }) {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["vocabulary", "tags", active] });
 
-  const [name, setName] = useState("");
-  const [color, setColor] = useState<string>("");
-  const create = useMutation({
+  // The name and colour halves of the route's schema: the department comes from the
+  // tab above, not from anything typed here, and a form should validate what it
+  // draws.
+  const create = useForm({
+    schema: createTagSchema.pick({ name: true, color: true }),
+    initial: { name: "", color: "" },
     // No colour sent means the server picks one — which is the path most people
     // will take, so it must be the one that needs no thought.
-    mutationFn: () =>
-      createTag({
+    toPayload: (v) => ({ name: v.name.trim(), ...(v.color ? { color: v.color } : {}) }),
+    submit: (input) => {
+      const v = input as { name: string; color?: string };
+      return createTag({
         departmentId: active,
-        name: name.trim(),
+        name: v.name,
         status: "active",
-        ...(color ? { color } : {}),
-      }),
+        ...(v.color ? { color: v.color } : {}),
+      });
+    },
     onSuccess: async () => {
-      setName("");
-      setColor("");
+      create.reset({ name: "", color: "" });
       await refresh();
     },
   });
+  const { color } = create.values;
 
   if (departments.isLoading) return <Spinner />;
   if (departments.error) return <ErrorAlert error={departments.error} />;
@@ -102,31 +109,39 @@ export function TagsTab({ canManage }: { canManage: boolean }) {
       </Card>
 
       {canManage ? (
-        <Card className="flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-semibold">Add a tag</h3>
-          {create.error ? <ErrorAlert error={create.error} /> : null}
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="e.g. safety"
-              />
+        <Card className="p-4">
+          {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+          <form {...create.formProps} className="flex flex-col gap-3">
+            <h3 className="text-sm font-semibold">Add a tag</h3>
+            {/* Whatever could not be blamed on a field — a name already in use. */}
+            {create.formError ? <ErrorAlert error={create.formError} /> : null}
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Input
+                  {...create.register("name")}
+                  aria-label="Tag name"
+                  placeholder="e.g. safety"
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onClick={() => create.mutate()}
-              disabled={create.isPending || name.trim() === ""}
-            >
-              {create.isPending ? <Spinner /> : null}
-              Add
-            </Button>
-          </div>
-          <ColorPicker
-            value={color}
-            onChange={setColor}
-            hint="Leave unset and one is chosen for you."
-          />
+            {/* Under the row rather than beside it: the box shares its line with
+                the button, and there is no label here to hang a message off. */}
+            {create.errorFor("name") ? (
+              <p className="text-xs font-medium text-destructive">{create.errorFor("name")}</p>
+            ) : null}
+            <ColorPicker
+              value={color}
+              onChange={(next) => create.set("color", next)}
+              hint="Leave unset and one is chosen for you."
+            />
+            {create.errorFor("color") ? (
+              <p className="text-xs font-medium text-destructive">{create.errorFor("color")}</p>
+            ) : null}
+          </form>
         </Card>
       ) : null}
     </div>
