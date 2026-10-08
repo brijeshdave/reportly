@@ -309,7 +309,11 @@ export function CartridgesListPage() {
   const list = useListResource<Part>({
     resource: "parts",
     path: "/parts",
-    initial: { sortBy: "identifier", sortDir: "asc" },
+    // By status, in the order the workshop works through it — what needs doing
+    // first, then what is on the shelf, then what is already in a printer. The
+    // server holds that order (status is text, so sorting it alphabetically would
+    // put `installed` on top); here it only has to ask for the field.
+    initial: { sortBy: "status", sortDir: "asc" },
   });
 
   // Filters offered by name rather than raw id where the API takes an id: the

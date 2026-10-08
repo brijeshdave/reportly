@@ -317,3 +317,82 @@ describe("the install picker", () => {
     expect((await inject("GET", `/parts/${part.id}/fitting-devices`)).json()).toEqual([]);
   });
 });
+
+describe("the register's order", () => {
+  it("opens on what needs doing, not on what the alphabet puts first", async () => {
+    // `status` is a text column, so ordering it plainly gives installed,
+    // needs_service, ready — the cartridges nobody has to touch at the top and the
+    // ones waiting for work buried. Asked for from use: needs service first, then
+    // ready, then installed.
+    await enableModule();
+    const { device, model } = await buildFixtures();
+
+    // One of each, registered in an order that is neither the wanted one nor
+    // alphabetical, so passing cannot be an accident of insertion order.
+    const ready = (
+      await inject("POST", "/parts", {
+        identifier: "B-ready",
+        partModelId: model.id,
+        status: "ready",
+      })
+    ).json();
+    const needs = (
+      await inject("POST", "/parts", { identifier: "C-needs", partModelId: model.id })
+    ).json();
+    const installedPart = (
+      await inject("POST", "/parts", {
+        identifier: "A-installed",
+        partModelId: model.id,
+        status: "ready",
+      })
+    ).json();
+    expect(
+      (await inject("POST", `/parts/${installedPart.id}/deploy`, { deviceId: device.id }))
+        .statusCode,
+    ).toBe(200);
+
+    const rows = (await inject("GET", "/parts")).json().data as {
+      id: string;
+      status: string;
+    }[];
+
+    expect(rows.map((r) => r.status)).toEqual(["needs_service", "ready", "installed"]);
+    expect(rows.map((r) => r.id)).toEqual([needs.id, ready.id, installedPart.id]);
+  });
+
+  it("uses the same order when the column is sorted explicitly", async () => {
+    // Otherwise the header and the default disagree about what the word means.
+    await enableModule();
+    const { model } = await buildFixtures();
+    await inject("POST", "/parts", {
+      identifier: "B-ready",
+      partModelId: model.id,
+      status: "ready",
+    });
+    await inject("POST", "/parts", { identifier: "C-needs", partModelId: model.id });
+
+    const asked = (await inject("GET", "/parts?sortBy=status&sortDir=asc")).json().data as {
+      status: string;
+    }[];
+    expect(asked.map((r) => r.status)).toEqual(["needs_service", "ready"]);
+
+    // And reversed, it reverses — rather than falling back to the alphabet.
+    const down = (await inject("GET", "/parts?sortBy=status&sortDir=desc")).json().data as {
+      status: string;
+    }[];
+    expect(down.map((r) => r.status)).toEqual(["ready", "needs_service"]);
+  });
+
+  it("keeps a stable order inside one status", async () => {
+    // Four statuses over a register of hundreds: without a tiebreak the order
+    // within each group is the database's choice, and rows move between pages.
+    await enableModule();
+    const { model } = await buildFixtures();
+    for (const id of ["TN-03", "TN-01", "TN-02"]) {
+      await inject("POST", "/parts", { identifier: id, partModelId: model.id });
+    }
+
+    const rows = (await inject("GET", "/parts")).json().data as { identifier: string }[];
+    expect(rows.map((r) => r.identifier)).toEqual(["TN-01", "TN-02", "TN-03"]);
+  });
+});

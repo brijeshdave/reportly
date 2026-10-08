@@ -73,6 +73,22 @@ function partsQuery() {
  * are the server's job here, as everywhere else: the browser never sees the rows
  * it is not showing.
  */
+/**
+ * Status in the order the workshop works through it, not the order the words
+ * happen to fall in.
+ *
+ * `status` is a text column, so sorting it sorts alphabetically — installed,
+ * needs_service, ready — which puts the cartridges nobody has to touch at the top
+ * and buries the ones waiting for work. The register opens on this: what needs
+ * doing, then what is on the shelf to do it with, then what is already out.
+ * Scrapped last, since it is the only one that is not a thing anybody acts on.
+ */
+const STATUS_ORDER = sql`case ${parts.status}
+  when 'needs_service' then 0
+  when 'ready' then 1
+  when 'installed' then 2
+  else 3 end`;
+
 const listConfig: ListConfig = {
   columns: {
     identifier: parts.identifier,
@@ -83,6 +99,14 @@ const listConfig: ListConfig = {
     createdAt: parts.createdAt,
     updatedAt: parts.updatedAt,
   },
+  // Applies however the sort is reached — the default below, or the column header.
+  // A header that sorts one way and a default that sorts another is two behaviours
+  // for one word.
+  sortAs: { status: STATUS_ORDER },
+  defaultSortBy: "status",
+  // Four statuses over a few hundred parts, so without this the order inside each
+  // group is whatever the database felt like and rows move as you page.
+  tiebreak: parts.identifier,
   defaultSort: parts.identifier,
 };
 

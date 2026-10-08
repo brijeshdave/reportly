@@ -18,6 +18,7 @@ import {
   lte,
   ne,
   notInArray,
+  sql,
 } from "drizzle-orm";
 
 export interface ListConfig {
@@ -25,6 +26,23 @@ export interface ListConfig {
   columns: Record<string, AnyColumn>;
   /** Column to sort by when the query omits sortBy. */
   defaultSort: AnyColumn;
+  /**
+   * Ordering expressions for fields whose stored value does not sort the way a
+   * reader means it to — a status held as text is alphabetical, when what the word
+   * describes is a sequence. Filtering still uses the real column; only ORDER BY
+   * is rewritten, so a filter on the field keeps comparing the value people see.
+   */
+  sortAs?: Record<string, SQL>;
+  /** Field name to sort by when the query omits sortBy; wins over `defaultSort`. */
+  defaultSortBy?: string;
+  /**
+   * A second, stable ordering applied after the first.
+   *
+   * Worth setting wherever the primary sort has few distinct values: ordering a
+   * register of three hundred cartridges by four statuses leaves the order within
+   * each one up to the database, so rows move between pages as you page through.
+   */
+  tiebreak?: AnyColumn;
 }
 
 /** `""`/`null`/`undefined` mean "no bound"; used by the open-ended `between`. */
@@ -100,12 +118,24 @@ export function buildListParts(config: ListConfig, query: ResolvedListQuery): Li
     })
     .filter((c): c is SQL => c !== undefined);
 
-  const picked = query.sortBy ? config.columns[query.sortBy] : undefined;
-  const sortColumn: AnyColumn = picked ?? config.defaultSort;
+  // The field being sorted on, whether it was asked for or defaulted to. Held as a
+  // name rather than a column so `sortAs` can be consulted for it.
+  const field = query.sortBy && config.columns[query.sortBy] ? query.sortBy : config.defaultSortBy;
+  const target: AnyColumn | SQL =
+    (field ? (config.sortAs?.[field] ?? config.columns[field]) : undefined) ?? config.defaultSort;
+
+  const primary = query.sortDir === "desc" ? desc(target) : asc(target);
+  // Composed into one expression rather than returned as a list: every caller
+  // passes this straight to `.orderBy()`, and widening it to an array would mean
+  // touching all of them to spread it.
+  const orderBy =
+    config.tiebreak && target !== config.tiebreak
+      ? sql`${primary}, ${asc(config.tiebreak)}`
+      : primary;
 
   return {
     where: conditions.length > 0 ? and(...conditions) : undefined,
-    orderBy: query.sortDir === "desc" ? desc(sortColumn) : asc(sortColumn),
+    orderBy,
     limit: query.pageSize,
     offset: (query.page - 1) * query.pageSize,
   };
