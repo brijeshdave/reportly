@@ -6,7 +6,7 @@
 //
 // The API sends the assets flat; the tree is assembled here from parentId, the same
 // way the departments page does it.
-import { PERMISSIONS, type AssetNode } from "@reportly/shared";
+import { PERMISSIONS, createAssetSchema, type AssetNode, type CreateAsset } from "@reportly/shared";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Building2, ChevronDown, ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -16,7 +16,8 @@ import { sessionQuery } from "@/lib/queries.js";
 import { fetchLocations } from "@/services/locations.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
-import { Input, Select, Spinner } from "@/components/ui/form.js";
+import { InlineField, Input, Select, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card, EmptyState } from "@/components/ui/primitives.js";
 import { AssetImportDialog } from "@/routes/assets/asset-import-dialog.js";
 import {
@@ -308,77 +309,73 @@ function AddAssetForm({
   types: { id: string; name: string }[];
   onDone: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [typeId, setTypeId] = useState("");
-  const [locationId, setLocationId] = useState(parentLocationId ?? "");
-
   // Scoped by the API to the sites this caller's groups reach, so the picker never
   // offers one the save would then refuse.
   const locations = useQuery({ queryKey: ["locations"], queryFn: fetchLocations });
 
-  const create = useMutation({
-    mutationFn: () =>
-      createAsset({
-        name: name.trim(),
-        parentId,
-        typeId: typeId || null,
-        locationId: locationId || null,
-        status: "active",
-      }),
+  // The route's own schema, so an empty name is answered at the box rather than by
+  // Add quietly going inert.
+  const create = useForm({
+    schema: createAssetSchema,
+    initial: { name: "", typeId: "", locationId: parentLocationId ?? "" },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      parentId,
+      typeId: v.typeId || null,
+      locationId: v.locationId || null,
+      status: "active" as const,
+    }),
+    submit: (input) => createAsset(input as CreateAsset),
     onSuccess: onDone,
   });
+  const { locationId } = create.values;
 
   return (
-    <Card className="flex flex-col gap-3 p-3">
-      {create.error ? <ErrorAlert error={create.error} /> : null}
-      <div className="flex items-end gap-3">
-        <label className="flex flex-1 flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Name</span>
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Line 3"
-            autoFocus
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Type</span>
-          <Select value={typeId} onChange={(event) => setTypeId(event.target.value)}>
-            <option value="">No type</option>
-            {types.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Site</span>
-          {/* Unset means "not placed", which stays visible to everyone — an
+    <Card className="p-3">
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...create.formProps} className="flex flex-col gap-3">
+        {/* Whatever could not be blamed on a field. */}
+        {create.formError ? <ErrorAlert error={create.formError} /> : null}
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <InlineField label="Name" error={create.errorFor("name")}>
+              <Input {...create.register("name")} placeholder="e.g. Line 3" autoFocus />
+            </InlineField>
+          </div>
+          <InlineField label="Type" error={create.errorFor("typeId")}>
+            <Select {...create.register("typeId")}>
+              <option value="">No type</option>
+              {types.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                </option>
+              ))}
+            </Select>
+          </InlineField>
+          <InlineField label="Site" error={create.errorFor("locationId")}>
+            {/* Unset means "not placed", which stays visible to everyone — an
               unplaced asset is unplaced, not restricted. */}
-          <SearchableSelect
-            ariaLabel="Site"
-            value={locationId}
-            onChange={setLocationId}
-            options={(locations.data ?? []).map((location) => ({
-              value: location.id,
-              label: location.name,
-            }))}
-            placeholder="Not set"
-          />
-        </label>
-        <Button
-          size="sm"
-          onClick={() => create.mutate()}
-          disabled={create.isPending || name.trim() === ""}
-        >
-          {create.isPending ? <Spinner /> : null}
-          Add
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onDone}>
-          Cancel
-        </Button>
-      </div>
+            <SearchableSelect
+              ariaLabel="Site"
+              name="locationId"
+              value={locationId}
+              onChange={(next) => create.set("locationId", next)}
+              options={(locations.data ?? []).map((location) => ({
+                value: location.id,
+                label: location.name,
+              }))}
+              placeholder="Not set"
+            />
+          </InlineField>
+          <Button type="submit" size="sm" disabled={create.submitting}>
+            {create.submitting ? <Spinner /> : null}
+            Add
+          </Button>
+          <Button size="sm" variant="ghost" type="button" onClick={onDone}>
+            Cancel
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
