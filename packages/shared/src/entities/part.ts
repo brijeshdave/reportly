@@ -93,8 +93,17 @@ export const CONSUMABLE_UNIT_LABELS: Record<ConsumableUnit, string> = {
 export const serviceKindConsumableSchema = z
   .object({
     consumableId: uuidSchema,
-    minQuantity: z.number().min(0).max(1_000_000).default(0),
-    maxQuantity: z.number().min(0).max(1_000_000).nullable().default(null),
+    minQuantity: z
+      .number({ message: "Type a quantity." })
+      .min(0, "Zero or more.")
+      .max(1_000_000, "That is more than this can hold.")
+      .default(0),
+    maxQuantity: z
+      .number({ message: "Type a quantity, or leave it empty for no ceiling." })
+      .min(0, "Zero or more.")
+      .max(1_000_000, "That is more than this can hold.")
+      .nullable()
+      .default(null),
   })
   .refine((value) => value.maxQuantity === null || value.maxQuantity >= value.minQuantity, {
     message: "The most cannot be less than the least",
@@ -126,7 +135,11 @@ export type ServiceKind = z.infer<typeof serviceKindSchema>;
 export const createServiceKindSchema = z.object({
   name: nameSchema,
   description: z.string().trim().max(500).optional(),
-  defaultPoints: z.number().min(0).max(1000).default(0),
+  defaultPoints: z
+    .number({ message: "Type a number of points." })
+    .min(0, "Zero or more.")
+    .max(1000, "A thousand is as high as this goes.")
+    .default(0),
   /**
    * The consumables this kind may use. An empty list is "not restricted yet" —
    * every consumable is offered and none required — so adding this rule breaks
@@ -196,8 +209,22 @@ export type PartModel = z.infer<typeof partModelSchema>;
 export const createPartModelSchema = z.object({
   name: nameSchema,
   description: z.string().trim().max(1000).optional(),
-  cycleLimit: z.number().int().min(1).max(1000).nullable().optional(),
-  ratedPageYield: z.number().int().min(1).max(1_000_000).nullable().optional(),
+  // Null is the answer for "no rated limit", so the floor is 1 rather than 0: a
+  // model good for zero services is not a model, it is an unset field said wrong.
+  cycleLimit: z
+    .number({ message: "Type a number of services, or leave it empty." })
+    .int("Whole services only.")
+    .min(1, "At least one, or leave it empty for no limit.")
+    .max(1000, "A thousand is as high as this goes.")
+    .nullable()
+    .optional(),
+  ratedPageYield: z
+    .number({ message: "Type a number of pages, or leave it empty." })
+    .int("Whole pages only.")
+    .min(1, "At least one, or leave it empty if it is not known.")
+    .max(1_000_000, "A million is as high as this goes.")
+    .nullable()
+    .optional(),
   compatibleDeviceTypeIds: z.array(uuidSchema).default([]),
 });
 export type CreatePartModel = z.infer<typeof createPartModelSchema>;
@@ -205,7 +232,10 @@ export type CreatePartModel = z.infer<typeof createPartModelSchema>;
 /** What one model pays for one kind of service, overriding the kind's default. */
 export const serviceRateSchema = z.object({
   serviceKindId: uuidSchema,
-  points: z.number().min(0).max(1000),
+  points: z
+    .number({ message: "Type a number of points." })
+    .min(0, "Zero or more.")
+    .max(1000, "A thousand is as high as this goes."),
 });
 export type ServiceRate = z.infer<typeof serviceRateSchema>;
 

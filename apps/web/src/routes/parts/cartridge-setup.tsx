@@ -14,8 +14,14 @@ import {
   CONSUMABLE_UNITS,
   CONSUMABLE_UNIT_LABELS,
   PERMISSIONS,
+  createConsumableSchema,
+  createPartModelSchema,
+  createServiceKindSchema,
   type Consumable,
   type ConsumableUnit,
+  type CreateConsumable,
+  type CreatePartModel,
+  type CreateServiceKind,
   type PartModel,
   type ServiceKind,
   type ServiceKindConsumable,
@@ -23,7 +29,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { ExclusivePanels, useExclusivePanel } from "@/routes/parts/use-exclusive-panel.js";
 
@@ -31,6 +37,7 @@ import { Can } from "@/components/can.js";
 import { PageTabs, TabPanel } from "@/components/page-tabs.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { Field, Input, Select, Spinner } from "@/components/ui/form.js";
+import { useForm } from "@/hooks/use-form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 import { useOptions } from "@/hooks/use-options.js";
 import {
@@ -52,6 +59,33 @@ const TABS = [
   { id: "kinds", label: "Service kinds" },
   { id: "consumables", label: "Consumables" },
 ];
+
+/**
+ * The compact label-above-input these inline editors use, with somewhere to put a
+ * message. `Field` is the right thing on a page; these panels sit inside table
+ * rows at `text-xs`, and the full component's spacing and font fight the row.
+ *
+ * It exists because the labels here were bare `<span>`s with no error slot at all,
+ * so a refusal had nowhere to go but the alert above — or, for the commonest case
+ * of an empty name, nowhere at all, since the Save button simply went inert.
+ */
+function InlineField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      {children}
+      {error ? <span className="text-destructive">{error}</span> : null}
+    </label>
+  );
+}
 
 /** The names behind a kind's consumable rules, with "at least" marked. */
 function consumableNames(rules: ServiceKindConsumable[], all: Consumable[] | undefined): string {
@@ -258,19 +292,27 @@ function CompatibilityEditor({
 function ModelDetailsEditor({ model }: { model: PartModel }) {
   const queryClient = useQueryClient();
   const { open, setOpen } = useExclusivePanel(`${model.id}:edit`);
-  const [name, setName] = useState(model.name);
-  const [cycleLimit, setCycleLimit] = useState(model.cycleLimit?.toString() ?? "");
-  const [ratedPageYield, setRatedPageYield] = useState(model.ratedPageYield?.toString() ?? "");
 
-  const save = useMutation({
-    mutationFn: () =>
-      updatePartModel(model.id, {
-        name: name.trim(),
-        // Blank means "no rated limit", which is a real answer and not zero — the
-        // list already reads it as "no rated limit".
-        cycleLimit: cycleLimit.trim() === "" ? null : Number(cycleLimit),
-        ratedPageYield: ratedPageYield.trim() === "" ? null : Number(ratedPageYield),
-      }),
+  const form = useForm({
+    schema: createPartModelSchema.pick({
+      name: true,
+      cycleLimit: true,
+      ratedPageYield: true,
+    }),
+    initial: {
+      name: model.name,
+      cycleLimit: model.cycleLimit?.toString() ?? "",
+      ratedPageYield: model.ratedPageYield?.toString() ?? "",
+    },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      // Blank means "no rated limit", which is a real answer and not zero — the
+      // list already reads it as "no rated limit". Null rather than `Number("")`,
+      // which is 0 and would claim a model good for no services at all.
+      cycleLimit: v.cycleLimit.trim() === "" ? null : Number(v.cycleLimit),
+      ratedPageYield: v.ratedPageYield.trim() === "" ? null : Number(v.ratedPageYield),
+    }),
+    submit: (input) => updatePartModel(model.id, input as Partial<CreatePartModel>),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["part-models"] });
       setOpen(false);
@@ -284,9 +326,11 @@ function ModelDetailsEditor({ model }: { model: PartModel }) {
         size="sm"
         onClick={() => {
           // Re-read on open, so a cancelled edit leaves no draft behind.
-          setName(model.name);
-          setCycleLimit(model.cycleLimit?.toString() ?? "");
-          setRatedPageYield(model.ratedPageYield?.toString() ?? "");
+          form.reset({
+            name: model.name,
+            cycleLimit: model.cycleLimit?.toString() ?? "",
+            ratedPageYield: model.ratedPageYield?.toString() ?? "",
+          });
           setOpen(true);
         }}
       >
@@ -296,48 +340,44 @@ function ModelDetailsEditor({ model }: { model: PartModel }) {
   }
 
   return (
-    <Card className="order-last w-full space-y-2 p-3">
-      {save.error ? <ErrorAlert error={save.error} /> : null}
-      <div className="grid gap-2 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Name</span>
-          <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Rated services</span>
-          <Input
-            type="number"
-            min={1}
-            value={cycleLimit}
-            placeholder="no limit"
-            onChange={(event) => setCycleLimit(event.target.value)}
-            className="h-8"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Rated pages</span>
-          <Input
-            type="number"
-            min={1}
-            value={ratedPageYield}
-            placeholder="unknown"
-            onChange={(event) => setRatedPageYield(event.target.value)}
-            className="h-8"
-          />
-        </label>
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          disabled={save.isPending || name.trim() === ""}
-          onClick={() => save.mutate()}
-        >
-          Save
-        </Button>
-      </div>
+    <Card className="order-last w-full p-3">
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...form.formProps} className="space-y-2">
+        {/* Whatever could not be blamed on a field. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        <div className="grid gap-2 sm:grid-cols-3">
+          <InlineField label="Name" error={form.errorFor("name")}>
+            <Input {...form.register("name")} className="h-8" />
+          </InlineField>
+          <InlineField label="Rated services" error={form.errorFor("cycleLimit")}>
+            <Input
+              type="number"
+              min={1}
+              placeholder="no limit"
+              {...form.register("cycleLimit")}
+              className="h-8"
+            />
+          </InlineField>
+          <InlineField label="Rated pages" error={form.errorFor("ratedPageYield")}>
+            <Input
+              type="number"
+              min={1}
+              placeholder="unknown"
+              {...form.register("ratedPageYield")}
+              className="h-8"
+            />
+          </InlineField>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
+            Save
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
@@ -347,11 +387,6 @@ function ModelDetailsEditor({ model }: { model: PartModel }) {
 function ModelsTab() {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const [cycleLimit, setCycleLimit] = useState("");
-  const [ratedPageYield, setRatedPageYield] = useState("");
-  const [typeIds, setTypeIds] = useState<string[]>([]);
-
   const models = useQuery({ queryKey: ["part-models", "all"], queryFn: () => fetchPartModels() });
   // Compatibility is by device TYPE, not by device: "this cartridge fits an
   // M404" is a fact about the model, and re-stating it per printer would go
@@ -360,23 +395,29 @@ function ModelsTab() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["part-models"] });
 
-  const create = useMutation({
-    mutationFn: () =>
-      createPartModel({
-        name,
-        compatibleDeviceTypeIds: typeIds,
-        ...(cycleLimit ? { cycleLimit: Number(cycleLimit) } : {}),
-        ...(ratedPageYield ? { ratedPageYield: Number(ratedPageYield) } : {}),
-      }),
+  const blank = { name: "", cycleLimit: "", ratedPageYield: "", typeIds: [] as string[] };
+
+  // The route's own schema, so an empty name is answered at the field rather than
+  // by Add going inert, and a rated figure out of range says which way.
+  const create = useForm({
+    schema: createPartModelSchema,
+    initial: blank,
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      compatibleDeviceTypeIds: v.typeIds,
+      // Left out when blank rather than coerced: `Number("")` is 0, and a model
+      // rated for zero services is not what an empty box means.
+      ...(v.cycleLimit.trim() ? { cycleLimit: Number(v.cycleLimit) } : {}),
+      ...(v.ratedPageYield.trim() ? { ratedPageYield: Number(v.ratedPageYield) } : {}),
+    }),
+    submit: (input) => createPartModel(input as CreatePartModel),
     onSuccess: async () => {
       await invalidate();
-      setName("");
-      setCycleLimit("");
-      setRatedPageYield("");
-      setTypeIds([]);
+      create.reset(blank);
       setAdding(false);
     },
   });
+  const { typeIds } = create.values;
 
   const toggle = useMutation({
     mutationFn: (model: PartModel) =>
@@ -400,66 +441,62 @@ function ModelsTab() {
         </div>
 
         {adding ? (
-          <Card className="space-y-3 p-4">
-            {create.error ? <ErrorAlert error={create.error} /> : null}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Name">
-                {(props) => (
-                  <Input
-                    {...props}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="HP 12A Toner"
-                  />
-                )}
-              </Field>
-              <Field
-                label="Rated cycles"
-                hint="Optional. Passing it warns and never refuses — the figure is the maker's opinion."
-              >
-                {(props) => (
-                  <Input
-                    {...props}
-                    type="number"
-                    min="1"
-                    value={cycleLimit}
-                    onChange={(e) => setCycleLimit(e.target.value)}
-                  />
-                )}
-              </Field>
-              <Field
-                label="Rated pages"
-                hint="Optional. What one charge should produce, to compare each tour against. Leave it empty and you get page counts without a comparison."
-              >
-                {(props) => (
-                  <Input
-                    {...props}
-                    type="number"
-                    min="1"
-                    value={ratedPageYield}
-                    onChange={(e) => setRatedPageYield(e.target.value)}
-                  />
-                )}
-              </Field>
-            </div>
-            <DeviceTypePicker
-              types={deviceTypes.data ?? []}
-              selected={typeIds}
-              onChange={setTypeIds}
-              loading={deviceTypes.isLoading}
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setAdding(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                disabled={!name.trim() || create.isPending}
-                onClick={() => create.mutate()}
-              >
-                Add
-              </Button>
-            </div>
+          <Card className="p-4">
+            {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+            <form {...create.formProps} className="space-y-3">
+              {/* Whatever could not be blamed on a field. */}
+              {create.formError ? <ErrorAlert error={create.formError} /> : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Name" required error={create.errorFor("name")}>
+                  {(props) => (
+                    <Input {...props} {...create.register("name")} placeholder="HP 12A Toner" />
+                  )}
+                </Field>
+                <Field
+                  label="Rated cycles"
+                  error={create.errorFor("cycleLimit")}
+                  hint="Optional. Passing it warns and never refuses — the figure is the maker's opinion."
+                >
+                  {(props) => (
+                    <Input {...props} type="number" min="1" {...create.register("cycleLimit")} />
+                  )}
+                </Field>
+                <Field
+                  label="Rated pages"
+                  error={create.errorFor("ratedPageYield")}
+                  hint="Optional. What one charge should produce, to compare each tour against. Leave it empty and you get page counts without a comparison."
+                >
+                  {(props) => (
+                    <Input
+                      {...props}
+                      type="number"
+                      min="1"
+                      {...create.register("ratedPageYield")}
+                    />
+                  )}
+                </Field>
+              </div>
+              <DeviceTypePicker
+                types={deviceTypes.data ?? []}
+                selected={typeIds}
+                onChange={(next) => create.set("typeIds", next)}
+                loading={deviceTypes.isLoading}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onClick={() => setAdding(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={create.submitting}>
+                  {create.submitting ? <Spinner /> : null}
+                  Add
+                </Button>
+              </div>
+            </form>
           </Card>
         ) : null}
 
@@ -737,8 +774,6 @@ function KindConsumablesEditor({ kind }: { kind: ServiceKind }) {
 
 function KindsTab() {
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [points, setPoints] = useState("0");
 
   const kinds = useQuery({
     queryKey: ["part-service-kinds", "all"],
@@ -751,12 +786,21 @@ function KindsTab() {
   }).data;
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["part-service-kinds"] });
 
-  const create = useMutation({
-    mutationFn: () => createServiceKind({ name, defaultPoints: Number(points) }),
+  // The route's own schema. An empty name used to disable Add with nothing said.
+  const create = useForm({
+    schema: createServiceKindSchema.pick({ name: true, defaultPoints: true }),
+    initial: { name: "", points: "0" },
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      // Blank is 0 here, which is the sensible default for points — unlike a rated
+      // figure, a kind worth nothing is a real answer.
+      defaultPoints: v.points.trim() === "" ? 0 : Number(v.points),
+    }),
+    fieldName: (key) => (key === "defaultPoints" ? "points" : key),
+    submit: (input) => createServiceKind(input as CreateServiceKind),
     onSuccess: async () => {
       await invalidate();
-      setName("");
-      setPoints("0");
+      create.reset({ name: "", points: "0" });
     },
   });
   const toggle = useMutation({
@@ -776,41 +820,36 @@ function KindsTab() {
         </p>
 
         <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-          <Card className="flex flex-wrap items-end gap-3 p-4">
-            {create.error ? <ErrorAlert error={create.error} /> : null}
-            <div className="min-w-40 flex-1">
-              <Field label="Name">
-                {(props) => (
-                  <Input
-                    {...props}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Refill"
-                  />
-                )}
-              </Field>
-            </div>
-            <div className="w-32">
-              <Field label="Default points">
-                {(props) => (
-                  <Input
-                    {...props}
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={points}
-                    onChange={(e) => setPoints(e.target.value)}
-                  />
-                )}
-              </Field>
-            </div>
-            <Button
-              size="sm"
-              disabled={!name.trim() || create.isPending}
-              onClick={() => create.mutate()}
-            >
-              Add
-            </Button>
+          <Card className="p-4">
+            {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+            <form {...create.formProps} className="flex flex-wrap items-end gap-3">
+              {/* Whatever could not be blamed on a field. */}
+              {create.formError ? <ErrorAlert error={create.formError} /> : null}
+              <div className="min-w-40 flex-1">
+                <Field label="Name" required error={create.errorFor("name")}>
+                  {(props) => (
+                    <Input {...props} {...create.register("name")} placeholder="Refill" />
+                  )}
+                </Field>
+              </div>
+              <div className="w-32">
+                <Field label="Default points" error={create.errorFor("points")}>
+                  {(props) => (
+                    <Input
+                      {...props}
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      {...create.register("points")}
+                    />
+                  )}
+                </Field>
+              </div>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
+            </form>
           </Card>
         </Can>
 
@@ -865,12 +904,18 @@ function KindsTab() {
 function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
   const queryClient = useQueryClient();
   const { open, setOpen } = useExclusivePanel(`${kind.id}:edit`);
-  const [name, setName] = useState(kind.name);
-  const [points, setPoints] = useState(String(kind.defaultPoints));
 
-  const save = useMutation({
-    mutationFn: () =>
-      updateServiceKind(kind.id, { name: name.trim(), defaultPoints: Number(points) }),
+  const current = () => ({ name: kind.name, points: String(kind.defaultPoints) });
+
+  const form = useForm({
+    schema: createServiceKindSchema.pick({ name: true, defaultPoints: true }),
+    initial: current(),
+    toPayload: (v) => ({
+      name: v.name.trim(),
+      defaultPoints: v.points.trim() === "" ? 0 : Number(v.points),
+    }),
+    fieldName: (key) => (key === "defaultPoints" ? "points" : key),
+    submit: (input) => updateServiceKind(kind.id, input as Partial<CreateServiceKind>),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["part-service-kinds"] });
       setOpen(false);
@@ -882,9 +927,9 @@ function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
       <Button
         variant="secondary"
         size="sm"
+        // Re-read on open, so a cancelled edit leaves no draft behind.
         onClick={() => {
-          setName(kind.name);
-          setPoints(String(kind.defaultPoints));
+          form.reset(current());
           setOpen(true);
         }}
       >
@@ -894,37 +939,29 @@ function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
   }
 
   return (
-    <Card className="order-last w-full space-y-2 p-3">
-      {save.error ? <ErrorAlert error={save.error} /> : null}
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Name</span>
-          <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Points by default</span>
-          <Input
-            type="number"
-            min={0}
-            step={0.5}
-            value={points}
-            onChange={(event) => setPoints(event.target.value)}
-            className="h-8"
-          />
-        </label>
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          disabled={save.isPending || name.trim() === ""}
-          onClick={() => save.mutate()}
-        >
-          Save
-        </Button>
-      </div>
+    <Card className="order-last w-full p-3">
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...form.formProps} className="space-y-2">
+        {/* Whatever could not be blamed on a field. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <InlineField label="Name" error={form.errorFor("name")}>
+            <Input {...form.register("name")} className="h-8" />
+          </InlineField>
+          <InlineField label="Points by default" error={form.errorFor("points")}>
+            <Input type="number" min={0} step={0.5} {...form.register("points")} className="h-8" />
+          </InlineField>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
+            Save
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
@@ -933,11 +970,14 @@ function KindDetailsEditor({ kind }: { kind: ServiceKind }) {
 function ConsumableDetailsEditor({ consumable }: { consumable: Consumable }) {
   const queryClient = useQueryClient();
   const { open, setOpen } = useExclusivePanel(`${consumable.id}:edit`);
-  const [name, setName] = useState(consumable.name);
-  const [unit, setUnit] = useState<ConsumableUnit>(consumable.unit);
 
-  const save = useMutation({
-    mutationFn: () => updateConsumable(consumable.id, { name: name.trim(), unit }),
+  const current = () => ({ name: consumable.name, unit: consumable.unit });
+
+  const form = useForm({
+    schema: createConsumableSchema,
+    initial: current(),
+    toPayload: (v) => ({ name: v.name.trim(), unit: v.unit }),
+    submit: (input) => updateConsumable(consumable.id, input as CreateConsumable),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["consumables"] });
       setOpen(false);
@@ -949,9 +989,9 @@ function ConsumableDetailsEditor({ consumable }: { consumable: Consumable }) {
       <Button
         variant="secondary"
         size="sm"
+        // Re-read on open, so a cancelled edit leaves no draft behind.
         onClick={() => {
-          setName(consumable.name);
-          setUnit(consumable.unit);
+          form.reset(current());
           setOpen(true);
         }}
       >
@@ -961,43 +1001,41 @@ function ConsumableDetailsEditor({ consumable }: { consumable: Consumable }) {
   }
 
   return (
-    <Card className="order-last w-full space-y-2 p-3">
-      {save.error ? <ErrorAlert error={save.error} /> : null}
-      <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Name</span>
-          <Input value={name} onChange={(event) => setName(event.target.value)} className="h-8" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-muted-foreground">Unit</span>
-          {/* A fixed set, not free text: the unit is what every recorded quantity
-              is counted in, and "g" and "grams" side by side would make the
-              consumption report meaningless. */}
-          <select
-            value={unit}
-            onChange={(event) => setUnit(event.target.value as ConsumableUnit)}
-            className="h-8 rounded-lg border border-border bg-card px-2 text-xs"
-          >
-            {CONSUMABLE_UNITS.map((option) => (
-              <option key={option} value={option}>
-                {CONSUMABLE_UNIT_LABELS[option]}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
-          Cancel
-        </Button>
-        <Button
-          size="sm"
-          disabled={save.isPending || name.trim() === ""}
-          onClick={() => save.mutate()}
-        >
-          Save
-        </Button>
-      </div>
+    <Card className="order-last w-full p-3">
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...form.formProps} className="space-y-2">
+        {/* Whatever could not be blamed on a field. */}
+        {form.formError ? <ErrorAlert error={form.formError} /> : null}
+        <div className="grid gap-2 sm:grid-cols-2">
+          <InlineField label="Name" error={form.errorFor("name")}>
+            <Input {...form.register("name")} className="h-8" />
+          </InlineField>
+          <InlineField label="Unit" error={form.errorFor("unit")}>
+            {/* A fixed set, not free text: the unit is what every recorded quantity
+                is counted in, and "g" and "grams" side by side would make the
+                consumption report meaningless. */}
+            <select
+              {...form.register("unit")}
+              className="h-8 rounded-lg border border-border bg-card px-2 text-xs"
+            >
+              {CONSUMABLE_UNITS.map((option) => (
+                <option key={option} value={option}>
+                  {CONSUMABLE_UNIT_LABELS[option]}
+                </option>
+              ))}
+            </select>
+          </InlineField>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" type="button" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={form.submitting}>
+            {form.submitting ? <Spinner /> : null}
+            Save
+          </Button>
+        </div>
+      </form>
     </Card>
   );
 }
@@ -1006,8 +1044,6 @@ function ConsumableDetailsEditor({ consumable }: { consumable: Consumable }) {
 
 function ConsumablesTab() {
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [unit, setUnit] = useState<ConsumableUnit>("ea");
 
   const consumables = useQuery({
     queryKey: ["consumables", "all"],
@@ -1015,11 +1051,17 @@ function ConsumablesTab() {
   });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["consumables"] });
 
-  const create = useMutation({
-    mutationFn: () => createConsumable({ name, unit }),
+  // The route's own schema. An empty name used to disable Add with nothing said.
+  const create = useForm({
+    schema: createConsumableSchema,
+    initial: { name: "", unit: "ea" as ConsumableUnit },
+    toPayload: (v) => ({ name: v.name.trim(), unit: v.unit }),
+    submit: (input) => createConsumable(input as CreateConsumable),
     onSuccess: async () => {
       await invalidate();
-      setName("");
+      // The unit is kept: a company adding five consumables usually counts the
+      // next one the same way.
+      create.reset({ name: "", unit: create.values.unit });
     },
   });
   const toggle = useMutation({
@@ -1040,44 +1082,36 @@ function ConsumablesTab() {
         </p>
 
         <Can permission={PERMISSIONS.PARTS_CONFIGURE}>
-          <Card className="flex flex-wrap items-end gap-3 p-4">
-            {create.error ? <ErrorAlert error={create.error} /> : null}
-            <div className="min-w-40 flex-1">
-              <Field label="Name">
-                {(props) => (
-                  <Input
-                    {...props}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Toner powder"
-                  />
-                )}
-              </Field>
-            </div>
-            <div className="w-40">
-              <Field label="Counted in">
-                {(props) => (
-                  <Select
-                    {...props}
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value as ConsumableUnit)}
-                  >
-                    {CONSUMABLE_UNITS.map((value) => (
-                      <option key={value} value={value}>
-                        {CONSUMABLE_UNIT_LABELS[value]}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            </div>
-            <Button
-              size="sm"
-              disabled={!name.trim() || create.isPending}
-              onClick={() => create.mutate()}
-            >
-              Add
-            </Button>
+          <Card className="p-4">
+            {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+            <form {...create.formProps} className="flex flex-wrap items-end gap-3">
+              {/* Whatever could not be blamed on a field. */}
+              {create.formError ? <ErrorAlert error={create.formError} /> : null}
+              <div className="min-w-40 flex-1">
+                <Field label="Name" required error={create.errorFor("name")}>
+                  {(props) => (
+                    <Input {...props} {...create.register("name")} placeholder="Toner powder" />
+                  )}
+                </Field>
+              </div>
+              <div className="w-40">
+                <Field label="Counted in" error={create.errorFor("unit")}>
+                  {(props) => (
+                    <Select {...props} {...create.register("unit")}>
+                      {CONSUMABLE_UNITS.map((value) => (
+                        <option key={value} value={value}>
+                          {CONSUMABLE_UNIT_LABELS[value]}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+              </div>
+              <Button type="submit" size="sm" disabled={create.submitting}>
+                {create.submitting ? <Spinner /> : null}
+                Add
+              </Button>
+            </form>
           </Card>
         </Can>
 

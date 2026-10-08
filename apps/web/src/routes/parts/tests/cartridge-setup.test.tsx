@@ -49,6 +49,7 @@ vi.mock("@/services/parts.js", async (importOriginal) => ({
   fetchConsumables: vi.fn(),
   fetchRates: vi.fn(),
   updateServiceKind: vi.fn(),
+  createPartModel: vi.fn(),
 }));
 
 // The device-type picker loads through the generic options hook, which goes
@@ -291,5 +292,71 @@ describe("what a service kind uses", () => {
         consumables: [{ consumableId: "c2", minQuantity: 0, maxQuantity: null }],
       }),
     );
+  });
+});
+
+describe("adding and renaming a model", () => {
+  it("says a name is needed rather than disabling Add", async () => {
+    // These panels answered an empty name by going inert, so there was no way to
+    // tell a form that had refused from one that was still thinking.
+    vi.mocked(parts.fetchPartModels).mockResolvedValue([]);
+    const user = userEvent.setup({ delay: null });
+    renderSetup();
+
+    await user.click(await screen.findByRole("button", { name: "Add model" }));
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByText("This cannot be empty.")).toBeInTheDocument();
+    expect(parts.createPartModel).not.toHaveBeenCalled();
+  });
+
+  it("refuses a rated figure below one, where blank means no limit", async () => {
+    // Zero is the trap: blank means "no rated limit", so a model good for zero
+    // services is an unset field said wrong rather than a real answer.
+    vi.mocked(parts.fetchPartModels).mockResolvedValue([]);
+    const user = userEvent.setup({ delay: null });
+    renderSetup();
+
+    await user.click(await screen.findByRole("button", { name: "Add model" }));
+    await user.type(screen.getByLabelText("Name"), "HP 12A Toner");
+    await user.type(screen.getByLabelText("Rated cycles"), "0");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(
+      await screen.findByText("At least one, or leave it empty for no limit."),
+    ).toBeInTheDocument();
+    expect(parts.createPartModel).not.toHaveBeenCalled();
+  });
+
+  it("leaves out the rated figures nobody filled in", async () => {
+    vi.mocked(parts.fetchPartModels).mockResolvedValue([]);
+    vi.mocked(parts.createPartModel).mockResolvedValue(model());
+    const user = userEvent.setup({ delay: null });
+    renderSetup();
+
+    await user.click(await screen.findByRole("button", { name: "Add model" }));
+    await user.type(screen.getByLabelText("Name"), "HP 12A Toner");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    // Absent rather than zero: `Number("")` is 0, which would have claimed a model
+    // rated for no services at all. On an edit they go as null instead, so that
+    // clearing a figure that was set actually sticks.
+    expect(parts.createPartModel).toHaveBeenCalledWith({
+      name: "HP 12A Toner",
+      compatibleDeviceTypeIds: [],
+    });
+  });
+
+  it("refuses an emptied name on an existing model at the field", async () => {
+    vi.mocked(parts.fetchPartModels).mockResolvedValue([model()]);
+    const user = userEvent.setup({ delay: null });
+    renderSetup();
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await user.clear(screen.getByLabelText("Name"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("This cannot be empty.")).toBeInTheDocument();
+    expect(parts.updatePartModel).not.toHaveBeenCalled();
   });
 });
