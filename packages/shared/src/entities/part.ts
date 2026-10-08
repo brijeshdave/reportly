@@ -269,7 +269,11 @@ export const partSchema = z
 export type Part = z.infer<typeof partSchema>;
 
 export const createPartSchema = z.object({
-  identifier: z.string().trim().min(1).max(64),
+  identifier: z
+    .string()
+    .trim()
+    .min(1, "Type the number written on the part.")
+    .max(64, "Keep this under 64 characters."),
   partModelId: uuidSchema,
   /**
    * Whether it arrives usable. A new cartridge from the supplier is ready; one

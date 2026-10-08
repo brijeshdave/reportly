@@ -13,6 +13,7 @@ import {
   deployPartSchema,
   formatDateTime,
   consumableViolations,
+  createPartSchema,
   meanPages,
   pagesFor,
   recordServiceSchema,
@@ -803,9 +804,11 @@ export function PartDetailPage({ partId }: { partId: string }) {
    * person at the printer and the record agree they mean the same object.
    */
   const [editingId, setEditingId] = useState(false);
-  const [draftId, setDraftId] = useState("");
-  const rename = useMutation({
-    mutationFn: (identifier: string) => updatePart(partId, { identifier }),
+  const rename = useForm({
+    schema: createPartSchema.pick({ identifier: true }),
+    initial: { identifier: "" },
+    toPayload: (v) => ({ identifier: v.identifier.trim() }),
+    submit: (input) => updatePart(partId, input as { identifier: string }),
     onSuccess: async () => {
       await invalidate();
       setEditingId(false);
@@ -924,8 +927,9 @@ export function PartDetailPage({ partId }: { partId: string }) {
                 <Button
                   variant="secondary"
                   size="sm"
+                  // Re-read on open, so a cancelled edit leaves no draft behind.
                   onClick={() => {
-                    setDraftId(p.identifier);
+                    rename.reset({ identifier: p.identifier });
                     setEditingId((open) => !open);
                   }}
                 >
@@ -989,30 +993,35 @@ export function PartDetailPage({ partId }: { partId: string }) {
       </div>
 
       {move.error ? <ErrorAlert error={move.error} /> : null}
-      {rename.error ? <ErrorAlert error={rename.error} /> : null}
+      {/* An identifier already on another part is the server's to refuse, and it
+          names the field, so it lands under the box rather than here. */}
+      {rename.formError ? <ErrorAlert error={rename.formError} /> : null}
 
       {editingId ? (
-        <Card className="flex flex-wrap items-end gap-2 p-3">
-          <Field label="Identifier" hint="The number written on the part itself.">
-            {(props) => (
-              <Input
-                {...props}
-                className="w-56"
-                value={draftId}
-                onChange={(event) => setDraftId(event.target.value)}
-              />
-            )}
-          </Field>
-          <Button
-            size="sm"
-            disabled={!draftId.trim() || draftId.trim() === p.identifier || rename.isPending}
-            onClick={() => rename.mutate(draftId.trim())}
-          >
-            Save
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setEditingId(false)}>
-            Cancel
-          </Button>
+        <Card className="p-3">
+          {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+          <form {...rename.formProps} className="flex flex-wrap items-end gap-2">
+            <Field
+              label="Identifier"
+              required
+              error={rename.errorFor("identifier")}
+              hint="The number written on the part itself."
+            >
+              {(props) => <Input {...props} className="w-56" {...rename.register("identifier")} />}
+            </Field>
+            <Button
+              type="submit"
+              size="sm"
+              // Only for having nothing to change. An empty box now says so.
+              disabled={rename.submitting || rename.values.identifier.trim() === p.identifier}
+            >
+              {rename.submitting ? <Spinner /> : null}
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" type="button" onClick={() => setEditingId(false)}>
+              Cancel
+            </Button>
+          </form>
         </Card>
       ) : null}
 
