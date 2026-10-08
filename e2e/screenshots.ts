@@ -57,16 +57,32 @@ const SHOTS: Shot[] = [
   },
   {
     name: "journal-list",
-    // The page opens on "My day" now, which is a set of summary cards and no
-    // table at all. This shot is of the journal itself, so it asks for the
-    // Entries tab by name rather than trusting whichever tab happens to be first.
-    path: "/journal?tab=entries",
+    // `/journal` is the table again. It was briefly a tabbed page whose first tab
+    // was My day, which is why this used to ask for `?tab=entries` — that search
+    // param no longer exists, so the shot was being taken of whatever the route
+    // fell back to.
+    path: "/journal",
+    // The table opens filtered to the last week and the viewer's own team, which
+    // is right for working in and wrong for a screenshot: `seed:demo` spreads its
+    // entries over ten weeks and files them under people the superadmin does not
+    // manage, so the shot would be of an empty state. Clearing the filters shows
+    // the journal the page is there to show.
+    prepare: async (page) => {
+      const clear = page.getByRole("button", { name: "Clear filters" });
+      // Waited for, not probed: `prepare` runs the moment the page is navigated,
+      // long before the first rows come back, so asking whether the empty state is
+      // visible yet always answered no and the filters stayed on.
+      await clear.waitFor({ timeout: 15_000 }).catch(() => {
+        /* the filters matched something after all — nothing to clear */
+      });
+      if (await clear.isVisible().catch(() => false)) await clear.click();
+    },
     ready: (page) => page.getByRole("table").waitFor(),
   },
   {
     name: "journal-my-day",
-    path: "/journal",
-    // The other half of the same page: what is on one person's plate today.
+    // Its own page now, not the other half of the journal.
+    path: "/my-day",
     ready: (page) => page.getByText("Your points").waitFor(),
   },
   {
