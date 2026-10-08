@@ -87,12 +87,14 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
   }
 
   const resolving = dirty && needsFindings(choice || null);
-  const findingsMissing = resolving && (rootCause.trim() === "" || preventive.trim() === "");
 
   /** What the server said about one field, if it blamed one. */
   function fieldError(key: string): string | undefined {
     return change.error instanceof ApiError ? change.error.fields[key] : undefined;
   }
+
+  /** Whether the refusal has already been shown under the fields it named. */
+  const placed = change.error instanceof ApiError && Object.keys(change.error.fields).length > 0;
 
   return (
     <div className="flex w-full flex-col gap-1">
@@ -180,7 +182,11 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
               onClick={() => {
                 if (choice) change.mutate(choice);
               }}
-              disabled={change.isPending || findingsMissing}
+              // Not disabled on the findings being empty. The server already
+              // refuses that and names both fields, which this panel renders
+              // underneath them — so going inert was the one thing that kept
+              // anybody from ever reading why. One round trip, one wording.
+              disabled={change.isPending}
             >
               {change.isPending ? <Spinner /> : null}
               Resolve
@@ -196,7 +202,10 @@ export function StatusControl({ report, canDrive }: { report: JournalEntry; canD
         </p>
       ) : null}
 
-      {change.error ? <ErrorAlert error={change.error} /> : null}
+      {/* Only what could not be blamed on a field — a permission, a status that
+          moved underneath us. A refusal that names its fields is already shown under
+          them, and repeating it here makes one problem read as two. */}
+      {change.error && !placed ? <ErrorAlert error={change.error} /> : null}
     </div>
   );
 }

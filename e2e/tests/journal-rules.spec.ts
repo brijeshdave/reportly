@@ -158,11 +158,19 @@ test("asks for the findings when resolving, and will not commit without them", a
   await expect(page.getByLabel("Root cause")).toBeVisible();
   await expect(page.getByLabel("Preventive measures")).toBeVisible();
   const resolve = page.getByRole("button", { name: "Resolve", exact: true });
-  await expect(resolve).toBeDisabled();
+
+  // Pressed empty, it answers at both fields rather than going inert. The button
+  // used to be disabled here, which meant the one explanation of what was missing
+  // was unreachable: the only way to read it was to satisfy it first.
+  await resolve.click();
+  await expect(page.getByText("Say why it happened before closing it.")).toBeVisible();
+  await expect(page.getByText("Say what stops it happening again.")).toBeVisible();
+  // And nothing moved.
+  await expect(page.getByLabel("Status")).toHaveValue(/.+/);
+  await expect(page.getByText("The tensioner had backed off.")).toBeHidden();
 
   await page.getByLabel("Root cause").fill("The tensioner had backed off.");
   await page.getByLabel("Preventive measures").fill("Added it to the weekly round.");
-  await expect(resolve).toBeEnabled();
   await resolve.click();
 
   // And the entry is finished, with the findings on it.
