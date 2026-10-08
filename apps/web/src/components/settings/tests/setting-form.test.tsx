@@ -215,3 +215,55 @@ describe("record fields", () => {
     expect(onSave).toHaveBeenCalledWith({ default: "info", features: {} });
   });
 });
+
+describe("what the schema refuses", () => {
+  /** The policy, with one field about to be pushed out of range. */
+  const policy = {
+    minLength: 12,
+    requireUppercase: true,
+    requireNumber: true,
+    requireSymbol: false,
+    expiryDays: 0,
+    reuseCount: 3,
+  };
+
+  it("says it at the field rather than above the whole card", async () => {
+    // The schema was checked only on the server, so a number out of range came
+    // back as one sentence above eight inputs. Every setting in the registry gains
+    // this, including ones added later — the form is generated from the schema.
+    const user = userEvent.setup({ delay: null });
+    render(<SettingForm def={PASSWORD_POLICY} value={policy} onSave={onSave} />);
+
+    const minLength = screen.getByLabelText("Min length");
+    await user.clear(minLength);
+    await user.type(minLength, "200");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    // The bound in words, not "Too big: expected number to be <=128" — and read
+    // off the same descriptor the hint uses, so a setting added later gets it too.
+    expect(await screen.findByText("128 or less.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("stops a cleared number from being sent as nothing", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<SettingForm def={PASSWORD_POLICY} value={policy} onSave={onSave} />);
+
+    await user.clear(screen.getByLabelText("Min length"));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("Type a number.")).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("still saves a value inside the bounds", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<SettingForm def={PASSWORD_POLICY} value={policy} onSave={onSave} />);
+
+    await user.clear(screen.getByLabelText("Min length"));
+    await user.type(screen.getByLabelText("Min length"), "16");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(onSave).toHaveBeenCalledWith({ ...policy, minLength: 16 });
+  });
+});

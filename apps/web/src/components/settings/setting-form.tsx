@@ -9,12 +9,42 @@ import { useEffect, useId, useState } from "react";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Alert, Field, Input, Spinner, Textarea } from "@/components/ui/form.js";
 import { Button, Card } from "@/components/ui/primitives.js";
+import { useForm, type ParsesInto } from "@/hooks/use-form.js";
 import { errorMessage } from "@/lib/error-message.js";
 
 type SettingValue = Record<string, unknown>;
 
 const SELECT_CLASS =
   "h-10 w-full rounded-xl border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+
+/**
+ * A refusal in words, from the field's own description.
+ *
+ * The registry's schemas carry bounds but no messages, so what they say is
+ * "Too big: expected number to be <=128" — the machine wording the per-field
+ * errors were meant to replace, wearing a different hat. Writing a message onto
+ * every schema in the registry would mean remembering to do it for every setting
+ * added later; this form is generated from the schema, so the message is too, from
+ * the same `min`/`max`/`integer` the hint beside the box already reads.
+ *
+ * The schema stays the judge of whether a value is allowed. This only decides how
+ * to say so, and hands back the schema's own words for anything it cannot phrase —
+ * a cross-field refine, a string pattern — rather than inventing one.
+ */
+function readableError(
+  field: SettingField,
+  value: unknown,
+  raw: string | undefined,
+): string | undefined {
+  if (raw === undefined || field.kind !== "number") return raw;
+  // An emptied box arrives as "", which is the commonest way to see this.
+  if (value === "" || value === null || value === undefined) return "Type a number.";
+  if (typeof value !== "number" || Number.isNaN(value)) return "Type a number.";
+  if (field.integer && !Number.isInteger(value)) return "Whole numbers only.";
+  if (field.min !== undefined && value < field.min) return `${field.min} or more.`;
+  if (field.max !== undefined && value > field.max) return `${field.max} or less.`;
+  return raw;
+}
 
 /** A `Record<string, enum>` field, e.g. per-feature log levels. */
 function RecordField({
@@ -162,23 +192,31 @@ function FieldControl({
   value,
   onChange,
   disabled,
+  error,
 }: {
   field: SettingField;
   value: unknown;
   onChange: (next: unknown) => void;
   disabled?: boolean;
+  /** What the setting's own schema said about this field, if anything. */
+  error?: string;
 }) {
   if (field.kind === "boolean") {
     return (
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        {field.label}
-      </label>
+      <div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.checked)}
+          />
+          {field.label}
+        </label>
+        {/* A tickbox rarely has anything to say, but a schema that refines across
+            fields can land on one, and it had nowhere to put it. */}
+        {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
+      </div>
     );
   }
 
@@ -191,7 +229,7 @@ function FieldControl({
     // textarea gives you for pressing enter, not an empty item somebody meant.
     const items = Array.isArray(value) ? (value as string[]) : [];
     return (
-      <Field label={field.label} hint="One per line. Leave empty to accept anything.">
+      <Field label={field.label} error={error} hint="One per line. Leave empty to accept anything.">
         {(props) => (
           <Textarea
             {...props}
@@ -214,12 +252,15 @@ function FieldControl({
 
   if (field.kind === "record") {
     return (
-      <RecordField
-        field={field}
-        value={(value as Record<string, string>) ?? {}}
-        onChange={onChange}
-        disabled={disabled}
-      />
+      <div>
+        <RecordField
+          field={field}
+          value={(value as Record<string, string>) ?? {}}
+          onChange={onChange}
+          disabled={disabled}
+        />
+        {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
+      </div>
     );
   }
 
@@ -229,7 +270,7 @@ function FieldControl({
   if (field.optionSource === "timezones") {
     return (
       // "Name" is what the schema key humanises to, and means nothing here.
-      <Field label="Timezone" hint="Your working day. Search by city or region.">
+      <Field label="Timezone" error={error} hint="Your working day. Search by city or region.">
         {(props) => (
           <SearchableSelect
             {...props}
@@ -247,7 +288,7 @@ function FieldControl({
 
   if (field.kind === "enum") {
     return (
-      <Field label={field.label}>
+      <Field label={field.label} error={error}>
         {(props) => (
           <select
             {...props}
@@ -276,7 +317,7 @@ function FieldControl({
       .join(", ");
 
     return (
-      <Field label={field.label} hint={hint || undefined}>
+      <Field label={field.label} error={error} hint={hint || undefined}>
         {(props) => (
           <Input
             {...props}
@@ -297,7 +338,7 @@ function FieldControl({
   }
 
   return (
-    <Field label={field.label}>
+    <Field label={field.label} error={error}>
       {(props) => (
         <Input
           {...props}
@@ -352,29 +393,34 @@ export function SettingForm({
         ? { ...f, optionSource: def.optionSource[f.key] }
         : f,
   );
-  const [draft, setDraft] = useState<SettingValue>(value);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  /**
+   * Validated against the setting's own schema — the same object the write is
+   * parsed with on the server, which is the whole premise of this page.
+   *
+   * It used to be checked only there, so a retention of 9999 days came back as one
+   * sentence above a card of eight inputs, naming a field in the words the schema
+   * happened to use. Every setting in the registry gains a message at its own field
+   * from this, including the ones nobody has added yet.
+   *
+   * What is sent is the schema's own parse of the draft, not the draft itself.
+   * That is the same object the server would have produced from it, so nothing new
+   * is written — and it is the only form the type checker can offer here, since
+   * reaching back for the draft would make the form's type depend on itself.
+   */
+  const form = useForm<SettingValue, SettingValue>({
+    schema: def.schema as unknown as ParsesInto<SettingValue>,
+    initial: value,
+    submit: (next) => onSave(next),
+    onSuccess: () => setSaved(true),
+  });
+  const draft = form.values;
+
   // Re-sync when the server's value changes (a refetch, another admin).
-  useEffect(() => setDraft(value), [value]);
+  useEffect(() => form.reset(value), [value]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(value);
-
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await onSave(draft);
-      setSaved(true);
-    } catch (cause) {
-      // The schema rejects out-of-range values; show what it said.
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <Card className="p-6">
@@ -383,8 +429,10 @@ export function SettingForm({
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">{def.description}</p>
 
-      <div className="mt-4 flex flex-col gap-4">
-        {error ? <Alert tone="error">{error}</Alert> : null}
+      {/* Nested rather than replacing the card: `Card` takes no `asChild`. */}
+      <form {...form.formProps} className="mt-4 flex flex-col gap-4">
+        {/* Whatever could not be blamed on a field — a permission, a conflict. */}
+        {form.formError ? <Alert tone="error">{errorMessage(form.formError)}</Alert> : null}
         {saved && !dirty ? <Alert tone="success">Saved. Applies immediately.</Alert> : null}
 
         {fields.map((field) => (
@@ -392,21 +440,22 @@ export function SettingForm({
             key={field.key}
             field={field}
             value={draft[field.key]}
-            disabled={disabled || busy}
+            error={readableError(field, draft[field.key], form.errorFor(field.key))}
+            disabled={disabled || form.submitting}
             onChange={(next) => {
               setSaved(false);
-              setDraft((current) => ({ ...current, [field.key]: next }));
+              form.set(field.key, next);
             }}
           />
         ))}
 
         <div className="flex justify-end">
-          <Button size="sm" onClick={() => void save()} disabled={disabled || busy || !dirty}>
-            {busy ? <Spinner /> : null}
+          <Button type="submit" size="sm" disabled={disabled || form.submitting || !dirty}>
+            {form.submitting ? <Spinner /> : null}
             Save changes
           </Button>
         </div>
-      </div>
+      </form>
     </Card>
   );
 }
