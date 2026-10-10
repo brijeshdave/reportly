@@ -17,6 +17,8 @@ import {
   toPaginatedResult,
   type CreatePart,
   type DeployPart,
+  type MeterReading,
+  type RecordMeterReading,
   type Part,
   type PaginatedResult,
   type PartEvent,
@@ -33,6 +35,7 @@ import { devices as devicesTable, parts as partsTable } from "@/core/db/schema.j
 import { mayUseLocation, withLocationsNullable } from "@/core/db/scoped.js";
 import { serviceHistory } from "@/features/parts/service-service.js";
 import { compatibilityFor } from "@/features/parts/catalogue-repo.js";
+import * as meterRepo from "@/features/parts/meter-repo.js";
 import * as repo from "@/features/parts/parts-repo.js";
 import { reverseIfFailedInWindow } from "@/features/parts/service-service.js";
 
@@ -185,6 +188,124 @@ export async function updatePart(
  * it in a machine is the mistake this state exists to prevent. That distinction
  * used to be invisible — "in stock" covered both, and both installed happily.
  */
+/**
+ * The printer, scoped to what the caller may reach.
+ *
+ * Same scoping as installing into it: a counter is a fact about a machine at a
+ * plant, and somebody who cannot see the machine has no business reading or
+ * writing its total.
+ */
+async function requireDevice(
+  deviceId: string,
+  companyId: string,
+  ctx: AuthContext,
+): Promise<{ id: string; name: string }> {
+  const device = await repo.deviceTypeOf(
+    deviceId,
+    companyId,
+    withLocationsNullable(ctx, devicesTable.locationId),
+  );
+  if (!device) throw new AppError(404, ERROR_CODES.NOT_FOUND, "Device not found");
+  return device;
+}
+
+/** A printer's counter: the last reading and the series behind it. */
+export async function deviceMeter(
+  deviceId: string,
+  companyId: string,
+  ctx: AuthContext,
+): Promise<{ last: MeterReading | null; readings: MeterReading[] }> {
+  await requireDevice(deviceId, companyId, ctx);
+  const readings = await meterRepo.readingsFor(deviceId, companyId);
+  return {
+    readings: readings.map(serializeReading),
+    // The newest, which is what an install is offered — by when it was read, not
+    // by which number is biggest: a reset reads lower and is still the latest.
+    last: readings.length > 0 ? serializeReading(readings[readings.length - 1]!) : null,
+  };
+}
+
+/** Record a reading taken on a round rather than at a swap. */
+export async function recordMeterReading(
+  deviceId: string,
+  companyId: string,
+  ctx: AuthContext,
+  input: RecordMeterReading,
+): Promise<MeterReading> {
+  const device = await requireDevice(deviceId, companyId, ctx);
+  const { reset } = await checkMeter(
+    deviceId,
+    companyId,
+    input.pages,
+    input.meterReset,
+    device.name,
+  );
+
+  const id = await meterRepo.recordReading({
+    companyId,
+    deviceId,
+    pages: input.pages,
+    source: reset ? "reset" : "manual",
+    readBy: ctx.userId,
+    note: input.note ?? (reset ? "Counter reset or printer replaced" : null),
+    ...(input.readAt ? { readAt: new Date(input.readAt) } : {}),
+  });
+
+  const readings = await meterRepo.readingsFor(deviceId, companyId);
+  return serializeReading(readings.find((r) => r.id === id)!);
+}
+
+function serializeReading(row: meterRepo.MeterReading): MeterReading {
+  return {
+    id: row.id,
+    deviceId: row.deviceId,
+    pages: row.pages,
+    readAt: row.readAt.toISOString(),
+    source: row.source,
+    placementId: row.placementId,
+    note: row.note,
+    readBy: row.readBy,
+    readByName: null,
+    createdAt: row.readAt.toISOString(),
+    updatedAt: row.readAt.toISOString(),
+  };
+}
+
+/**
+ * Refuse a reading that is below the printer's last one, unless the counter is
+ * declared reset.
+ *
+ * A counter only goes up. When one appears to go down it is either a replaced or
+ * reset machine — which is a fact worth recording — or somebody has read the
+ * wrong number, which is what filled a live install with tours claiming negative
+ * pages and one claiming fifty-two thousand in two days. The form prefills the
+ * last reading, so saying yes to the prefilled number is the easy path and this
+ * only fires when somebody has typed something else.
+ *
+ * Returns the reading to record, and whether it breaks the series.
+ */
+async function checkMeter(
+  deviceId: string,
+  companyId: string,
+  pages: number | null | undefined,
+  declaredReset: boolean | undefined,
+  deviceName: string,
+): Promise<{ reset: boolean }> {
+  if (pages === null || pages === undefined) return { reset: false };
+  const last = await meterRepo.lastReading(deviceId, companyId);
+  if (!last || pages >= last.pages) return { reset: false };
+  if (declaredReset) return { reset: true };
+
+  throw new AppError(
+    400,
+    ERROR_CODES.VALIDATION_ERROR,
+    `${deviceName} last read ${last.pages.toLocaleString()} pages, and a counter does not go down. ` +
+      "If it was replaced or its total was cleared, say so and this reading starts a new series.",
+    undefined,
+    { meterStart: `Lower than this printer's last reading of ${last.pages.toLocaleString()}.` },
+  );
+}
+
 export async function deployPart(
   id: string,
   companyId: string,
@@ -229,9 +350,10 @@ export async function deployPart(
   // A machine holds one cartridge of a given kind at a time. Reported from
   // production: "it allows to install more than one cartridges to same printer
   // which is not possible in real." Scoped to the model rather than the machine so
-  // a printer that takes a set of four colours still works — two of the *same*
-  // cartridge is the impossible thing, not two cartridges.
-  const occupant = await repo.occupantOf(input.deviceId, part.partModelId);
+  // One cartridge at a time, whatever model it is. This was scoped by model so a
+  // colour set could share a machine, which on a mono fleet quietly allowed a
+  // second cartridge to be installed on top of the first.
+  const occupant = await repo.occupantOf(input.deviceId);
   if (occupant) {
     throw new AppError(
       409,
@@ -251,7 +373,15 @@ export async function deployPart(
     );
   }
 
-  await repo.insertPlacement(companyId, {
+  const { reset } = await checkMeter(
+    input.deviceId,
+    companyId,
+    input.meterStart,
+    input.meterReset,
+    device.name,
+  );
+
+  const placementId = await repo.insertPlacement(companyId, {
     partId: id,
     deviceId: input.deviceId,
     installedBy: userId,
@@ -261,6 +391,21 @@ export async function deployPart(
     // is standing in front of the machine with the part in their hand.
     meterStart: input.meterStart ?? null,
   });
+
+  // The same number, kept as the printer's own fact too. The column above is what
+  // this tour's arithmetic reads; this is what the next install is offered and
+  // what the printer's own output is counted from.
+  if (input.meterStart !== undefined && input.meterStart !== null) {
+    await meterRepo.recordReading({
+      companyId,
+      deviceId: input.deviceId,
+      pages: input.meterStart,
+      source: reset ? "reset" : "install",
+      placementId: placementId ?? null,
+      readBy: userId,
+      ...(reset ? { note: "Counter reset or printer replaced" } : {}),
+    });
+  }
   // The site is left exactly as it was. It says which plant's stock this is, which
   // fitting it into one of that plant's printers does not change — and clearing it
   // made every installed cartridge unplaced, which is to say visible to every site
@@ -309,6 +454,17 @@ export async function returnPart(
     );
   }
 
+  // Checked against the printer's series, not against this tour's own start: a
+  // reading taken on the way out is the machine's current total, and the machine
+  // may have been read since this cartridge went in.
+  const { reset: endReset } = await checkMeter(
+    open.deviceId,
+    companyId,
+    input.meterEnd,
+    input.meterReset,
+    "This printer",
+  );
+
   await repo.closePlacement(open.id, companyId, {
     removedBy: userId,
     outcome: input.outcome,
@@ -316,6 +472,18 @@ export async function returnPart(
     ...(input.meterEnd !== undefined ? { meterEnd: input.meterEnd } : {}),
     ...(input.pagesPrinted !== undefined ? { pagesPrinted: input.pagesPrinted } : {}),
   });
+
+  if (input.meterEnd !== undefined && input.meterEnd !== null) {
+    await meterRepo.recordReading({
+      companyId,
+      deviceId: open.deviceId,
+      pages: input.meterEnd,
+      source: endReset ? "reset" : "removal",
+      placementId: open.id,
+      readBy: userId,
+      ...(endReset ? { note: "Counter reset or printer replaced" } : {}),
+    });
+  }
   // Whatever the outcome, it came out of a machine: it is empty or it is faulty,
   // and either way it does not go straight back. `restockPart` is the way round
   // that for one which genuinely needs nothing.

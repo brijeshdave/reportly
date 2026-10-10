@@ -6,6 +6,10 @@
 // screens are kept off the sidebar in that case rather than left to discover it
 // — see `modules.parts` on the session.
 import type {
+  DeployPart,
+  MeterReading,
+  RecordMeterReading,
+  ReturnPart,
   Consumable,
   CreateConsumable,
   CreatePart,
@@ -15,7 +19,6 @@ import type {
   PartEvent,
   PartModel,
   Placement,
-  PlacementOutcome,
   RecordService,
   ReturnedPart,
   ServiceEvent,
@@ -80,11 +83,25 @@ export const fetchPartHistory = (id: string) => http.get<Placement[]>(`/parts/${
 /** Installs, returns and services in one sequence — what the detail page reads. */
 export const fetchPartTimeline = (id: string) => http.get<PartEvent[]>(`/parts/${id}/timeline`);
 
-export const deployPart = (id: string, input: { deviceId: string; note?: string }) =>
+export const deployPart = (id: string, input: DeployPart) =>
   http.post<Part>(`/parts/${id}/deploy`, input);
 /** Returns the part **and** whether booking it in took points back. */
-export const returnPart = (id: string, input: { outcome: PlacementOutcome; note?: string }) =>
+export const returnPart = (id: string, input: ReturnPart) =>
   http.post<ReturnedPart>(`/parts/${id}/return`, input);
+
+/**
+ * A printer's own page counter: what it last read, and the series behind it.
+ *
+ * The counter belongs to the machine, not to the cartridge — a cartridge moves
+ * between printers and carries no count of its own. This is what the install and
+ * removal forms prefill from, so the number offered is the machine's and not the
+ * last one this cartridge happened to see somewhere else.
+ */
+export const fetchDeviceMeter = (deviceId: string) =>
+  http.get<{ last: MeterReading | null; readings: MeterReading[] }>(`/devices/${deviceId}/meter`);
+
+export const recordMeterReading = (deviceId: string, input: RecordMeterReading) =>
+  http.post<MeterReading>(`/devices/${deviceId}/meter`, input);
 export const restockPart = (id: string, locationId?: string | null) =>
   http.post<Part>(`/parts/${id}/restock`, { locationId });
 export const scrapPart = (id: string) => http.post<Part>(`/parts/${id}/scrap`);

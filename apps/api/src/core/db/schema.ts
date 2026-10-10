@@ -2073,6 +2073,58 @@ export const partPlacements = pgTable(
   ],
 );
 
+/**
+ * What a printer's own counter said, and when.
+ *
+ * The counter belongs to the machine, not to the cartridge in it — a cartridge
+ * moves between printers and carries no count of its own. So a tour's pages are
+ * the difference between two readings of the *same* printer, and a printer's own
+ * output is its reading series. Both questions are answered from here.
+ *
+ * It exists because the readings used to live only as two loose integers on each
+ * placement, which meant the counter had no history: nothing could offer the last
+ * value when the next person installed a cartridge, and nothing could tell a
+ * plausible reading from one typed off the wrong line of the display. On a live
+ * install that left half the closed tours unusable — negative differences where a
+ * printer had been swapped, a two-day tour claiming fifty-two thousand pages, and
+ * one machine whose readings alternated between two unrelated sequences.
+ *
+ * `source` says where a reading came from, because they are not equally trusted:
+ * `install` and `removal` are taken at a swap and own a placement, `manual` is
+ * somebody reading the display on a round, and `reset` marks the counter starting
+ * again — a replaced printer or a cleared total — which is the one legitimate way
+ * for the series to go backwards.
+ */
+export const deviceMeterReadings = pgTable(
+  "device_meter_readings",
+  {
+    id: idPk(),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    /** The number on the display. Never null: a reading nobody took is no row. */
+    pages: integer("pages").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+    /** 'install' | 'removal' | 'manual' | 'reset'. */
+    source: text("source").notNull(),
+    /** The tour this reading was taken for, where it was taken at a swap. */
+    placementId: uuid("placement_id").references(() => partPlacements.id, {
+      onDelete: "cascade",
+    }),
+    note: text("note"),
+    readBy: text("read_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (t) => [
+    // The question asked on every install — "what did this printer last read?" —
+    // so it is the index rather than an afterthought.
+    index("device_meter_readings_device_idx").on(t.deviceId, t.readAt),
+  ],
+);
+
 /** One refill or repair. */
 export const serviceEvents = pgTable(
   "service_events",

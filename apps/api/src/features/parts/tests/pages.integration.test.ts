@@ -82,16 +82,24 @@ async function setUp() {
 async function tour(
   partId: string,
   deviceId: string,
-  ends: { meterStart?: number; meterEnd?: number; pagesPrinted?: number },
+  ends: {
+    meterStart?: number;
+    meterEnd?: number;
+    pagesPrinted?: number;
+    /** The printer was replaced or its total cleared, so a lower reading is real. */
+    meterReset?: boolean;
+  },
 ) {
   await inject("POST", `/parts/${partId}/deploy`, {
     deviceId,
     ...(ends.meterStart !== undefined ? { meterStart: ends.meterStart } : {}),
+    ...(ends.meterReset ? { meterReset: true } : {}),
   });
   await inject("POST", `/parts/${partId}/return`, {
     outcome: "ok",
     ...(ends.meterEnd !== undefined ? { meterEnd: ends.meterEnd } : {}),
     ...(ends.pagesPrinted !== undefined ? { pagesPrinted: ends.pagesPrinted } : {}),
+    ...(ends.meterReset ? { meterReset: true } : {}),
   });
   await inject("POST", `/parts/${partId}/restock`, {});
 }
@@ -141,16 +149,51 @@ describe("page counts", () => {
     expect(pagesFor(latest)).toEqual({ pages: null, from: "unknown" });
   });
 
-  it("stores a backwards meter as it was read, and reports it as a reset", async () => {
+  it("stores a declared reset as it was read, and reports it as a reset", async () => {
     // The reading is kept exactly as the person typed it — correcting it here
     // would destroy the evidence that the printer was swapped. The judgement is
     // made when the number is displayed, not when it is stored.
+    //
+    // Saying the counter restarted is now required to get here: a backwards
+    // reading that nobody vouches for is refused (below), because accepting them
+    // silently is what filled a live register with impossible tours.
     const { device, part } = await setUp();
-    await tour(part.id, device.id, { meterStart: 49_970, meterEnd: 120 });
+    await tour(part.id, device.id, { meterStart: 49_970, meterEnd: 120, meterReset: true });
 
     const [latest] = (await inject("GET", `/parts/${part.id}/history`)).json();
     expect(latest).toMatchObject({ meterStart: 49_970, meterEnd: 120 });
     expect(pagesFor(latest)).toEqual({ pages: null, from: "meter-reset" });
+  });
+
+  it("refuses a reading below the printer's last one unless the reset is declared", async () => {
+    // The guard the register needed. A counter only goes up; when one appears to
+    // go down it is a replaced machine — worth recording — or somebody read the
+    // wrong number, which is what produced tours of minus a hundred thousand pages
+    // and one claiming fifty-two thousand in two days.
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+
+    const res = await inject("POST", `/parts/${part.id}/deploy`, {
+      deviceId: device.id,
+      meterStart: 500,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/does not go down/i);
+    // Named for the box it is about, so it lands under the field.
+    expect(res.json().error.fields.meterStart).toMatch(/12,000|12000/);
+  });
+
+  it("offers the printer's own counter, not the cartridge's", async () => {
+    // The thing that made this hard to get right by hand: the counter belongs to
+    // the machine and carries on across cartridge swaps, so the next install's
+    // reading follows the last *removal* from that printer — not whatever the
+    // incoming cartridge read in some other machine.
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+
+    const meter = (await inject("GET", `/devices/${device.id}/meter`)).json();
+    expect(meter.last.pages).toBe(12_000);
   });
 
   it("carries the model's rated yield to compare against", async () => {

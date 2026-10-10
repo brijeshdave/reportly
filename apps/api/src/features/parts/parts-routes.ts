@@ -9,6 +9,8 @@ import {
   PERMISSIONS,
   createPartSchema,
   deployPartSchema,
+  meterReadingSchema,
+  recordMeterReadingSchema,
   listQuerySchema,
   paginatedResult,
   partEventSchema,
@@ -198,6 +200,65 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
       const part = await parts.updatePart(request.params.id, companyId, request.body, request.ctx!);
       await recordAudit(request, request.ctx!, { action: "part.update", details: { id: part.id } });
       return part;
+    },
+  );
+
+  app.get(
+    "/devices/:id/meter",
+    {
+      preHandler: guard(PERMISSIONS.PARTS_DEPLOY),
+      schema: {
+        tags: ["Cartridges"],
+        summary: "A printer's page counter: what it last read, and its history",
+        description:
+          "The counter belongs to the machine, not to the cartridge in it. This is what the " +
+          "install and removal forms prefill from, and what a reading below is checked against.",
+        params: idParams,
+        response: {
+          200: z.object({
+            last: meterReadingSchema.nullable(),
+            readings: z.array(meterReadingSchema),
+          }),
+        },
+      },
+    },
+    async (request) => {
+      const companyId = await requireModule(request.ctx!.companyId);
+      return parts.deviceMeter(request.params.id, companyId, request.ctx!);
+    },
+  );
+
+  app.post(
+    "/devices/:id/meter",
+    {
+      preHandler: guard(PERMISSIONS.PARTS_DEPLOY),
+      schema: {
+        tags: ["Cartridges"],
+        summary: "Record a reading of a printer's counter",
+        description:
+          "For a round of the floor rather than a cartridge swap. Between two swaps a printer " +
+          "may print for months, and without a reading in between its output over any period " +
+          "shorter than a cartridge's life cannot be answered at all. A reading below the " +
+          "last one is refused unless `meterReset` says the counter started again.",
+        params: idParams,
+        body: recordMeterReadingSchema,
+        response: { 201: meterReadingSchema },
+      },
+    },
+    async (request, reply) => {
+      const companyId = await requireModule(request.ctx!.companyId);
+      const reading = await parts.recordMeterReading(
+        request.params.id,
+        companyId,
+        request.ctx!,
+        request.body,
+      );
+      await recordAudit(request, request.ctx!, {
+        action: "device.meter.read",
+        details: { deviceId: request.params.id, pages: reading.pages },
+      });
+      reply.status(201);
+      return reading;
     },
   );
 

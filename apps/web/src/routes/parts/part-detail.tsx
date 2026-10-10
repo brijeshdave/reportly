@@ -33,7 +33,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, PackageCheck, PackageX, Pencil, Undo2, Wrench } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 import { Can } from "@/components/can.js";
@@ -51,6 +51,7 @@ import {
   fetchPart,
   fetchPartModel,
   fetchPartTimeline,
+  fetchDeviceMeter,
   fetchFittingDevices,
   fetchServiceKinds,
   recordService,
@@ -123,13 +124,14 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
   // by the Install button quietly going inert.
   const form = useForm({
     schema: deployPartSchema,
-    initial: { deviceId: "", note: "", meterStart: "" },
+    initial: { deviceId: "", note: "", meterStart: "", meterReset: false },
     toPayload: (v) => ({
       deviceId: v.deviceId,
       ...(v.note.trim() ? { note: v.note.trim() } : {}),
       // Blank means "not read", which is a legitimate answer here — so it is left
       // out rather than coerced, and `Number("")` never becomes a page count of 0.
       ...(v.meterStart.trim() ? { meterStart: Number(v.meterStart) } : {}),
+      ...(v.meterReset ? { meterReset: true } : {}),
     }),
     submit: (input) => deployPart(part.id, input as DeployPart),
     onSuccess: async () => {
@@ -137,7 +139,30 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
       onDone();
     },
   });
-  const { deviceId } = form.values;
+  const { deviceId, meterStart, meterReset } = form.values;
+
+  // The chosen printer's own counter. Asked for once a machine is picked, because
+  // that is the moment the number means anything: the counter belongs to the
+  // printer, and the last reading of *this* printer is what the next tour counts
+  // from — not whatever the cartridge read in the machine it came out of.
+  const meter = useQuery({
+    queryKey: ["devices", deviceId, "meter"],
+    queryFn: () => fetchDeviceMeter(deviceId),
+    enabled: deviceId !== "",
+  });
+  const lastRead = meter.data?.last ?? null;
+
+  // Offered, not forced: somebody standing at the machine may read something else,
+  // and the point is that they start from the truth rather than from an empty box.
+  useEffect(() => {
+    if (lastRead && meterStart === "") form.set("meterStart", String(lastRead.pages));
+    // Keyed on the reading, not on the form: re-running when `meterStart` changes
+    // would fight whoever is typing, and the whole point is that it is a starting
+    // value they may overwrite.
+  }, [lastRead, meterStart, form]);
+
+  const below =
+    lastRead !== null && meterStart.trim() !== "" && Number(meterStart) < lastRead.pages;
 
   return (
     <Card className="p-4">
@@ -201,7 +226,11 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
         <Field
           label="Printer's page counter"
           error={form.errorFor("meterStart")}
-          hint="Optional. What the machine reads right now — the other half of it is taken when the part comes back out, and the pages are the difference."
+          hint={
+            lastRead
+              ? `This printer last read ${lastRead.pages.toLocaleString()}. The other half is taken when the part comes back out, and the pages are the difference.`
+              : "Optional. What the machine reads right now — the other half of it is taken when the part comes back out, and the pages are the difference."
+          }
         >
           {(props) => (
             <Input
@@ -214,6 +243,27 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
             />
           )}
         </Field>
+
+        {/* Only once the number actually goes backwards. A counter does not, so
+            either the machine was changed — worth recording — or this is a
+            misread, and asking outright is the difference between the two. */}
+        {below ? (
+          <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={meterReset}
+              onChange={(event) => form.set("meterReset", event.target.checked)}
+            />
+            <span>
+              The counter was reset, or this printer was replaced
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {lastRead?.pages.toLocaleString()} was the last reading, and counters only go up.
+                Ticking this starts a new series, so the gap is not counted as pages printed.
+              </span>
+            </span>
+          </label>
+        ) : null}
         <Field label="Note" hint="Optional." error={form.errorFor("note")}>
           {(props) => <Input {...props} {...form.register("note")} />}
         </Field>
@@ -254,7 +304,7 @@ function ReturnForm({
   // used to come back as a sentence above the card.
   const form = useForm({
     schema: returnPartSchema,
-    initial: { outcome: "ok" as "ok" | "faulty", note: "", pages: "" },
+    initial: { outcome: "ok" as "ok" | "faulty", note: "", pages: "", meterReset: false },
     toPayload: (v) => ({
       outcome: v.outcome,
       ...(v.note.trim() ? { note: v.note.trim() } : {}),
@@ -265,6 +315,7 @@ function ReturnForm({
           ? { meterEnd: Number(v.pages) }
           : { pagesPrinted: Number(v.pages) }
         : {}),
+      ...(v.meterReset ? { meterReset: true } : {}),
     }),
     submit: (input) => returnPart(part.id, input as ReturnPart),
     onSuccess: async (result) => {
@@ -278,6 +329,21 @@ function ReturnForm({
   // The page count goes to whichever of the two keys this tour is counted by, so
   // a refusal about it comes back named for that one.
   const pagesError = form.errorFor(metered ? "meterEnd" : "pagesPrinted");
+
+  // The printer's own series, so a reading on the way out is checked against the
+  // machine rather than against this tour's start — the counter may well have been
+  // read since this cartridge went in.
+  const meter = useQuery({
+    // From the part, not the timeline entry: a tour's event carries the printer's
+    // name for reading, while the part carries the id of the machine it is in now.
+    queryKey: ["devices", part.deviceId ?? "", "meter"],
+    queryFn: () => fetchDeviceMeter(String(part.deviceId)),
+    enabled: metered && Boolean(part.deviceId),
+  });
+  const lastRead = meter.data?.last ?? null;
+  const { pages: typedPages, meterReset } = form.values;
+  const below =
+    metered && lastRead !== null && typedPages.trim() !== "" && Number(typedPages) < lastRead.pages;
 
   if (reversed) {
     return (
@@ -340,6 +406,25 @@ function ReturnForm({
             />
           )}
         </Field>
+        {/* Only once the number goes backwards — see the install form. */}
+        {below ? (
+          <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={meterReset}
+              onChange={(event) => form.set("meterReset", event.target.checked)}
+            />
+            <span>
+              The counter was reset, or this printer was replaced
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {lastRead?.pages.toLocaleString()} was the last reading, and counters only go up.
+                Ticking this starts a new series, so the gap is not counted as pages printed.
+              </span>
+            </span>
+          </label>
+        ) : null}
+
         <Field
           label="Note"
           hint="Optional. What went wrong, if anything."

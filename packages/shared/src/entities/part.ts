@@ -328,8 +328,22 @@ export const placementSchema = z
   .merge(timestampsSchema);
 export type Placement = z.infer<typeof placementSchema>;
 
+/**
+ * Ticked when the printer's counter has started again — it was replaced, or its
+ * total was cleared.
+ *
+ * Needed because a reading lower than the one before it is otherwise refused, and
+ * that refusal is the whole point: the readings on a live install drifted into
+ * nonsense precisely because anything typed was accepted. A reset is the one
+ * legitimate way for the series to go backwards, so it is said rather than
+ * guessed at — and it is recorded, so a report can see where the series breaks
+ * instead of reading the gap as pages printed.
+ */
+const meterResetSchema = z.boolean().optional();
+
 export const deployPartSchema = z.object({
   deviceId: uuidSchema,
+  meterReset: meterResetSchema,
   note: z.string().trim().max(1000).optional(),
   meterStart: z.number().int().min(0).max(100_000_000).nullable().optional(),
 });
@@ -337,11 +351,50 @@ export type DeployPart = z.infer<typeof deployPartSchema>;
 
 export const returnPartSchema = z.object({
   outcome: placementOutcomeSchema,
+  meterReset: meterResetSchema,
   note: z.string().trim().max(1000).optional(),
   meterEnd: z.number().int().min(0).max(100_000_000).nullable().optional(),
   pagesPrinted: z.number().int().min(0).max(100_000_000).nullable().optional(),
 });
 export type ReturnPart = z.infer<typeof returnPartSchema>;
+
+export const METER_SOURCES = ["install", "removal", "manual", "reset"] as const;
+export type MeterSource = (typeof METER_SOURCES)[number];
+
+/**
+ * A reading of a printer's counter taken on its own — somebody walking a round
+ * rather than swapping a cartridge.
+ *
+ * First-class rather than an afterthought: between two swaps a printer may print
+ * for months, and without a reading in between its output over any period shorter
+ * than a cartridge's life cannot be answered at all.
+ */
+export const recordMeterReadingSchema = z.object({
+  pages: z
+    .number({ message: "Type the number on the printer's display." })
+    .int("Whole pages only.")
+    .min(0, "Zero or more.")
+    .max(100_000_000, "That is more than any counter holds."),
+  readAt: z.string().datetime().optional(),
+  meterReset: meterResetSchema,
+  note: z.string().trim().max(500).optional(),
+});
+export type RecordMeterReading = z.infer<typeof recordMeterReadingSchema>;
+
+export const meterReadingSchema = z
+  .object({
+    id: uuidSchema,
+    deviceId: uuidSchema,
+    pages: z.number().int(),
+    readAt: z.string().datetime(),
+    source: z.enum(METER_SOURCES),
+    placementId: uuidSchema.nullable(),
+    note: z.string().nullable(),
+    readBy: z.string().nullable(),
+    readByName: z.string().nullable(),
+  })
+  .merge(timestampsSchema);
+export type MeterReading = z.infer<typeof meterReadingSchema>;
 
 /* --------------------------------- yield ---------------------------------- */
 

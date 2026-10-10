@@ -86,6 +86,12 @@ async function buildFleet() {
   ).json();
   const toner = (await inject("POST", "/consumables", { name: "Toner", unit: "g" })).json();
 
+  // Each printer's counter, carried across tours. A counter belongs to the machine
+  // and does not go back: starting every tour at 1000 made the second cartridge in
+  // a printer read lower than the first one left it, which the register now
+  // refuses. Chaining keeps each tour's page count exactly what it was.
+  const counters = new Map<string, number>();
+
   const tour = async (identifier: string, deviceId: string, ok: boolean, pages: number) => {
     const part = (
       await inject("POST", "/parts", { identifier, partModelId: model.id, status: "ready" })
@@ -94,10 +100,15 @@ async function buildFleet() {
       serviceKindId: kind.id,
       consumptions: [{ consumableId: toner.id, quantity: 90 }],
     });
-    await inject("POST", `/parts/${part.id}/deploy`, { deviceId, meterStart: 1000 });
+
+    const from = counters.get(deviceId) ?? 1000;
+    const to = from + pages;
+    counters.set(deviceId, to);
+
+    await inject("POST", `/parts/${part.id}/deploy`, { deviceId, meterStart: from });
     await inject("POST", `/parts/${part.id}/return`, {
       outcome: ok ? "ok" : "faulty",
-      meterEnd: 1000 + pages,
+      meterEnd: to,
     });
     return part;
   };
@@ -349,11 +360,13 @@ describe("the cartridge handling report", () => {
         status: "ready",
       })
     ).json();
+    // Picking up where the last one left the printer: the counter is the machine's
+    // and does not go back to 100 because a different cartridge went in.
     await inject("POST", `/parts/${abandoned.id}/deploy`, {
       deviceId: printer.id,
-      meterStart: 100,
+      meterStart: 200,
     });
-    await inject("POST", `/parts/${abandoned.id}/return`, { outcome: "faulty", meterEnd: 150 });
+    await inject("POST", `/parts/${abandoned.id}/return`, { outcome: "faulty", meterEnd: 250 });
 
     const res = await run("part_handling");
     expect(res.statusCode, res.body).toBe(200);

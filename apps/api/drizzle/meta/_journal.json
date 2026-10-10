@@ -253,6 +253,13 @@
       "when": 1786791600026,
       "tag": "0035_end_users_editor_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786791600027,
+      "tag": "0036_device_meter_readings",
+      "breakpoints": true
     }
   ]
 }

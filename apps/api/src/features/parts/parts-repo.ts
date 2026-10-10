@@ -345,16 +345,19 @@ export async function devicesFittingModel(
   // go anywhere the caller can reach — and adopts the site of whatever it goes into.
   atLocationId: string | null = null,
 ): Promise<{ id: string; name: string; typeName: string | null; occupiedBy: string | null }[]> {
-  // The cartridge of this model already in each machine, if there is one. A
-  // correlated sub-select rather than a join: a join would drop machines that hold
-  // nothing, which are exactly the ones the picker exists to offer.
+  // The cartridge already in each machine, if there is one. A correlated
+  // sub-select rather than a join: a join would drop machines that hold nothing,
+  // which are exactly the ones the picker exists to offer.
+  //
+  // Any cartridge, not one of this model — matching what `occupantOf` refuses. A
+  // picker that greys out only same-model machines would offer one holding a
+  // different cartridge and have the save refuse it, which is the worst of both.
   const occupant = sql<string | null>`(
     SELECT p.identifier
       FROM part_placements pl
       JOIN parts p ON p.id = pl.part_id
      WHERE pl.device_id = ${devices.id}
        AND pl.removed_at IS NULL
-       AND p.part_model_id = ${partModelId}
      LIMIT 1
   )`;
 
@@ -379,23 +382,26 @@ export async function devicesFittingModel(
     .orderBy(asc(devices.name));
 }
 
-/** The cartridge of this model currently in that machine, if any — what makes a
- *  second install into an occupied printer refusable rather than merely unlikely. */
+/**
+ * The cartridge currently in that machine, if any — what makes a second install
+ * into an occupied printer refusable rather than merely unlikely.
+ *
+ * Any cartridge, not one of the same model. It used to be scoped by model so that
+ * a printer taking a set of four colours could hold all four, but on a mono fleet
+ * that let a second cartridge be installed on top of the first whenever the two
+ * were different models — which is how a live install ended up with overlapping
+ * tours on one machine, each claiming a share of the same pages. A printer that
+ * genuinely takes a set would need this reading the device's type rather than
+ * being open to everything; it is not open to everything now.
+ */
 export async function occupantOf(
   deviceId: string,
-  partModelId: string,
 ): Promise<{ id: string; identifier: string } | null> {
   const [row] = await db
     .select({ id: parts.id, identifier: parts.identifier })
     .from(partPlacements)
     .innerJoin(parts, eq(parts.id, partPlacements.partId))
-    .where(
-      and(
-        eq(partPlacements.deviceId, deviceId),
-        isNull(partPlacements.removedAt),
-        eq(parts.partModelId, partModelId),
-      ),
-    )
+    .where(and(eq(partPlacements.deviceId, deviceId), isNull(partPlacements.removedAt)))
     .limit(1);
   return row ?? null;
 }
