@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Author: Brijesh Dave <https://github.com/brijeshdave>
 # Upgrade a running production install: take a database backup, rebuild, migrate,
-# restart, and verify. Stops at the first failure with the rollback command it
+# restart, reconcile the permission catalogue, and verify. Stops at the first failure with the rollback command it
 # would take to undo the step that failed.
 #
 # Usage:
@@ -74,6 +74,19 @@ for attempt in $(seq 1 30); do
   [ "$attempt" = "30" ] && die "Not ready after 30s. Check: compose logs api — roll back with: git checkout $PREVIOUS && scripts/upgrade.sh --no-pull"
   sleep 1
 done
+
+# The catalogue of permissions, system roles and their grants is defined in code
+# and written by `seed` — which until now ran only when a site was installed. An
+# upgrade migrated the schema and left that catalogue where it was, so a feature
+# shipped after the install arrived with its permissions missing: they could be
+# ticked in a role and never saved, because the row they reference did not exist.
+#
+# It is idempotent by design (see core/db/seed): fixed ids, insert-on-conflict, and
+# it does not touch passwords — `reset-superadmin` is its own command. It does
+# reconcile *system* role grants to the definitions in code, which is the point of
+# running it; roles an administrator cloned are left alone.
+echo "==> Reconciling permissions and system roles"
+compose exec -T api node dist/cli/index.js seed || die "Seed failed. The app is up and serving; re-run with: docker compose -f $COMPOSE_FILE exec api node dist/cli/index.js seed"
 
 echo "==> Checking the install"
 compose exec -T api node dist/cli/index.js doctor

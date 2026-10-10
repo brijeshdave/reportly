@@ -3,10 +3,11 @@
 // A role is a named bundle of permission keys; services call these.
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 
+import { AppError } from "@/core/errors.js";
 import { db } from "@/core/db/index.js";
 import { groupRoles, groups, permissions, rolePermissions, roles } from "@/core/db/schema.js";
 import { buildListParts, type ListConfig } from "@/lib/list-query.js";
-import type { ResolvedListQuery } from "@reportly/shared";
+import { ERROR_CODES, type ResolvedListQuery } from "@reportly/shared";
 
 export interface RoleRow {
   id: string;
@@ -92,16 +93,60 @@ export async function deleteRoleRow(id: string): Promise<void> {
 }
 
 /** Replaces the role's whole permission set. Unknown keys are ignored. */
+/**
+ * Replace a role's grants.
+ *
+ * Throws rather than saving less than it was asked to. The lookup below can only
+ * resolve keys the catalogue holds, and it used to keep those and drop the rest in
+ * silence: a permission the registry had and the table did not could be ticked,
+ * saved, answered 200, and be gone on the next read. It stayed that way for an
+ * entire feature's lifetime on a live installation, because nothing anywhere said
+ * no. A save that quietly does part of the job is worse than one that fails.
+ *
+ * `syncPermissionCatalogue` at boot is what should make this unreachable; this is
+ * the half that notices when it is not.
+ */
+/**
+ * The keys in `keys` that this installation's catalogue does not hold.
+ *
+ * Separate from the write so a caller can check *before* committing to anything
+ * else — creating a role and then discovering its grants cannot be stored leaves
+ * a role with no permissions behind, which is its own small mess.
+ */
+export async function unknownPermissions(keys: string[]): Promise<string[]> {
+  if (keys.length === 0) return [];
+  const rows = await db
+    .select({ key: permissions.key })
+    .from(permissions)
+    .where(inArray(permissions.key, keys));
+  const found = new Set(rows.map((row) => row.key));
+  return [...new Set(keys)].filter((key) => !found.has(key));
+}
+
 export async function setRolePermissions(roleId: string, keys: string[]): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
     if (keys.length === 0) return;
 
     const rows = await tx
-      .select({ id: permissions.id })
+      .select({ id: permissions.id, key: permissions.key })
       .from(permissions)
       .where(inArray(permissions.key, keys));
-    if (rows.length === 0) return;
+
+    if (rows.length !== keys.length) {
+      const found = new Set(rows.map((row) => row.key));
+      const unknown = [...new Set(keys)].filter((key) => !found.has(key));
+      if (unknown.length > 0) {
+        throw new AppError(
+          400,
+          ERROR_CODES.VALIDATION_ERROR,
+          `This installation does not know these permissions: ${unknown.join(", ")}. ` +
+            "Restart the API to reconcile the catalogue, or run `cli doctor` to see what is out of step.",
+          undefined,
+          { permissions: `Not known here: ${unknown.join(", ")}` },
+        );
+      }
+    }
 
     await tx.insert(rolePermissions).values(rows.map((row) => ({ roleId, permissionId: row.id })));
   });

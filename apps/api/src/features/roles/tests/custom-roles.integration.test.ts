@@ -3,10 +3,14 @@
 // would silently re-grant every group that holds it. `group_roles` cascades on
 // delete, so deleting a held role is refused rather than quietly stripping it.
 import { PERMISSIONS } from "@reportly/shared";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { API_PREFIX, buildApp } from "@/core/app.js";
 import { resetSuperadmin } from "@/core/auth/reset-superadmin.js";
+import { db } from "@/core/db/index.js";
+import { permissions } from "@/core/db/schema.js";
+import { syncPermissionCatalogue } from "@/core/db/sync-permissions.js";
 import { resetDb } from "../../../../test/reset-db.js";
 
 const DEMO_COMPANY_ID = "11111111-1111-1111-1111-111111111111";
@@ -203,5 +207,62 @@ describe("deleting", () => {
 
     const { groups } = (await inject("GET", `/roles/${role.id}/references`, cookie)).json();
     expect(groups).toEqual([{ id: group.id, name: "Compliance" }]);
+  });
+});
+
+describe("a permission the registry has and the catalogue does not", () => {
+  // The exact state a live install was found in: `end-users:*` shipped in the
+  // registry, but the rows are written by `seed`, which runs when a site is
+  // installed and not when one is upgraded. So the route's own validation passed
+  // (the key is real), the role editor offered it, the save answered 200 — and
+  // nothing was stored, because `role_permissions` references `permissions` by id
+  // and the lookup kept the keys it could resolve and dropped the rest in silence.
+  // A whole feature was ungrantable for the life of that installation.
+  //
+  // Reproduced by removing the row, which is what an un-reseeded upgrade leaves.
+  async function forget(key: string): Promise<void> {
+    await db.delete(permissions).where(eq(permissions.key, key));
+  }
+
+  it("is refused by name rather than dropped in silence", async () => {
+    const cookie = await superadmin();
+    await forget(PERMISSIONS.END_USERS_READ);
+
+    const res = await createRole(cookie, "End users reader", [
+      PERMISSIONS.AUDIT_VIEW,
+      PERMISSIONS.END_USERS_READ,
+    ]);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/end-users:read/);
+  });
+
+  it("stores nothing at all, rather than half of what was asked", async () => {
+    // The half-save is what made it invisible: the known keys landed, so the role
+    // looked saved and only the missing one was quietly gone.
+    const cookie = await superadmin();
+    await forget(PERMISSIONS.END_USERS_READ);
+
+    await createRole(cookie, "Half a role", [PERMISSIONS.AUDIT_VIEW, PERMISSIONS.END_USERS_READ]);
+
+    const roles = (await inject("GET", "/roles?pageSize=100", cookie)).json().data as {
+      name: string;
+    }[];
+    expect(roles.find((r) => r.name === "Half a role")).toBeUndefined();
+  });
+
+  it("is put back by the boot-time sync, and then grants normally", async () => {
+    const cookie = await superadmin();
+    await forget(PERMISSIONS.END_USERS_READ);
+
+    expect(await syncPermissionCatalogue()).toEqual({ added: 1 });
+
+    const res = await createRole(cookie, "End users reader", [PERMISSIONS.END_USERS_READ]);
+    expect(res.statusCode).toBe(201);
+    expect(res.json().permissions).toContain(PERMISSIONS.END_USERS_READ);
+  });
+
+  it("adds nothing when the catalogue is already complete", async () => {
+    expect(await syncPermissionCatalogue()).toEqual({ added: 0 });
   });
 });

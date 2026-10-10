@@ -25,6 +25,7 @@ import {
   permissionsForRoles,
   rolesWithPermissionKeys,
   setRolePermissions,
+  unknownPermissions,
   systemRoleImpact as systemRoleImpactRows,
   updateRoleName,
   upsertRoles,
@@ -88,7 +89,34 @@ async function requireEditable(id: string): Promise<RoleRow> {
 
 const DUPLICATE = () => new AppError(409, ERROR_CODES.CONFLICT, "A role with that name exists");
 
+/**
+ * Refuse keys this installation's catalogue does not hold.
+ *
+ * The route already checks each key is one the registry defines; this checks the
+ * database agrees. The two drifted apart on a live install — `end-users:*` was
+ * real in code and absent from the table — and the save quietly stored the keys it
+ * could resolve, so the permission could be ticked and never took effect.
+ */
+async function assertPermissionsKnown(keys: Permission[]): Promise<void> {
+  const unknown = await unknownPermissions(keys);
+  if (unknown.length === 0) return;
+  throw new AppError(
+    400,
+    ERROR_CODES.VALIDATION_ERROR,
+    `This installation does not know these permissions: ${unknown.join(", ")}. ` +
+      "Restart the API to reconcile the catalogue, or run `cli doctor`.",
+    undefined,
+    { permissions: `Not known here: ${unknown.join(", ")}` },
+  );
+}
+
 export async function createRole(name: string, permissions: Permission[]): Promise<Role> {
+  // Checked before the role exists, not after. The two writes are separate
+  // statements, so discovering here that a grant cannot be stored would otherwise
+  // leave a role behind with none of the permissions it was created for — which
+  // reads, from the list, as a role somebody made by mistake.
+  await assertPermissionsKnown(permissions);
+
   let row: RoleRow;
   try {
     row = await insertRole(name);

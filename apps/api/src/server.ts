@@ -2,6 +2,7 @@
 // Process entry point: build the app, start the background workers, listen, and
 // shut down gracefully.
 import { reloadAuth } from "@/core/auth/auth.js";
+import { syncPermissionCatalogue } from "@/core/db/sync-permissions.js";
 import { buildApp } from "@/core/app.js";
 import { reloadDebugConfig } from "@/core/debug/service.js";
 import { env } from "@/core/env.js";
@@ -28,6 +29,14 @@ import { closeBackupQueue, createBackupWorker, scheduleBackupSweep } from "@/cor
 
 async function main(): Promise<void> {
   const app = await buildApp();
+
+  // Before anything serves: a permission the registry has and the table does not
+  // cannot be granted, and the role editor offers it anyway. Logged when it does
+  // something, because on an install that has been upgraded across a feature
+  // boundary it is the line that explains why a tick finally stuck.
+  const { added } = await syncPermissionCatalogue();
+  if (added > 0) app.log.info({ added }, "Added missing permissions to the catalogue");
+
   // Load logging + auth settings and enabled SSO providers from the settings store.
   await reloadLogging();
   await reloadAuth();
