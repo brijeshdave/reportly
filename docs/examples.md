@@ -66,7 +66,9 @@ toner used — the service kind decides what may be consumed, so Refill offers
 toner and not spare parts. The refill earns him points.
 
 **He installs it**, choosing the printer from a picker that offers only devices
-the model actually fits, and records the meter reading.
+the model actually fits. The form already shows what that machine's counter last
+read, so he confirms it rather than hunting for the number — and if he typed one
+lower, it would be refused and ask whether the counter had been reset.
 
 **Nine days later it fails.** He takes it out and marks the return **faulty**.
 
@@ -82,6 +84,11 @@ Cartridge health answers the first; **printer health** answers the second by
 counting _distinct_ cartridges that failed in each machine. One cartridge failing
 repeatedly says nothing about the machine. Three different ones failing in the
 same printer says a great deal.
+
+And when the question is output rather than failure — how much is this machine
+printing, is this cartridge earning its rating — **printer pages** and **cartridge
+pages** answer it from the same counter readings, so the two always add up to the
+same total.
 
 ---
 

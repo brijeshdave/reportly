@@ -146,15 +146,19 @@ answer twice.
 
 ### One cartridge to a machine
 
-A printer holds one cartridge of a given kind at a time, so installing a second is
-refused, naming the one already in it. The install picker still **lists** that
-printer rather than hiding it — greyed out, with the cartridge number that is in
-the way underneath, because a machine missing from the list reads as a broken list
-to somebody standing in front of it. Book the old one back in and the printer
-becomes selectable again.
+A printer holds **one cartridge at a time**, so installing a second is refused,
+naming the one already in it. The install picker still **lists** that printer
+rather than hiding it — greyed out, with the cartridge number that is in the way
+underneath, because a machine missing from the list reads as a broken list to
+somebody standing in front of it. Book the old one back in and the printer becomes
+selectable again.
 
-It is per **model**, not per machine: a printer that takes a set of four colours
-still takes all four. Two of the _same_ cartridge is the impossible thing.
+This used to be per **model** rather than per machine, so that a printer taking a
+set of four colours could hold all four. On a fleet of mono machines that quietly
+allowed a second cartridge to be installed on top of the first whenever the two
+were different models — and two cartridges in one printer each claim a share of
+the same pages, which makes both tours wrong. A printer that genuinely takes a set
+would need this reading the device's type; it is not open to everything now.
 
 ### Setting or correcting the site
 
@@ -241,9 +245,46 @@ weeks ago, quite possibly under somebody else. Each person types what is in fron
 of them and Reportly does the subtraction. The book-in form shows the opening
 reading, so you can see both numbers together.
 
+**The counter belongs to the printer, not to the cartridge.** This is the thing
+worth getting straight, because a cartridge moves between machines and carries no
+count of its own. A tour's pages are the difference between two readings of
+_whichever printer it was in at the time_, so moving a cartridge around costs
+nothing — the arithmetic never spans two machines. A cartridge's life total is
+simply its tours added up.
+
+Which is why the install form **offers the printer's last reading**. It is the
+number that machine was last seen at, and typing over it is possible but rarely
+right. A reading **below** that is refused:
+
+> PRI-KOS-PKG-L10 last read 114,381 pages, and a counter does not go down.
+
+A counter only goes up. When one appears to have gone down, either the machine
+was replaced or its total was cleared — which is worth recording — or somebody
+has read the wrong number off the display. Saying which is the whole point, so
+the form asks outright, and ticking **"the counter was reset, or this printer was
+replaced"** starts a new series rather than counting the gap as pages printed.
+
 Where a machine has no counter to read, the form asks for the page count directly
 instead. Both are optional: a team that records neither still gets a working
 module, and the tour simply says "pages not recorded".
+
+### Reading a counter between swaps
+
+A printer's page counter can also be read on its own, from the printer's page
+under **Assets → Devices**. Worth doing on a round, because between two cartridge
+swaps a machine may print for months — and a printer's output over any period
+shorter than a cartridge's life cannot be worked out from swap readings alone. A
+window with fewer than two readings reports "not known" rather than nought, which
+is the honest answer and not the same as a machine that sat idle.
+
+The same page lists **every reading** the printer has: the number, when, who took
+it, and whether it came from an install, a book-in, a round, or a reset. Resets
+are called out by name, because a reset is the only legitimate way for the series
+to go backwards and a wrong one quietly changes every page figure built on it.
+
+If one machine has been declared reset several times, the page says so. A printer
+is replaced rarely; several resets in a window almost always means somebody has
+been reading the wrong line of the display.
 
 ### Reading it
 
@@ -264,9 +305,26 @@ make a healthy part look like a failing one.
 
 **"Meter reset — pages unknown"** means the closing reading was lower than the
 opening one. That is a counter that was reset or a printer that was replaced, not
-negative pages. Reportly keeps both readings exactly as they were typed —
-correcting them would destroy the evidence — and declines to report a number it
-cannot stand behind.
+negative pages. Reportly keeps both readings exactly as they were typed and
+declines to report a number it cannot stand behind.
+
+### Putting a reading right
+
+A reading that went in wrong can be corrected. Open the cartridge, find the tour
+on its timeline, and use **Correct the readings**. It needs `parts:manage` —
+taking a reading is the technician's job; rewriting one that every page figure
+depends on is not.
+
+**Either box can be left empty**, and that matters as much as changing a number.
+A reading entered before anything checked it is often not wrong by a digit but
+unknowable — nobody now remembers what the machine said. Clearing it leaves
+"pages not recorded", which is true, where a guess would not be.
+
+The printer's own series moves with the correction, so the tour and the machine
+keep telling the same story. A tour that is still open cannot be corrected: its
+closing reading has not happened yet, and its opening one is what the next
+reading is checked against — book the cartridge in and the form asks for it
+properly.
 
 ### What it does not do
 
@@ -408,6 +466,8 @@ to a spreadsheet like every other report, and can be saved as views.
 | **Cartridge failures**        | What came back faulty, after whose refill, and who took it out     |
 | **Cartridge health**          | Which cartridges fail or yield badly — the ones to retire          |
 | **Printer health**            | Which _printers_ eat cartridges                                    |
+| **Printer pages**             | What each machine has printed, and how many cartridges it took     |
+| **Cartridge pages**           | What each cartridge has printed, this period and over its life     |
 
 **Cartridge workload** answers "who did what". One row per person: how many
 services, split by kind, how many distinct cartridges, what they consumed, and —
@@ -443,6 +503,29 @@ ordinary work.
 > whoever repairs it. In a shop where one person swaps and another refills, a high
 > number here is the division of labour working exactly as intended. The report says
 > what happened; reading it takes somebody who knows the shop.
+
+**Printer pages** and **Cartridge pages** answer the same question from two ends:
+what has actually been printed. Both are read off the printers' counters, because
+a cartridge carries no count of its own — so their totals agree by construction,
+and if they ever disagreed one of them would be inventing a number.
+
+**Printer pages** is one row per machine: pages over the window, the last reading
+and when it was taken, how many cartridges it got through, and the mean each one
+managed. It also counts how many times the counter was declared **reset** — a
+printer is replaced rarely, so a machine showing several is usually one whose
+display is being misread, and that is a data problem worth fixing at the source.
+
+**Cartridge pages** is one row per cartridge: tours in the window, pages this
+window, pages over its whole life, the mean per tour, and the life total against
+the model's rated yield. That last column is the one to act on. A cartridge
+finishing well under its rating refill after refill is either being pulled early
+or not being filled properly, and neither shows up in a single tour.
+
+Pages over a window are the gaps between consecutive readings added up, and the
+step across a **reset** is left out — it is a replaced machine or a cleared total,
+not pages anybody printed. A window with fewer than two readings says "not known"
+rather than nought: a period nobody read the printer in is not a period it printed
+nothing in. If that shows up more than you would like, take a reading on a round.
 
 **Cartridge failures** is the one that answers "did the work we did hold up". Each
 row is a faulty return: how long it lasted, what it printed, the refill or repair
