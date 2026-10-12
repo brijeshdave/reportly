@@ -33,7 +33,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, PackageCheck, PackageX, Pencil, Undo2, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 
 import { Can } from "@/components/can.js";
@@ -136,6 +136,9 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
     submit: (input) => deployPart(part.id, input as DeployPart),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["parts"] });
+      // The reading just taken is the printer's newest, so anything still holding
+      // the old one is wrong from this moment.
+      await queryClient.invalidateQueries({ queryKey: ["devices"] });
       onDone();
     },
   });
@@ -152,13 +155,27 @@ function DeployForm({ part, onDone }: { part: Part; onDone: () => void }) {
   });
   const lastRead = meter.data?.last ?? null;
 
+  // What was last put in the box by this effect rather than by a person. Kept so
+  // the prefill can be replaced when a fresher reading arrives and left alone the
+  // moment somebody types over it.
+  const prefilled = useRef<string | null>(null);
+
   // Offered, not forced: somebody standing at the machine may read something else,
   // and the point is that they start from the truth rather than from an empty box.
+  //
+  // It follows the reading rather than only filling a blank, because the cached
+  // value can be out of date on the way in: open Install on a cartridge that has
+  // been in this printer before and React Query serves the reading from its last
+  // tour first, then refetches. Filling only when empty left that stale number in
+  // the box, and the save then refused it — for a figure nobody typed.
   useEffect(() => {
-    if (lastRead && meterStart === "") form.set("meterStart", String(lastRead.pages));
-    // Keyed on the reading, not on the form: re-running when `meterStart` changes
-    // would fight whoever is typing, and the whole point is that it is a starting
-    // value they may overwrite.
+    if (!lastRead) return;
+    const untouched = meterStart === "" || meterStart === prefilled.current;
+    if (!untouched) return;
+    const next = String(lastRead.pages);
+    if (meterStart === next) return;
+    prefilled.current = next;
+    form.set("meterStart", next);
   }, [lastRead, meterStart, form]);
 
   const below =
@@ -320,6 +337,7 @@ function ReturnForm({
     submit: (input) => returnPart(part.id, input as ReturnPart),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["parts"] });
+      await queryClient.invalidateQueries({ queryKey: ["devices"] });
       // Said here rather than left for a leaderboard next week. If nothing was
       // reversed the form simply closes: there is no news in "nothing happened".
       if ((result as { pointsReversed?: boolean }).pointsReversed) setReversed(true);
