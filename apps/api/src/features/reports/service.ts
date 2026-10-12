@@ -52,10 +52,13 @@ import {
   PART_WORKLOAD_COLUMNS,
   PART_SERVICE_COLUMNS,
   PART_STATUS_LABELS,
+  PART_PAGES_COLUMNS,
   PRINTER_HEALTH_COLUMNS,
+  PRINTER_PAGES_COLUMNS,
   isPartSource,
   meanPages,
   sourceSupportsPerson,
+  pagesAcross,
   pagesFor,
   yieldPercent,
   type PartStatus,
@@ -1140,6 +1143,8 @@ async function runCartridges(
   if (source === "part_failures") return runPartFailures(ctx, ctx.companyId, from, to, people);
   if (source === "part_workload") return runPartWorkload(ctx, ctx.companyId, from, to, people);
   if (source === "part_handling") return runPartHandling(ctx, ctx.companyId, from, to);
+  if (source === "printer_pages") return runPrinterPages(ctx, ctx.companyId, from, to);
+  if (source === "part_pages") return runPartPages(ctx, ctx.companyId, from, to);
   return runPartHealth(ctx, ctx.companyId, from, to);
 }
 
@@ -1326,6 +1331,137 @@ async function runPrinterHealth(
       },
     }));
   return oneGroup("Printer health", rows, PRINTER_HEALTH_COLUMNS);
+}
+
+/**
+ * What each machine has printed.
+ *
+ * Read off the printer's own counter rather than inferred from the cartridges
+ * that passed through it: the counter is the machine's fact, and a cartridge
+ * carries no count of its own. A period with fewer than two readings has no gap
+ * to measure and says so — "not known" rather than a zero, which would read as a
+ * printer that sat idle. That is the case for taking a reading on a round and not
+ * only when somebody swaps a cartridge.
+ */
+async function runPrinterPages(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<SourceResult> {
+  const readings = await partsRepo.meterReadingsInWindow(ctx, companyId, from, to);
+  const tours = await partsRepo.finishedTours(ctx, companyId, from, to);
+
+  const byDevice = new Map<string, partsRepo.ReadingRow[]>();
+  for (const reading of readings) {
+    byDevice.set(reading.deviceId, [...(byDevice.get(reading.deviceId) ?? []), reading]);
+  }
+  // Cartridges that finished a tour here in the window, counted once each: the
+  // same cartridge in and out twice is one cartridge this printer got through.
+  const cartridgesBy = new Map<string, Set<string>>();
+  for (const tour of tours) {
+    const seen = cartridgesBy.get(tour.deviceId) ?? new Set<string>();
+    seen.add(tour.partId);
+    cartridgesBy.set(tour.deviceId, seen);
+  }
+
+  const rows = [...byDevice.values()]
+    .map((series) => {
+      const first = series[0]!;
+      const last = series[series.length - 1]!;
+      const pages = pagesAcross(series.map((r) => ({ pages: r.pages, source: r.source as never })));
+      const used = cartridgesBy.get(first.deviceId)?.size ?? 0;
+      return { first, last, pages, used };
+    })
+    .sort((a, b) => (b.pages ?? -1) - (a.pages ?? -1))
+    .map((entry): ReportRow => ({
+      id: entry.first.deviceId,
+      reportId: null,
+      cells: {
+        printer: entry.first.deviceName,
+        site: entry.first.locationName ?? "—",
+        pages: entry.pages === null ? "—" : entry.pages.toLocaleString(),
+        lastRead: entry.last.pages.toLocaleString(),
+        readAt: formatDate(entry.last.readAt.toISOString()),
+        cartridges: String(entry.used),
+        // Only where both halves are real. Dividing a known page count by nought
+        // cartridges, or an unknown one by anything, invents a figure.
+        perCartridge:
+          entry.pages !== null && entry.used > 0
+            ? Math.round(entry.pages / entry.used).toLocaleString()
+            : "—",
+      },
+    }));
+  return oneGroup("Printer pages", rows, PRINTER_PAGES_COLUMNS);
+}
+
+/**
+ * What each cartridge has printed, this period and over its life.
+ *
+ * Both are sums of its tours, and a tour is the difference between two readings
+ * of whichever printer it was in at the time — which is what makes "a cartridge
+ * can be installed on any printer" a non-problem: the arithmetic never spans two
+ * machines. Only tours whose readings are usable contribute, so a cartridge whose
+ * meters were mis-read shows fewer pages rather than a wrong number.
+ */
+async function runPartPages(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<SourceResult> {
+  const inWindow = await partsRepo.finishedTours(ctx, companyId, from, to);
+  const everTours = await partsRepo.lifetimeTours(ctx, companyId);
+
+  const sumPages = (tours: partsRepo.TourRow[]): number | null => {
+    const known = tours.map((tour) => pagesFor(tour).pages).filter((n): n is number => n !== null);
+    return known.length === 0 ? null : known.reduce((a, b) => a + b, 0);
+  };
+
+  const byPart = new Map<string, partsRepo.TourRow[]>();
+  for (const tour of inWindow) {
+    byPart.set(tour.partId, [...(byPart.get(tour.partId) ?? []), tour]);
+  }
+  const lifeBy = new Map<string, partsRepo.TourRow[]>();
+  for (const tour of everTours) {
+    lifeBy.set(tour.partId, [...(lifeBy.get(tour.partId) ?? []), tour]);
+  }
+
+  const rows = [...byPart.entries()]
+    .map(([partId, tours]) => {
+      const first = tours[0]!;
+      const pages = sumPages(tours);
+      const lifetime = sumPages(lifeBy.get(partId) ?? tours);
+      return { first, tours, pages, lifetime };
+    })
+    .sort((a, b) => (b.pages ?? -1) - (a.pages ?? -1))
+    .map((entry): ReportRow => {
+      const rated = entry.first.ratedPageYield;
+      return {
+        id: entry.first.partId,
+        reportId: null,
+        cells: {
+          cartridge: entry.first.identifier,
+          model: entry.first.modelName,
+          tours: String(entry.tours.length),
+          pages: entry.pages === null ? "—" : entry.pages.toLocaleString(),
+          lifetimePages: entry.lifetime === null ? "—" : entry.lifetime.toLocaleString(),
+          perTour:
+            entry.pages !== null && entry.tours.length > 0
+              ? Math.round(entry.pages / entry.tours.length).toLocaleString()
+              : "—",
+          rated: rated === null ? "—" : rated.toLocaleString(),
+          // The figure worth acting on: a cartridge finishing well under its
+          // rating, refill after refill, is being pulled early or not filled
+          // properly. Against the life total, not the period's.
+          ofRated:
+            rated !== null && rated > 0 && entry.lifetime !== null
+              ? `${Math.round((entry.lifetime / rated) * 100)}%`
+              : "—",
+        },
+      };
+    });
+  return oneGroup("Cartridge pages", rows, PART_PAGES_COLUMNS);
 }
 
 /**

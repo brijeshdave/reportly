@@ -6,7 +6,7 @@
 // of it from outside — so reports reads the tables through `core/db` exactly as
 // it does the journal's, and depends on the module not at all.
 import type { AuthContext } from "@reportly/shared";
-import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 
 import { db } from "@/core/db/index.js";
 import { withLocationsNullable } from "@/core/db/scoped.js";
@@ -14,6 +14,7 @@ import {
   consumables,
   deviceTypes,
   devices,
+  deviceMeterReadings,
   locations,
   partModels,
   partPlacements,
@@ -331,6 +332,92 @@ export async function finishedTours(
         sql`${partPlacements.removedAt} IS NOT NULL`,
         gte(partPlacements.removedAt, from),
         lt(partPlacements.removedAt, to),
+      ),
+    );
+}
+
+/** One reading of one printer's counter, with the machine it belongs to. */
+export interface ReadingRow {
+  deviceId: string;
+  deviceName: string;
+  locationName: string | null;
+  pages: number;
+  source: string;
+  readAt: Date;
+}
+
+/**
+ * Every counter reading in the window, oldest first.
+ *
+ * Only what falls inside it: a printer read once at each end of a year does not
+ * get those two readings attributed to whatever month is being asked about. The
+ * consequence is that a period with fewer than two readings has no measurable
+ * gap, which `pagesAcross` reports as "not known" rather than as zero — the right
+ * answer, and the argument for taking readings on a round rather than only at a
+ * swap.
+ */
+export async function meterReadingsInWindow(
+  ctx: AuthContext,
+  companyId: string,
+  from: Date,
+  to: Date,
+): Promise<ReadingRow[]> {
+  return db
+    .select({
+      deviceId: devices.id,
+      deviceName: devices.name,
+      locationName: locations.name,
+      pages: deviceMeterReadings.pages,
+      source: deviceMeterReadings.source,
+      readAt: deviceMeterReadings.readAt,
+    })
+    .from(deviceMeterReadings)
+    .innerJoin(devices, eq(devices.id, deviceMeterReadings.deviceId))
+    .leftJoin(locations, eq(locations.id, devices.locationId))
+    .where(
+      and(
+        eq(deviceMeterReadings.companyId, companyId),
+        withLocationsNullable(ctx, devices.locationId),
+        gte(deviceMeterReadings.readAt, from),
+        lt(deviceMeterReadings.readAt, to),
+      ),
+    )
+    .orderBy(asc(deviceMeterReadings.readAt), asc(deviceMeterReadings.createdAt));
+}
+
+/**
+ * Every finished tour a cartridge has ever had, whenever it happened.
+ *
+ * The window is deliberately absent. "What has this cartridge printed in its
+ * life" is the figure worth comparing against the model's rated yield, and it is
+ * not a question about the period being reported on — a cartridge four refills
+ * old does not become new because the report starts this month.
+ */
+export async function lifetimeTours(ctx: AuthContext, companyId: string): Promise<TourRow[]> {
+  return db
+    .select({
+      partId: parts.id,
+      identifier: parts.identifier,
+      modelName: partModels.name,
+      ratedPageYield: partModels.ratedPageYield,
+      deviceId: devices.id,
+      deviceName: devices.name,
+      deviceTypeName: deviceTypes.name,
+      outcome: partPlacements.outcome,
+      meterStart: partPlacements.meterStart,
+      meterEnd: partPlacements.meterEnd,
+      pagesPrinted: partPlacements.pagesPrinted,
+    })
+    .from(partPlacements)
+    .innerJoin(parts, eq(parts.id, partPlacements.partId))
+    .innerJoin(partModels, eq(partModels.id, parts.partModelId))
+    .innerJoin(devices, eq(devices.id, partPlacements.deviceId))
+    .leftJoin(deviceTypes, eq(deviceTypes.id, devices.typeId))
+    .where(
+      and(
+        eq(partPlacements.companyId, companyId),
+        withLocationsNullable(ctx, devices.locationId),
+        sql`${partPlacements.removedAt} IS NOT NULL`,
       ),
     );
 }

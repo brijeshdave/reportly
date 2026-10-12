@@ -247,8 +247,11 @@ const REPORT_FAMILIES: { name: string; matches: (source: ReportSource) => boolea
   { name: "Shift reports viewer", matches: (s) => s.startsWith("shift_") },
   { name: "Routine reports viewer", matches: (s) => s.startsWith("routine_") },
   {
+    // Both prefixes: the cartridge reports and the machine ones are the same job
+    // asked from two ends, and naming `printer_health` alone meant the next
+    // printer report shipped ungranted. `printer_pages` was that report.
     name: "Cartridge reports viewer",
-    matches: (s) => s.startsWith("part_") || s === "printer_health",
+    matches: (s) => s.startsWith("part_") || s.startsWith("printer_"),
   },
   { name: "Leaderboard reports viewer", matches: (s) => s === "leaderboard" },
   { name: "Workload reports viewer", matches: (s) => s.startsWith("dept_") },

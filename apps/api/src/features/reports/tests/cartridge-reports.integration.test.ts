@@ -423,3 +423,94 @@ describe("the cartridge handling report", () => {
     expect(row.leftUnserviced).toBe("0");
   });
 });
+
+describe("the page-count reports", () => {
+  // Asked for from use: "I also need to have reports for checking print counts for
+  // printer and cartridge." Both are read off the printer's counter, because a
+  // cartridge carries no count of its own — so they are the same arithmetic asked
+  // from two ends and have to agree.
+
+  it("counts what each printer printed, from its own readings", async () => {
+    await buildFleet();
+
+    const rows = cellsOf((await run("printer_pages")).json());
+    const badRow = rows.find((r) => r.printer === "Bad printer")!;
+    const goodRow = rows.find((r) => r.printer === "Good printer")!;
+
+    // 300 + 350 + 400, read off one chained counter across three cartridges.
+    expect(badRow.pages).toBe("1,050");
+    expect(badRow.cartridges).toBe("3");
+    expect(badRow.perCartridge).toBe("350");
+    // 1900 + 1950.
+    expect(goodRow.pages).toBe("3,850");
+    expect(goodRow.cartridges).toBe("2");
+    expect(goodRow.lastRead).toBe("4,850");
+  });
+
+  it("counts what each cartridge printed, and compares it with the rating", async () => {
+    await buildFleet();
+
+    const rows = cellsOf((await run("part_pages")).json());
+    const biggest = rows[0]!;
+
+    // Sorted by pages, so the 1,950-page tour leads.
+    expect(biggest).toMatchObject({ cartridge: "TN-05", model: "HP 12A", tours: "1" });
+    expect(biggest.pages).toBe("1,950");
+    expect(biggest.lifetimePages).toBe("1,950");
+    // The model is rated 2,000, which is the figure worth acting on.
+    expect(biggest.rated).toBe("2,000");
+    expect(biggest.ofRated).toBe("98%");
+
+    const small = rows.find((r) => r.cartridge === "TN-01")!;
+    expect(small.pages).toBe("300");
+    expect(small.ofRated).toBe("15%");
+  });
+
+  it("agrees with itself: the printers' pages and the cartridges' pages are one total", async () => {
+    // The point of building both on the same readings. If these two ever disagree
+    // one of them is inventing a number, and a reader has no way to tell which.
+    await buildFleet();
+
+    const sum = (rows: Record<string, string>[], key: string) =>
+      rows.reduce((total, row) => total + Number(row[key]!.replace(/,/g, "")), 0);
+
+    const printers = cellsOf((await run("printer_pages")).json());
+    const cartridges = cellsOf((await run("part_pages")).json());
+
+    expect(sum(printers, "pages")).toBe(sum(cartridges, "pages"));
+  });
+
+  it("says a printer nobody read is not known, rather than nought pages", async () => {
+    // A period with fewer than two readings has no gap to measure, and a zero
+    // would read as a machine that sat idle. This is the case for reading the
+    // counter on a round rather than only when somebody swaps a cartridge.
+    await setCompanySetting(PARTS_MODULE, DEMO_COMPANY_ID, {
+      enabled: true,
+      failureWindowDays: 14,
+    });
+    const dept = (await inject("POST", "/departments", { name: "IT" })).json();
+    const type = (
+      await inject("POST", "/device-types", { departmentId: dept.id, name: "LaserJet" })
+    ).json();
+    const printer = (await inject("POST", "/devices", { name: "Quiet", typeId: type.id })).json();
+    const model = (
+      await inject("POST", "/part-models", { name: "HP 12A", compatibleDeviceTypeIds: [type.id] })
+    ).json();
+    const part = (
+      await inject("POST", "/parts", {
+        identifier: "TN-20",
+        partModelId: model.id,
+        status: "ready",
+      })
+    ).json();
+    // One reading and no second: installed and never taken out.
+    await inject("POST", `/parts/${part.id}/deploy`, { deviceId: printer.id, meterStart: 500 });
+
+    const rows = cellsOf((await run("printer_pages")).json());
+    expect(rows.find((r) => r.printer === "Quiet")).toMatchObject({
+      pages: "—",
+      perCartridge: "—",
+      lastRead: "500",
+    });
+  });
+});

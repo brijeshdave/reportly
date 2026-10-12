@@ -260,6 +260,13 @@
       "when": 1786791600027,
       "tag": "0036_device_meter_readings",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786791600028,
+      "tag": "0037_page_count_reports",
+      "breakpoints": true
     }
   ]
 }

@@ -179,6 +179,11 @@ export const REPORT_SOURCES = [
   // and refilled and serviced by whom... is that possible to analyse if any user
   // just remove and install cartridge and left it without service".
   "part_handling",
+  // What each machine and each cartridge has actually printed. Both are read off
+  // the printer's counter — a cartridge carries no count of its own — so they are
+  // the same arithmetic asked from two ends, and they agree by construction.
+  "printer_pages",
+  "part_pages",
   // Who in a department did how much, over a window. Three views of one query —
   // the same counts per person, per person per day, and the people doing little
   // or nothing — which is why they share a filter set and a sort.
@@ -229,6 +234,8 @@ export const REPORT_VIEW_PERMISSION: Record<ReportSource, Permission> = {
   part_failures: "reports:view:part_failures",
   part_workload: "reports:view:part_workload",
   part_handling: "reports:view:part_handling",
+  printer_pages: "reports:view:printer_pages",
+  part_pages: "reports:view:part_pages",
   dept_workload: "reports:view:dept_workload",
   dept_workload_daily: "reports:view:dept_workload_daily",
   dept_workload_severity: "reports:view:dept_workload_severity",
@@ -283,6 +290,8 @@ export const REPORT_SCOPE: Record<ReportSource, ReportScopeShape> = {
   part_failures: "place",
   part_workload: "place",
   part_handling: "place",
+  printer_pages: "place",
+  part_pages: "place",
   // Every row is somebody's work, so the reporting line decides who may read it:
   // the reader plus their downline, narrowed by company and site. A head of
   // department sees their nested organisation and nobody else's.
@@ -325,6 +334,8 @@ export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
   part_failures: "Cartridge failures — what failed, after whose work",
   part_workload: "Cartridge workload — who serviced how many, and what came back",
   part_handling: "Cartridge handling — who fits, who removes, and who services",
+  printer_pages: "Printer pages — what each machine has printed",
+  part_pages: "Cartridge pages — what each cartridge has printed",
   dept_workload: "Department workload — what each person did",
   dept_workload_daily: "Department workload by day — each person, day by day",
   dept_workload_severity: "Workload by severity — each person, how bad the issues were",
@@ -345,6 +356,8 @@ export const PART_SOURCES = [
   "part_failures",
   "part_workload",
   "part_handling",
+  "printer_pages",
+  "part_pages",
 ] as const;
 export function isPartSource(source: ReportSource): boolean {
   return (PART_SOURCES as readonly string[]).includes(source);
@@ -861,6 +874,8 @@ export const MAX_CUSTOM_RANGE_DAYS: Record<ReportSource, number> = {
   part_failures: 366,
   part_workload: 366,
   part_handling: 366,
+  printer_pages: 366,
+  part_pages: 366,
 };
 
 /** The fixed columns for a source (journal is user-chosen; the others are fixed). */
@@ -981,7 +996,51 @@ export const PART_WORKLOAD_COLUMNS = [
   "reversed",
 ] as const;
 
+/**
+ * What a machine has printed, and what it took to print it.
+ *
+ * `pages` is the sum of the gaps between consecutive readings, and it **stops at a
+ * reset**: a printer whose counter started again has a gap that is not pages, and
+ * adding it would credit the machine with everything the old one ever did. A
+ * period with one reading or none has no gap to measure and says so rather than
+ * showing a zero, which would read as "printed nothing".
+ */
+export const PRINTER_PAGES_COLUMNS = [
+  "printer",
+  "site",
+  "pages",
+  "lastRead",
+  "readAt",
+  "cartridges",
+  "perCartridge",
+] as const;
+
+/**
+ * What a cartridge has printed — this period, and over its whole life.
+ *
+ * Both are sums of its tours, each tour being the difference between two readings
+ * of whichever printer it was in at the time. That is the answer to "a cartridge
+ * can be installed on any printer": the arithmetic is per tour, so moving between
+ * machines costs nothing, and only a tour whose two readings are usable counts.
+ *
+ * `rated` is the model's published yield and `ofRated` the life total against it,
+ * which is the figure worth acting on — a cartridge consistently finishing well
+ * under its rating is being pulled early or is not being filled properly.
+ */
+export const PART_PAGES_COLUMNS = [
+  "cartridge",
+  "model",
+  "tours",
+  "pages",
+  "lifetimePages",
+  "perTour",
+  "rated",
+  "ofRated",
+] as const;
+
 export function columnsForSource(source: ReportSource): readonly string[] {
+  if (source === "printer_pages") return PRINTER_PAGES_COLUMNS;
+  if (source === "part_pages") return PART_PAGES_COLUMNS;
   if (source === "part_workload") return PART_WORKLOAD_COLUMNS;
   if (source === "part_handling") return PART_HANDLING_COLUMNS;
   if (source === "part_failures") return PART_FAILURE_COLUMNS;

@@ -396,6 +396,35 @@ export const meterReadingSchema = z
   .merge(timestampsSchema);
 export type MeterReading = z.infer<typeof meterReadingSchema>;
 
+/**
+ * Pages printed across a series of readings of one printer.
+ *
+ * Consecutive gaps, summed — and a gap is only counted when the later reading is
+ * at least the earlier one and does not begin a new series. A reset is a replaced
+ * machine or a cleared total, so the step across it is not pages anybody printed;
+ * adding it would credit a new printer with everything the old one ever did, which
+ * is how one machine in a live register appeared to print a hundred thousand pages
+ * in a day.
+ *
+ * `null` where there is nothing to measure — fewer than two usable readings —
+ * because a period a printer was never read in is not a period it printed nothing
+ * in, and a zero would say the second thing.
+ */
+export function pagesAcross(
+  readings: readonly { pages: number; source: MeterSource }[],
+): number | null {
+  let total = 0;
+  let measured = false;
+  for (let i = 1; i < readings.length; i += 1) {
+    const from = readings[i - 1]!;
+    const to = readings[i]!;
+    if (to.source === "reset" || to.pages < from.pages) continue;
+    total += to.pages - from.pages;
+    measured = true;
+  }
+  return measured ? total : null;
+}
+
 /* --------------------------------- yield ---------------------------------- */
 
 /**
