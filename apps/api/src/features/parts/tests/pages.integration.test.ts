@@ -240,3 +240,126 @@ describe("the timeline", () => {
     expect(events[0]).toMatchObject({ kind: "registered", actorName: null });
   });
 });
+
+describe("the counter's history", () => {
+  // Asked for from use: "on reset there should be a history for tracking all
+  // those." A reset is the one legitimate way for the series to go backwards, and
+  // it is what tells the page-count reports not to read the drop as pages
+  // printed — so a wrong one quietly changes every figure built on it. Being able
+  // to see where the breaks are, and who declared them, is how a wrong one is
+  // found.
+  it("keeps every reading, says where it came from, and names who took it", async () => {
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+
+    const { readings, last } = (await inject("GET", `/devices/${device.id}/meter`)).json();
+
+    expect(readings.map((r: { source: string }) => r.source)).toEqual(["install", "removal"]);
+    expect(readings.map((r: { pages: number }) => r.pages)).toEqual([10_000, 12_000]);
+    expect(readings[0].readByName).toBeTruthy();
+    expect(last.pages).toBe(12_000);
+  });
+
+  it("records a declared reset as its own kind, with a reason", async () => {
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+    await tour(part.id, device.id, { meterStart: 5, meterEnd: 300, meterReset: true });
+
+    const { readings } = (await inject("GET", `/devices/${device.id}/meter`)).json();
+    const reset = readings.find((r: { source: string }) => r.source === "reset");
+
+    expect(reset).toMatchObject({ pages: 5 });
+    expect(reset.note).toMatch(/reset|replaced/i);
+    // And the series carries on from there rather than being thrown away.
+    expect(readings.map((r: { pages: number }) => r.pages)).toEqual([10_000, 12_000, 5, 300]);
+  });
+
+  it("takes a reading on a round, between swaps", async () => {
+    // The reason this is a first-class thing: between two cartridge swaps a
+    // printer may run for months, and its output over any shorter window cannot
+    // be worked out from swap readings alone.
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+
+    const made = await inject("POST", `/devices/${device.id}/meter`, {
+      pages: 12_600,
+      note: "Monthly round",
+    });
+    expect(made.statusCode).toBe(201);
+    expect(made.json()).toMatchObject({ source: "manual", pages: 12_600, note: "Monthly round" });
+
+    const { last } = (await inject("GET", `/devices/${device.id}/meter`)).json();
+    expect(last.pages).toBe(12_600);
+  });
+
+  it("refuses a reading on a round that goes backwards, like any other", async () => {
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+
+    const res = await inject("POST", `/devices/${device.id}/meter`, { pages: 900 });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/does not go down/i);
+  });
+});
+
+describe("correcting a tour that is already over", () => {
+  // The register on a live install carried sixteen closed tours whose numbers
+  // could not be right: negatives where a printer had been swapped, one claiming
+  // fifty-two thousand pages in two days, several at nought. They predate any
+  // checking, and nothing after the fact can say which digit was wrong — so
+  // clearing has to be as easy as editing.
+  it("changes a reading, and moves the printer's series with it", async () => {
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+    const [t] = (await inject("GET", `/parts/${part.id}/history`)).json();
+
+    const res = await inject("PATCH", `/parts/${part.id}/tours/${t.id}`, { meterEnd: 11_000 });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()[0]).toMatchObject({ meterStart: 10_000, meterEnd: 11_000 });
+
+    // The series has to follow, or the two page-count reports — one built on
+    // tours, one on the series — start disagreeing about the same printer.
+    const { last } = (await inject("GET", `/devices/${device.id}/meter`)).json();
+    expect(last.pages).toBe(11_000);
+  });
+
+  it("clears a reading nobody can recall, rather than demanding a guess", async () => {
+    const { device, part } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 62_000 });
+    const [t] = (await inject("GET", `/parts/${part.id}/history`)).json();
+
+    const res = await inject("PATCH", `/parts/${part.id}/tours/${t.id}`, { meterEnd: null });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()[0].meterEnd).toBeNull();
+    // Cleared, not stored as nought — a reading of zero is a claim.
+    expect(pagesFor(res.json()[0])).toEqual({ pages: null, from: "unknown" });
+
+    const { readings } = (await inject("GET", `/devices/${device.id}/meter`)).json();
+    expect(readings.map((r: { source: string }) => r.source)).toEqual(["install"]);
+  });
+
+  it("refuses to touch a tour that has not finished", async () => {
+    // Its end has not happened, and its start is what the next reading is checked
+    // against. Correcting either behind the register's back is a different act
+    // from repairing finished history.
+    const { device, part } = await setUp();
+    await inject("POST", `/parts/${part.id}/deploy`, { deviceId: device.id, meterStart: 500 });
+    const [open] = (await inject("GET", `/parts/${part.id}/history`)).json();
+
+    const res = await inject("PATCH", `/parts/${part.id}/tours/${open.id}`, { meterStart: 400 });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.message).toMatch(/still in the printer/i);
+  });
+
+  it("refuses a tour that belongs to a different cartridge", async () => {
+    const { device, part, model } = await setUp();
+    await tour(part.id, device.id, { meterStart: 10_000, meterEnd: 12_000 });
+    const [t] = (await inject("GET", `/parts/${part.id}/history`)).json();
+    const other = (
+      await inject("POST", "/parts", { identifier: "TN-OTHER", partModelId: model.id })
+    ).json();
+
+    const res = await inject("PATCH", `/parts/${other.id}/tours/${t.id}`, { meterEnd: 1 });
+    expect(res.statusCode).toBe(404);
+  });
+});

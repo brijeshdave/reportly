@@ -16,6 +16,7 @@ import {
   type AuthContext,
   toPaginatedResult,
   type CreatePart,
+  type CorrectTour,
   type DeployPart,
   type MeterReading,
   type RecordMeterReading,
@@ -209,6 +210,53 @@ async function requireDevice(
   return device;
 }
 
+/**
+ * Correct the readings on a tour that is already over.
+ *
+ * The register on a live install carried sixteen closed tours whose numbers could
+ * not be right — negatives where a printer had been swapped, one claiming
+ * fifty-two thousand pages in two days, several at nought. They were entered
+ * before anything checked them, and nothing after the fact can tell which digit
+ * was wrong. So this allows clearing as readily as editing: "not known" is an
+ * honest answer and a guess is not.
+ *
+ * The reading the tour recorded moves with it. Leaving the series behind would
+ * put the two page-count reports — one built on tours, one on the series — into
+ * quiet disagreement, and they are meant to agree by construction.
+ */
+export async function correctTour(
+  partId: string,
+  tourId: string,
+  companyId: string,
+  ctx: AuthContext,
+  input: CorrectTour,
+): Promise<Placement[]> {
+  await requirePart(partId, companyId, ctx);
+  const tour = await repo.placementById(tourId, companyId);
+  if (!tour || tour.partId !== partId) {
+    throw new AppError(404, ERROR_CODES.NOT_FOUND, "That tour is not on this cartridge");
+  }
+  // An open tour's end has not happened yet, and its start is what the next
+  // reading is checked against — correcting either behind the register's back is
+  // a different and more dangerous act than repairing finished history.
+  if (!tour.removedAt) {
+    throw new AppError(
+      409,
+      ERROR_CODES.CONFLICT,
+      "This cartridge is still in the printer. Book it in, and the readings are asked for then.",
+    );
+  }
+
+  await repo.correctPlacement(tourId, companyId, input);
+  if (input.meterStart !== undefined) {
+    await meterRepo.correctReadingFor(tourId, "install", input.meterStart);
+  }
+  if (input.meterEnd !== undefined) {
+    await meterRepo.correctReadingFor(tourId, "removal", input.meterEnd);
+  }
+  return partHistory(partId, companyId, ctx);
+}
+
 /** A printer's counter: the last reading and the series behind it. */
 export async function deviceMeter(
   deviceId: string,
@@ -265,7 +313,7 @@ function serializeReading(row: meterRepo.MeterReading): MeterReading {
     placementId: row.placementId,
     note: row.note,
     readBy: row.readBy,
-    readByName: null,
+    readByName: row.readByName,
     createdAt: row.readAt.toISOString(),
     updatedAt: row.readAt.toISOString(),
   };
@@ -619,6 +667,7 @@ export async function partTimeline(
       outcome: null,
       points: null,
       pointsReversedAt: null,
+      placementId: null,
       meterStart: null,
       meterEnd: null,
       pagesPrinted: null,
@@ -638,6 +687,7 @@ export async function partTimeline(
       outcome: null,
       points: null,
       pointsReversedAt: null,
+      placementId: tour.id,
       meterStart: tour.meterStart,
       meterEnd: null,
       pagesPrinted: null,
@@ -655,6 +705,7 @@ export async function partTimeline(
       outcome: (tour.outcome as PlacementOutcome | null) ?? null,
       points: null,
       pointsReversedAt: null,
+      placementId: tour.id,
       // Both readings travel with the removal, so the client derives the pages
       // with the same function the API would.
       meterStart: tour.meterStart,
@@ -676,6 +727,8 @@ export async function partTimeline(
       outcome: null,
       points: event.points,
       pointsReversedAt: event.pointsReversedAt,
+      // A service happens to a cartridge on the bench, not inside a printer.
+      placementId: null,
       meterStart: null,
       meterEnd: null,
       pagesPrinted: null,

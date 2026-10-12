@@ -8,6 +8,7 @@
 import {
   PERMISSIONS,
   createPartSchema,
+  correctTourSchema,
   deployPartSchema,
   meterReadingSchema,
   recordMeterReadingSchema,
@@ -30,6 +31,8 @@ import { requireModule } from "@/features/parts/module.js";
 import * as parts from "@/features/parts/parts-service.js";
 
 const idParams = z.object({ id: z.guid() });
+/** A cartridge and one of its tours. */
+const tourParams = z.object({ id: z.guid(), tourId: z.guid() });
 
 export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
   const app = fastify.withTypeProvider<ZodTypeProvider>();
@@ -200,6 +203,43 @@ export async function partsRoutes(fastify: FastifyInstance): Promise<void> {
       const part = await parts.updatePart(request.params.id, companyId, request.body, request.ctx!);
       await recordAudit(request, request.ctx!, { action: "part.update", details: { id: part.id } });
       return part;
+    },
+  );
+
+  app.patch(
+    "/parts/:id/tours/:tourId",
+    {
+      // `parts:manage`, not `parts:deploy`. Taking a reading is the technician's
+      // job; rewriting one that is already in the record is not, because every
+      // page-count figure built on it moves with it.
+      preHandler: guard(PERMISSIONS.PARTS_MANAGE),
+      schema: {
+        tags: ["Cartridges"],
+        summary: "Correct the readings on a finished tour",
+        description:
+          "For readings entered before anything checked them. Every field may be cleared as " +
+          "well as changed: a wrong reading is often unknowable rather than wrong by a digit, " +
+          "and `null` is an honest answer where a guess is not.\n\nThe reading the tour " +
+          "recorded moves with it, so the printer's series keeps agreeing with the tour.",
+        params: tourParams,
+        body: correctTourSchema,
+        response: { 200: z.array(placementSchema) },
+      },
+    },
+    async (request) => {
+      const companyId = await requireModule(request.ctx!.companyId);
+      const history = await parts.correctTour(
+        request.params.id,
+        request.params.tourId,
+        companyId,
+        request.ctx!,
+        request.body,
+      );
+      await recordAudit(request, request.ctx!, {
+        action: "part.tour.correct",
+        details: { partId: request.params.id, tourId: request.params.tourId, ...request.body },
+      });
+      return history;
     },
   );
 

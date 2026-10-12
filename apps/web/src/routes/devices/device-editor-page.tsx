@@ -11,6 +11,7 @@ import { useState } from "react";
 
 import { Can } from "@/components/can.js";
 import { ConfirmDialog } from "@/components/confirm-dialog.js";
+import { MeterPanel } from "@/routes/devices/meter-panel.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
 import { Field, Input, Spinner } from "@/components/ui/form.js";
 import { useForm } from "@/hooks/use-form.js";
@@ -325,6 +326,11 @@ function Editor({ mode, device }: { mode: DeviceEditorMode; device?: Device }) {
           </div>
         </form>
       </Card>
+
+      {/* Only for a machine that exists, and only where the module is on — the
+          panel asks the cartridge module's own endpoint and renders nothing when
+          a company does not use it. */}
+      {mode === "edit" && device ? <MeterPanel deviceId={device.id} /> : null}
 
       <ConfirmDialog
         open={confirmDelete}

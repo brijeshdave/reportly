@@ -13,6 +13,7 @@ import {
   deployPartSchema,
   formatDateTime,
   consumableViolations,
+  correctTourSchema,
   createPartSchema,
   meanPages,
   pagesFor,
@@ -20,6 +21,7 @@ import {
   returnPartSchema,
   yieldPercent,
   type Consumable,
+  type CorrectTour,
   type DeployPart,
   type ReturnPart,
   PART_EVENT_KINDS,
@@ -41,7 +43,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog.js";
 import { ErrorAlert } from "@/components/ui/error-alert.js";
 import { useForm } from "@/hooks/use-form.js";
 import { SearchableSelect } from "@/components/searchable-select.js";
-import { Field, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
+import { Field, InlineField, Input, Select, Spinner, Textarea } from "@/components/ui/form.js";
 import { Badge, Button, Card, PageHeader } from "@/components/ui/primitives.js";
 
 import { fetchLocations } from "@/services/locations.js";
@@ -51,6 +53,7 @@ import {
   fetchPart,
   fetchPartModel,
   fetchPartTimeline,
+  correctTour,
   fetchDeviceMeter,
   fetchFittingDevices,
   fetchServiceKinds,
@@ -673,7 +676,15 @@ function ServiceForm({
  * it?" is a question about one sequence, and two lists make the reader interleave
  * them by eye.
  */
-function Timeline({ events, rated }: { events: PartEvent[]; rated: number | null }) {
+function Timeline({
+  events,
+  rated,
+  partId,
+}: {
+  events: PartEvent[];
+  rated: number | null;
+  partId: string;
+}) {
   const [kind, setKind] = useState<PartEventKind | "all">("all");
   const [device, setDevice] = useState("all");
 
@@ -752,7 +763,7 @@ function Timeline({ events, rated }: { events: PartEvent[]; rated: number | null
                     <Badge tone={EVENT_TONE[event.kind]}>{PART_EVENT_LABELS[event.kind]}</Badge>
                   </td>
                   <td className="py-2 pr-3">
-                    <EventDetail event={event} rated={rated} />
+                    <EventDetail event={event} rated={rated} partId={partId} />
                   </td>
                   <td className="whitespace-nowrap py-2 text-xs text-muted-foreground">
                     {event.actorName ?? "—"}
@@ -774,8 +785,86 @@ const EVENT_TONE: Record<PartEventKind, "success" | "info" | "warning" | "neutra
   serviced: "success",
 };
 
+/**
+ * Put right the readings on a finished tour.
+ *
+ * Opens closed, because most tours are fine and a form under every row would
+ * bury the history it is attached to. Both boxes may be emptied as well as
+ * changed: a reading entered before anything checked it is often unknowable
+ * rather than wrong by a digit, and clearing it leaves "pages not recorded",
+ * which is true, where a guess would not be.
+ */
+function CorrectTourForm({ partId, event }: { partId: string; event: PartEvent }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const form = useForm({
+    schema: correctTourSchema,
+    initial: {
+      meterStart: event.meterStart === null ? "" : String(event.meterStart),
+      meterEnd: event.meterEnd === null ? "" : String(event.meterEnd),
+    },
+    // Blank means "clear it", which is why this sends null rather than leaving
+    // the key out: an absent key would keep whatever is stored.
+    toPayload: (v) => ({
+      meterStart: v.meterStart.trim() === "" ? null : Number(v.meterStart),
+      meterEnd: v.meterEnd.trim() === "" ? null : Number(v.meterEnd),
+    }),
+    submit: (input) => correctTour(partId, String(event.placementId), input as CorrectTour),
+    onSuccess: async () => {
+      setOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["parts"] });
+      // The printer's series moved with the tour, so anything showing it is stale.
+      await queryClient.invalidateQueries({ queryKey: ["devices"] });
+    },
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-1 block text-xs text-primary hover:underline"
+      >
+        Correct the readings
+      </button>
+    );
+  }
+
+  return (
+    <form {...form.formProps} className="mt-2 flex flex-wrap items-end gap-2">
+      {form.formError ? <ErrorAlert error={form.formError} /> : null}
+      <InlineField label="Counter in" error={form.errorFor("meterStart")}>
+        <Input type="number" min="0" className="h-8 w-28" {...form.register("meterStart")} />
+      </InlineField>
+      <InlineField label="Counter out" error={form.errorFor("meterEnd")}>
+        <Input type="number" min="0" className="h-8 w-28" {...form.register("meterEnd")} />
+      </InlineField>
+      <Button type="submit" size="sm" disabled={form.submitting}>
+        {form.submitting ? <Spinner /> : null}
+        Save
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        Cancel
+      </Button>
+      <p className="w-full text-xs text-muted-foreground">
+        Leave a box empty to record that the reading is not known. Every page count built on this
+        tour changes with it.
+      </p>
+    </form>
+  );
+}
+
 /** One row's worth of words, which differ entirely by what kind of event it is. */
-function EventDetail({ event, rated }: { event: PartEvent; rated: number | null }) {
+function EventDetail({
+  event,
+  rated,
+  partId,
+}: {
+  event: PartEvent;
+  rated: number | null;
+  partId: string;
+}) {
   if (event.kind === "registered") {
     return <span className="text-muted-foreground">Added to the register.</span>;
   }
@@ -813,6 +902,14 @@ function EventDetail({ event, rated }: { event: PartEvent; rated: number | null 
         </span>
         {event.note ? (
           <span className="block text-xs text-muted-foreground">{event.note}</span>
+        ) : null}
+        {/* The readings on a finished tour can be put right. Here rather than on
+            a settings screen because this is where a wrong one is noticed — the
+            line that says "52,034 pages" is the line somebody disbelieves. */}
+        {event.placementId ? (
+          <Can permission={PERMISSIONS.PARTS_MANAGE}>
+            <CorrectTourForm partId={partId} event={event} />
+          </Can>
         ) : null}
       </span>
     );
@@ -1149,7 +1246,7 @@ export function PartDetailPage({ partId }: { partId: string }) {
         )
       ) : null}
 
-      <Timeline events={timeline.data ?? []} rated={rated} />
+      <Timeline events={timeline.data ?? []} rated={rated} partId={p.id} />
 
       <ConfirmDialog
         open={confirmScrap}

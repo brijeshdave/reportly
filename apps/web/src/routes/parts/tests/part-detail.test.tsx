@@ -114,6 +114,7 @@ function tour(overrides: Partial<PartEvent> = {}): PartEvent {
     actorName: "Asha",
     deviceName: "Reception LJ-01",
     serviceKindName: null,
+    placementId: null,
     outcome: "ok",
     points: null,
     pointsReversedAt: null,

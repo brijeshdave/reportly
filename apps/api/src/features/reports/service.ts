@@ -1371,7 +1371,8 @@ async function runPrinterPages(
       const last = series[series.length - 1]!;
       const pages = pagesAcross(series.map((r) => ({ pages: r.pages, source: r.source as never })));
       const used = cartridgesBy.get(first.deviceId)?.size ?? 0;
-      return { first, last, pages, used };
+      const resets = series.filter((r) => r.source === "reset").length;
+      return { first, last, pages, used, resets };
     })
     .sort((a, b) => (b.pages ?? -1) - (a.pages ?? -1))
     .map((entry): ReportRow => ({
@@ -1390,6 +1391,7 @@ async function runPrinterPages(
           entry.pages !== null && entry.used > 0
             ? Math.round(entry.pages / entry.used).toLocaleString()
             : "—",
+        resets: String(entry.resets),
       },
     }));
   return oneGroup("Printer pages", rows, PRINTER_PAGES_COLUMNS);

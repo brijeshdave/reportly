@@ -292,6 +292,46 @@ export async function insertPlacement(
   return row!.id;
 }
 
+/** One finished tour, for correcting its readings. */
+export async function placementById(
+  id: string,
+  companyId: string,
+): Promise<{ id: string; partId: string; deviceId: string; removedAt: Date | null } | null> {
+  const [row] = await db
+    .select({
+      id: partPlacements.id,
+      partId: partPlacements.partId,
+      deviceId: partPlacements.deviceId,
+      removedAt: partPlacements.removedAt,
+    })
+    .from(partPlacements)
+    .where(and(eq(partPlacements.id, id), eq(partPlacements.companyId, companyId)));
+  return row ?? null;
+}
+
+/**
+ * Overwrite a finished tour's readings.
+ *
+ * `undefined` leaves a field alone and `null` clears it, which is the difference
+ * that matters here: clearing is the point, because a reading that was wrong is
+ * often unknowable rather than wrong-by-a-digit.
+ */
+export async function correctPlacement(
+  id: string,
+  companyId: string,
+  values: { meterStart?: number | null; meterEnd?: number | null; pagesPrinted?: number | null },
+): Promise<void> {
+  await db
+    .update(partPlacements)
+    .set({
+      ...(values.meterStart !== undefined ? { meterStart: values.meterStart } : {}),
+      ...(values.meterEnd !== undefined ? { meterEnd: values.meterEnd } : {}),
+      ...(values.pagesPrinted !== undefined ? { pagesPrinted: values.pagesPrinted } : {}),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(partPlacements.id, id), eq(partPlacements.companyId, companyId)));
+}
+
 export async function closePlacement(
   id: string,
   companyId: string,

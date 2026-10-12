@@ -410,6 +410,45 @@ export type MeterReading = z.infer<typeof meterReadingSchema>;
  * because a period a printer was never read in is not a period it printed nothing
  * in, and a zero would say the second thing.
  */
+/**
+ * Correcting the readings on a tour that is already finished.
+ *
+ * Every field is nullable on purpose. A reading that was wrong is often not
+ * wrong-by-a-digit but unknowable — nobody now remembers what the machine said —
+ * and "not known" is an honest answer where a guess is not. The register on a
+ * live install had four tours claiming more than twenty thousand pages and four
+ * claiming none; those want clearing, not editing.
+ *
+ * Deliberately not checked against the printer's series. These are repairs of
+ * history, and the series is already broken where they are needed — refusing a
+ * correction for disagreeing with the thing it is correcting would stop the one
+ * job this exists for. The change is audited instead.
+ */
+export const correctTourSchema = z.object({
+  meterStart: z
+    .number({ message: "Type the reading, or clear it." })
+    .int("Whole pages only.")
+    .min(0, "Zero or more.")
+    .max(100_000_000, "That is more than any counter holds.")
+    .nullable()
+    .optional(),
+  meterEnd: z
+    .number({ message: "Type the reading, or clear it." })
+    .int("Whole pages only.")
+    .min(0, "Zero or more.")
+    .max(100_000_000, "That is more than any counter holds.")
+    .nullable()
+    .optional(),
+  pagesPrinted: z
+    .number({ message: "Type a page count, or clear it." })
+    .int("Whole pages only.")
+    .min(0, "Zero or more.")
+    .max(100_000_000, "That is more than any counter holds.")
+    .nullable()
+    .optional(),
+});
+export type CorrectTour = z.infer<typeof correctTourSchema>;
+
 export function pagesAcross(
   readings: readonly { pages: number; source: MeterSource }[],
 ): number | null {
@@ -648,6 +687,13 @@ export const partEventSchema = z.object({
   /** What the service paid, and whether a faulty return took it back. */
   points: z.number().nullable(),
   pointsReversedAt: z.string().datetime().nullable(),
+  /**
+   * The tour these readings belong to, where the event is one.
+   *
+   * The event's own `id` cannot serve: a placement contributes two events, so it
+   * is prefixed with the kind. This is the thing a correction is addressed to.
+   */
+  placementId: uuidSchema.nullable(),
   /** The raw readings, so the one `pagesFor` derives the count for every screen. */
   meterStart: z.number().int().nullable(),
   meterEnd: z.number().int().nullable(),

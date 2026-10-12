@@ -6,6 +6,7 @@
 // screens are kept off the sidebar in that case rather than left to discover it
 // — see `modules.parts` on the session.
 import type {
+  CorrectTour,
   DeployPart,
   MeterReading,
   RecordMeterReading,
@@ -102,6 +103,16 @@ export const fetchDeviceMeter = (deviceId: string) =>
 
 export const recordMeterReading = (deviceId: string, input: RecordMeterReading) =>
   http.post<MeterReading>(`/devices/${deviceId}/meter`, input);
+
+/**
+ * Put right the readings on a tour that is already over.
+ *
+ * `null` clears a field, which is the point as much as changing one: a reading
+ * entered before anything checked it is often unknowable rather than wrong by a
+ * digit, and "not known" is honest where a guess is not.
+ */
+export const correctTour = (partId: string, tourId: string, input: CorrectTour) =>
+  http.patch<Placement[]>(`/parts/${partId}/tours/${tourId}`, input);
 export const restockPart = (id: string, locationId?: string | null) =>
   http.post<Part>(`/parts/${id}/restock`, { locationId });
 export const scrapPart = (id: string) => http.post<Part>(`/parts/${id}/scrap`);

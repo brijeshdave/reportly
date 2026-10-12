@@ -1013,6 +1013,11 @@ export const PRINTER_PAGES_COLUMNS = [
   "readAt",
   "cartridges",
   "perCartridge",
+  // How many times the counter was said to have started again. A printer is
+  // replaced rarely; several resets in one window is almost always somebody
+  // reading the wrong number off the display and waving the question away, and
+  // this is where that shows without opening the machine's own history.
+  "resets",
 ] as const;
 
 /**
