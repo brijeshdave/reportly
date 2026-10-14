@@ -144,25 +144,25 @@ function people(): Person[] {
 }
 
 const ISSUE_TITLES = [
-  "Conveyor belt slipping under load",
-  "Hydraulic press losing pressure mid-cycle",
-  "Coolant pump tripping the overload",
-  "Labeller misfeeding every fortieth unit",
-  "Compressor short-cycling overnight",
-  "Sensor on the reject gate intermittent",
-  "Bearing noise on the outfeed roller",
-  "Panel HMI freezing after a shift change",
+  "Laptop won't join the domain after a re-image",
+  "Reception printer jamming on tray 2",
+  "Wi-Fi dropping in the meeting rooms",
+  'Outlook stuck on "trying to connect"',
+  "File share unreachable from the second floor",
+  "Monitor flickering on the finance desks",
+  "VPN disconnecting every few minutes",
+  "Badge reader rejecting new starters",
 ];
 
 const WORK_TITLES = [
-  "Replaced the drive belt and re-tensioned",
-  "Reseated the pressure sensor loom",
-  "Cleared the coolant strainer",
-  "Re-calibrated the labeller feed",
-  "Serviced the compressor and drained the receiver",
-  "Swapped the reject-gate proximity sensor",
-  "Greased the outfeed bearings",
-  "Reflashed the HMI and restored the recipe set",
+  "Replaced the docking station and updated its firmware",
+  "Re-imaged the finance laptop",
+  "Moved the access point and changed its channel",
+  "Rebuilt the user's Outlook profile",
+  "Replaced the failing switch power supply",
+  "Swapped the DisplayPort cable and the monitor",
+  "Updated the VPN client and pushed the new profile",
+  "Re-enrolled the badges and synced the door controller",
 ];
 
 /**
@@ -230,42 +230,60 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
 
   // 2. An asset tree three levels deep, because that is what the cascading picker
   // is for and a two-level tree does not show it working.
-  const plant = id(1, "b");
-  const lineOne = id(2, "b");
-  const lineTwo = id(3, "b");
+  const office = id(1, "b");
+  const serverRoom = id(2, "b");
+  const secondFloor = id(3, "b");
   await database
     .insert(assets)
     .values([
-      { id: plant, companyId: COMPANY_ID, name: "Plant 1", locationId: site.id, parentId: null },
-      { id: lineOne, companyId: COMPANY_ID, name: "Line 1", locationId: site.id, parentId: plant },
-      { id: lineTwo, companyId: COMPANY_ID, name: "Line 2", locationId: site.id, parentId: plant },
+      {
+        id: office,
+        companyId: COMPANY_ID,
+        name: "Head office",
+        locationId: site.id,
+        parentId: null,
+      },
+      {
+        id: serverRoom,
+        companyId: COMPANY_ID,
+        name: "Server room",
+        locationId: site.id,
+        parentId: office,
+      },
+      {
+        id: secondFloor,
+        companyId: COMPANY_ID,
+        name: "Second floor",
+        locationId: site.id,
+        parentId: office,
+      },
       {
         id: id(4, "b"),
         companyId: COMPANY_ID,
-        name: "Filler",
+        name: "Rack A",
         locationId: site.id,
-        parentId: lineOne,
+        parentId: serverRoom,
       },
       {
         id: id(5, "b"),
         companyId: COMPANY_ID,
-        name: "Capper",
+        name: "Rack B",
         locationId: site.id,
-        parentId: lineOne,
+        parentId: serverRoom,
       },
       {
         id: id(6, "b"),
         companyId: COMPANY_ID,
-        name: "Labeller",
+        name: "Finance desks",
         locationId: site.id,
-        parentId: lineTwo,
+        parentId: secondFloor,
       },
       {
         id: id(7, "b"),
         companyId: COMPANY_ID,
-        name: "Palletiser",
+        name: "Meeting rooms",
         locationId: site.id,
-        parentId: lineTwo,
+        parentId: secondFloor,
       },
     ])
     .onConflictDoNothing();
@@ -276,36 +294,36 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
       {
         id: id(1, "c"),
         companyId: COMPANY_ID,
-        name: "Drive motor",
-        assetTag: "MTR-0041",
-        assetId: lineOne,
+        name: "Core switch",
+        assetTag: "NET-0041",
+        assetId: serverRoom,
         locationId: site.id,
         departmentId: DEPT_ENGINEERING,
       },
       {
         id: id(2, "c"),
         companyId: COMPANY_ID,
-        name: "Hydraulic press",
-        assetTag: "HYD-0012",
-        assetId: lineOne,
+        name: "File server",
+        assetTag: "SRV-0012",
+        assetId: serverRoom,
         locationId: site.id,
         departmentId: DEPT_ENGINEERING,
       },
       {
         id: id(3, "c"),
         companyId: COMPANY_ID,
-        name: "Coolant pump",
-        assetTag: "PMP-0007",
-        assetId: lineTwo,
+        name: "Floor printer",
+        assetTag: "PRN-0007",
+        assetId: secondFloor,
         locationId: site.id,
         departmentId: DEPT_ENGINEERING,
       },
       {
         id: id(4, "c"),
         companyId: COMPANY_ID,
-        name: "Reject gate sensor",
-        assetTag: "SNS-0113",
-        assetId: lineTwo,
+        name: "Meeting room access point",
+        assetTag: "WAP-0113",
+        assetId: secondFloor,
         locationId: site.id,
         departmentId: DEPT_ENGINEERING,
       },
@@ -320,7 +338,7 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
   await database
     .insert(categories)
     .values(
-      ["Mechanical", "Electrical", "Hydraulic", "Controls", "Wear and tear"].map((name, i) => ({
+      ["Hardware", "Network", "Software", "Printing", "Access"].map((name, i) => ({
         id: id(i + 1, "f"),
         departmentId: DEPT_ENGINEERING,
         name,
@@ -361,8 +379,8 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
       locationId: site.id,
       reportDate: occurred,
       occurredAt: occurred,
-      issueSummary: isIssue ? "Noticed at the start of the shift and confirmed under load." : null,
-      workSummary: isIssue ? null : "Carried out and handed back to production.",
+      issueSummary: isIssue ? "Reported by the user and reproduced on site." : null,
+      workSummary: isIssue ? null : "Done and confirmed working with the user.",
     });
   }
   await database.insert(journalEntries).values(entries).onConflictDoNothing();
@@ -391,19 +409,19 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
     departmentId: DEPT_ENGINEERING,
     fullName,
     employeeNumber: `EMP-${1001 + i}`,
-    description: i % 3 === 0 ? "Shop floor office, first shift" : null,
+    description: i % 3 === 0 ? "Head office, second floor" : null,
     status: "active",
   }));
   await database.insert(endUsers).values(endUserRows).onConflictDoNothing();
 
-  const LINE_ASSETS = [lineOne, lineTwo];
+  const TARGET_ASSETS = [serverRoom, secondFloor];
   await database
     .insert(journalTargets)
     .values(
       entries.map((entry, i) => ({
         reportId: entry.id!,
         targetKind: "asset",
-        targetId: LINE_ASSETS[i % LINE_ASSETS.length]!,
+        targetId: TARGET_ASSETS[i % TARGET_ASSETS.length]!,
       })),
     )
     .onConflictDoNothing();
@@ -443,7 +461,7 @@ export async function seedDemoData(database: Database = db, now = new Date()): P
           companyId: COMPANY_ID,
           reportId: entry.id!,
           targetKind: "asset",
-          targetId: LINE_ASSETS[i % LINE_ASSETS.length]!,
+          targetId: TARGET_ASSETS[i % TARGET_ASSETS.length]!,
           reason: "Stopped for the fault above",
           startedAt,
           endedAt: new Date(startedAt.getTime() + minutes * 60 * 1000),
