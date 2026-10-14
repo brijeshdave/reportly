@@ -27,7 +27,7 @@ export function AssetsPage({ tab }: { tab: string }) {
     <>
       <PageHeader
         title="Assets"
-        description="The structural things reports are filed against — your plant, its lines, the stations on them. Retire an asset to stop it being offered without disturbing the reports that name it."
+        description="The structural things reports are filed against — a building and its floors, or a plant and its lines. Retire an asset to stop it being offered without disturbing the reports that name it."
       />
 
       <PageTabs

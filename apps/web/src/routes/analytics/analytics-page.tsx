@@ -142,7 +142,7 @@ export function AnalyticsPage() {
         <EmptyState
           icon={Factory}
           title="No assets yet"
-          description="Reliability is measured against the asset tree. Add a line or a plant to get started."
+          description="Reliability is measured against the asset tree. Add a building or a plant to get started."
         />
       ) : null}
 

@@ -490,7 +490,7 @@ function ControlsPanel({
           label="Asset"
           hint={
             definition.source === "reliability" && definition.monthly
-              ? "The reliability trend is for one asset. Leave empty to use the first plant."
+              ? "The reliability trend is for one asset. Leave empty to use the first top-level asset."
               : "Reports on this asset and everything under it. Leave empty for the whole company."
           }
         >

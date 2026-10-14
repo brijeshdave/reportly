@@ -8,6 +8,13 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The asset screens no longer assume a factory.** They spoke of "your plant, its
+  lines, the stations on them", and the asset picker was labelled _Site or plant_ —
+  wording an IT department filing against a server room had to translate. The text
+  now names a building and its floors alongside a plant and its lines, and the picker
+  reads _Building or plant_. The demo seed is an IT department to match: laptops,
+  printers and Wi-Fi rather than conveyors and coolant pumps.
+
 - **Work is a timeline, not a text box.** Each piece of work is its own item with the
   person who did it and the hours it took, oldest first. The previous attempt appended
   into the entry's single work field: there was nowhere to put a _when_, a second log

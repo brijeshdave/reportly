@@ -335,7 +335,7 @@ export async function submitIssue(page: Page): Promise<void> {
   // "Choose one" placeholder — whatever this installation has called its plants.
   //
   // By its `name`, not its label. "Site" is ambiguous on this form — the scope picker
-  // below is "Site or plant" — and a required field's label carries a marker, so an
+  // below is "Building or plant" — and a required field's label carries a marker, so an
   // exact match on the word finds nothing either. The name is what the form posts
   // under and does not move.
   await page.locator('select[name="locationId"]').selectOption({ index: 1 });

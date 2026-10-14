@@ -310,7 +310,7 @@ export function ManagementPackPage() {
     <div className="pack-page">
       <PageHeader
         title="Management pack"
-        description="A month of the plant in one page: the headline numbers against the month before, then the charts behind them. Print it, or export it as slides."
+        description="A month on one page: the headline numbers against the month before, then the charts behind them. Print it, or export it as slides."
         actions={
           data ? (
             <div className="no-print flex items-center gap-2">

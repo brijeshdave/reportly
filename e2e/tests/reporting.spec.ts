@@ -81,10 +81,10 @@ async function addAsset(page: Page, name: string): Promise<void> {
  *
  * It replaced a single combobox of every asset: you walk down — site, then line,
  * then station — and stop wherever you like, so there is no `option` to click by
- * name. The first level is "Site or plant"; "Use this"/"Add" commits the choice.
+ * name. The first level is "Building or plant"; "Use this"/"Add" commits the choice.
  */
 async function pickAsset(page: Page, name: string): Promise<void> {
-  await page.getByLabel("Site or plant").selectOption({ label: name });
+  await page.getByLabel("Building or plant").selectOption({ label: name });
   await page.getByRole("button", { name: /^(Add|Use this)$/ }).click();
   // The chip's own Remove button, not the name as text. `getByText(name)` also
   // matches the `<option>` still sitting in the picker, which Playwright reports

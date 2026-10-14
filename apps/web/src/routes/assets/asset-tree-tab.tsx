@@ -87,9 +87,10 @@ export function AssetTreeTab({ canManage }: { canManage: boolean }) {
     <div className="flex max-w-4xl flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="max-w-2xl text-sm text-muted-foreground">
-          The structural things reports are filed against — a plant, its lines, the stations on
-          them. Keep it small: individual machines belong in <strong>Devices</strong>, where they
-          are searched rather than browsed, and still roll up through the asset they stand at.
+          The structural things reports are filed against — a building, its floors and rooms, or a
+          plant, its lines and stations. Keep it small: individual machines belong in{" "}
+          <strong>Devices</strong>, where they are searched rather than browsed, and still roll up
+          through the asset they stand at.
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => void exportAssets()}>
@@ -108,7 +109,7 @@ export function AssetTreeTab({ canManage }: { canManage: boolean }) {
       <Card className="divide-y divide-border">
         {tree.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-            Nothing here yet. Add your plant, then the lines under it.
+            Nothing here yet. Add a building or a plant, then what sits inside it.
           </p>
         ) : (
           tree.map((node) => (

@@ -165,8 +165,8 @@ export function ScopePicker({
         </p>
         {locationId && scopedAssets.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No assets are placed at this site yet. Set their Site under Assets, or pick a line/plant
-            there — everything beneath it is covered.
+            No assets are placed at this site yet. Set their Site under Assets, or pick the building
+            or plant above them — everything beneath it is covered.
           </p>
         ) : (
           <AssetCascadePicker

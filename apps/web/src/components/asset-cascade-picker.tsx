@@ -86,7 +86,7 @@ export function AssetCascadePicker({
           // legible.
           <label key={depth} className="flex w-full flex-col gap-1 text-xs sm:w-64">
             <span className="text-muted-foreground">
-              {depth === 0 ? "Site or plant" : `Inside ${nameOf(active, row.parentId)}`}
+              {depth === 0 ? "Building or plant" : `Inside ${nameOf(active, row.parentId)}`}
             </span>
             <Select
               value={row.chosen}
