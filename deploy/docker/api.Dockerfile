@@ -1,6 +1,6 @@
 # Author: Brijesh Dave <https://github.com/brijeshdave>
 # Multi-stage build for the Fastify API. Build context is the repo root.
-FROM node:24-alpine AS base
+FROM node:26-alpine AS base
 RUN corepack enable
 WORKDIR /repo
 
